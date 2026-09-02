@@ -5,8 +5,8 @@ from typing import Any
 from .temporal import (
     GTSpan,
     TemporalCell,
+    classify_gt_alignment,
     compute_alignment_metrics,
-    label_support,
 )
 
 
@@ -45,10 +45,14 @@ def generate_position_windows(
             end_time = max(obs_times) if obs_times else None
         duplicate_count = len(indices) - len(set(indices))
         window = {
-            "window_id": f"{sample['sample_id']}::pos{start:04d}-{end - 1:04d}",
-            "sample_id": sample["sample_id"],
+            "window_id": f"{sample['qa_id']}::pos{start:04d}-{end - 1:04d}",
+            "qa_id": sample["qa_id"],
+            "clip_id": sample["clip_id"],
+            "sample_id": sample["qa_id"],
             "dataset_name": sample.get("dataset_name"),
             "metadata_fps": sample.get("metadata_fps"),
+            "analysis_eligible": bool(sample.get("analysis_eligible")),
+            "temporal_status": sample.get("temporal_status"),
             "start_pos": start,
             "end_pos": end - 1,
             "start_time": start_time,
@@ -94,5 +98,8 @@ def compute_window_alignment(sample: dict[str, Any], window: dict[str, Any]) -> 
         _spans_from_sample(sample),
     )
     out = metrics.to_dict()
-    out["strong_label_if_yes"] = label_support("YES", metrics)
+    out["gt_alignment_class"] = classify_gt_alignment(
+        metrics,
+        analysis_eligible=bool(sample.get("analysis_eligible")),
+    )
     return out

@@ -18,8 +18,8 @@ class DatasetTests(unittest.TestCase):
         sample = {
             "id": "dup",
             "qa_type": "tal",
-            "dataset_name": "Toy",
-            "data_source": "Toy",
+            "dataset_name": "CoPESD",
+            "data_source": "CoPESD",
             "metadata": {"fps": "1.0"},
             "video": ["a.jpg", "a.jpg", "b.jpg"],
             "sampled_video_frames": [1, 1, 2],
@@ -31,6 +31,11 @@ class DatasetTests(unittest.TestCase):
         }
         normalized, failure = normalize_tal_sample(sample, 0, verify_paths=False)
         self.assertIsNone(failure)
+        self.assertEqual(normalized["clip_id"], "dup")
+        self.assertEqual(normalized["qa_id"], "0000::dup")
+        self.assertTrue(normalized["analysis_eligible"])
+        self.assertEqual(normalized["time_mapping_method"], "source_frame_rate")
+        self.assertEqual(normalized["source_timebase_hz"], 1.0)
         self.assertEqual(normalized["duplicate_count"], 1)
         self.assertEqual(normalized["n_unique_frames"], 2)
 

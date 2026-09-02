@@ -6,9 +6,9 @@ from typing import Any
 
 from .temporal import (
     GTSpan,
+    TemporalMapper,
     build_temporal_cells,
     frame_quality_stats,
-    map_frames_mapping_c,
     validate_and_clip_gt_spans,
     visible_cells_for_spans,
 )
@@ -93,8 +93,10 @@ def normalize_tal_sample(
     old_frame_root: str = "/root/data",
     verify_paths: bool = True,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    clip_id = str(sample.get("id", ""))
+    qa_id = f"{original_index:04d}::{clip_id}"
     if sample.get("qa_type") != "tal":
-        return None, {"sample_id": sample.get("id"), "reason": "NOT_TAL"}
+        return None, {"qa_id": qa_id, "clip_id": clip_id, "reason": "NOT_TAL"}
 
     question, gt_answer = get_question_and_answer(sample)
     target, target_field = extract_target(sample)
@@ -102,8 +104,11 @@ def normalize_tal_sample(
     frame_paths = remap_frame_paths(list(sample.get("video") or []), frame_root, old_frame_root)
     sampled_frames = [int(x) for x in sample.get("sampled_video_frames") or []]
     metadata = dict(sample.get("metadata") or {})
+    dataset_name = sample.get("dataset_name") or sample.get("data_source")
 
     failures: list[str] = []
+    if not clip_id:
+        failures.append("MISSING_CLIP_ID")
     if not question:
         failures.append("MISSING_QUESTION")
     if not gt_answer:
@@ -118,19 +123,24 @@ def normalize_tal_sample(
         failures.append("LEN_VIDEO_NE_SAMPLED_FRAMES")
     if "fps" not in metadata:
         failures.append("MISSING_METADATA_FPS")
+    if not dataset_name:
+        failures.append("MISSING_DATASET_NAME")
 
     if failures:
         return None, {
-            "sample_id": sample.get("id"),
+            "qa_id": qa_id,
+            "clip_id": clip_id,
             "original_index": original_index,
             "reason": ";".join(failures),
         }
 
-    clip_duration, observations = map_frames_mapping_c(sampled_frames, frame_paths, metadata)
+    mapping = TemporalMapper.map(str(dataset_name), sampled_frames, frame_paths, metadata)
+    clip_duration = mapping.clip_duration
+    observations = list(mapping.observations)
     quality = frame_quality_stats(sampled_frames)
     validation = validate_and_clip_gt_spans(raw_spans, clip_duration, float(metadata["fps"]))
     cells = build_temporal_cells(observations, clip_duration)
-    visible_total = visible_cells_for_spans(cells, validation.spans)
+    visible_total = visible_cells_for_spans(cells, validation.processed_spans)
 
     missing_paths: list[str] = []
     if verify_paths:
@@ -143,36 +153,46 @@ def normalize_tal_sample(
     temporal_status = validation.temporal_status
     if temporal_status == "OK" and not visible_total:
         temporal_status = "NO_VISIBLE_GT_FRAME"
+    analysis_eligible = temporal_status == "OK" and bool(visible_total)
 
     normalized = {
-        "sample_id": sample.get("id"),
+        "qa_id": qa_id,
+        "clip_id": clip_id,
+        "sample_id": qa_id,
         "original_index": original_index,
         "question": question,
         "target_action": target,
         "target_field": target_field,
         "gt_answer": gt_answer,
-        "gt_spans": [span.to_dict() for span in validation.spans],
+        "gt_spans": [span.to_dict() for span in validation.processed_spans],
+        "processed_gt_spans": [span.to_dict() for span in validation.processed_spans],
         "raw_gt_spans": [span.to_dict() for span in raw_spans],
-        "gt_duration_total": sum(span.duration for span in validation.spans),
-        "gt_num_spans": len(validation.spans),
-        "zero_duration_span_count": sum(1 for span in validation.spans if span.duration == 0),
+        "invalid_gt_spans": list(validation.invalid_gt_spans),
+        "gt_duration_total": sum(span.duration for span in validation.processed_spans),
+        "gt_num_spans": len(validation.processed_spans),
+        "zero_duration_span_count": sum(1 for span in validation.processed_spans if span.duration == 0),
         "fps": float(metadata["fps"]),
         "metadata_fps": float(metadata["fps"]),
         "metadata": metadata,
         "input_start": metadata.get("input_video_start_time"),
         "input_end": metadata.get("input_video_end_time"),
         "clip_duration": clip_duration,
+        "time_mapping_method": mapping.time_mapping_method,
+        "source_timebase_hz": mapping.source_timebase_hz,
+        "clip_duration_source": mapping.clip_duration_source,
         "frame_paths": frame_paths,
         "sampled_frame_indices": sampled_frames,
         "frame_observations": [obs.to_dict() for obs in observations],
         "temporal_cells": [cell.to_dict() for cell in cells],
         "n_gt_visible_total": len(visible_total),
         "gt_visible_source_frame_indices": sorted(visible_total),
-        "dataset_name": sample.get("dataset_name") or sample.get("data_source"),
+        "dataset_name": dataset_name,
         "data_source": sample.get("data_source"),
         "parse_source": parse_source,
         "parse_ok": True,
         "temporal_status": temporal_status,
+        "analysis_eligible": analysis_eligible,
+        "qa_id_valid": bool(qa_id),
         "gt_boundary_clipped": validation.gt_boundary_clipped,
         "temporal_excluded_reason": validation.excluded_reason,
         "temporal_tolerance": validation.tolerance,

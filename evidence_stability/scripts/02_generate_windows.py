@@ -43,6 +43,10 @@ def main() -> None:
     dataset_counts = Counter()
     total_windows = 0
     status_counts = Counter()
+    eligible_windows = 0
+    output_windows = 0
+    window_ids: set[str] = set()
+    duplicate_window_ids = 0
 
     for sample in samples:
         windows = generate_position_windows(
@@ -56,15 +60,24 @@ def main() -> None:
         status_counts[sample.get("temporal_status")] += len(windows)
         total_windows += len(windows)
         for window in windows:
-            append_jsonl(args.output, window)
+            if window["window_id"] in window_ids:
+                duplicate_window_ids += 1
+            window_ids.add(window["window_id"])
+            if window.get("analysis_eligible"):
+                eligible_windows += 1
+                append_jsonl(args.output, window)
+                output_windows += 1
             if window["start_time"] is not None and window["end_time"] is not None:
                 durations.append(window["end_time"] - window["start_time"])
             if args.write_alignment_audit:
                 audit = {
                     **{k: window[k] for k in [
                         "window_id",
+                        "qa_id",
+                        "clip_id",
                         "sample_id",
                         "dataset_name",
+                        "analysis_eligible",
                         "start_pos",
                         "end_pos",
                         "start_time",
@@ -83,6 +96,8 @@ def main() -> None:
     stats = {
         "samples": len(samples),
         "total_windows": total_windows,
+        "analysis_eligible_windows": eligible_windows,
+        "output_windows": output_windows,
         "window_size": args.window_size,
         "stride": args.stride,
         "drop_last": args.drop_last,
@@ -93,7 +108,11 @@ def main() -> None:
         "window_duration_max": max(durations) if durations else None,
         "windows_by_dataset": dict(dataset_counts),
         "windows_by_temporal_status": dict(status_counts),
+        "n_unique_window_ids": len(window_ids),
+        "n_duplicate_window_ids": duplicate_window_ids,
     }
+    if duplicate_window_ids:
+        raise RuntimeError(f"Duplicate window_id detected: {duplicate_window_ids}")
     write_json(args.stats_output, stats)
     print(json.dumps(stats, ensure_ascii=False, indent=2))
 

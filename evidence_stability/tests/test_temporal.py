@@ -2,7 +2,9 @@ import unittest
 
 from evidence_stability.temporal import (
     GTSpan,
+    TemporalMapper,
     build_temporal_cells,
+    classify_gt_alignment,
     compute_alignment_metrics,
     label_support,
     map_frames_mapping_c,
@@ -11,6 +13,28 @@ from evidence_stability.temporal import (
 
 
 class TemporalMappingTests(unittest.TestCase):
+    def test_avos_source_timebase_adapter(self):
+        result = TemporalMapper.map(
+            "AVOS",
+            [150, 165, 180],
+            ["a.jpg", "b.jpg", "c.jpg"],
+            {"fps": "1.0"},
+        )
+        self.assertEqual(result.time_mapping_method, "source_frame_rate")
+        self.assertEqual(result.source_timebase_hz, 15.0)
+        self.assertEqual(result.clip_duration, 2.0)
+        self.assertEqual([round(x.local_time, 3) for x in result.observations], [0.0, 1.0, 2.0])
+
+    def test_cholect50_source_timebase_adapter(self):
+        result = TemporalMapper.map(
+            "CholecT50",
+            [100, 110],
+            ["a.jpg", "b.jpg"],
+            {"fps": "0.1"},
+        )
+        self.assertEqual(result.source_timebase_hz, 1.0)
+        self.assertEqual(result.clip_duration, 10.0)
+
     def test_endpoint_anchored_mapping_c(self):
         duration, obs = map_frames_mapping_c(
             [100, 110, 120],
@@ -68,11 +92,18 @@ class TemporalMappingTests(unittest.TestCase):
         validation = validate_and_clip_gt_spans([GTSpan(-0.5, 2.5)], 2.0, 1.0)
         self.assertEqual(validation.temporal_status, "OK")
         self.assertTrue(validation.gt_boundary_clipped)
-        self.assertEqual(validation.spans[0], GTSpan(0.0, 2.0))
+        self.assertEqual(validation.processed_spans[0], GTSpan(0.0, 2.0))
+        self.assertTrue(all(0 <= s.start <= s.end <= 2.0 for s in validation.processed_spans))
 
     def test_large_gt_overflow_excluded(self):
         validation = validate_and_clip_gt_spans([GTSpan(0.0, 5.0)], 2.0, 1.0)
         self.assertEqual(validation.temporal_status, "GT_OUT_OF_RANGE")
+
+    def test_outside_near_boundary_not_snapped_to_boundary(self):
+        validation = validate_and_clip_gt_spans([GTSpan(185.0, 185.0)], 184.0, 1.0)
+        self.assertEqual(validation.temporal_status, "GT_NEAR_BOUNDARY_NOT_VISIBLE")
+        self.assertEqual(validation.processed_spans, ())
+        self.assertEqual(validation.invalid_gt_spans[0]["reason"], "OUTSIDE_CLIP_NEAR_BOUNDARY")
 
     def test_density_recall_and_labels(self):
         duration, obs = map_frames_mapping_c(
@@ -84,9 +115,11 @@ class TemporalMappingTests(unittest.TestCase):
         strong = compute_alignment_metrics(cells, [10, 20], [GTSpan(1.0, 2.0)])
         self.assertEqual(strong.n_gt_visible_in_window, 2)
         self.assertAlmostEqual(strong.evidence_density, 1.0)
+        self.assertEqual(classify_gt_alignment(strong), "STRONG_GT_ALIGNED")
         self.assertEqual(label_support("YES", strong), "STRONG_GT_SUPPORT")
 
         weak = compute_alignment_metrics(cells, [0], [GTSpan(1.0, 2.0)])
+        self.assertEqual(classify_gt_alignment(weak), "NO_GT_OVERLAP")
         self.assertEqual(label_support("YES", weak), "SPURIOUS_SUPPORT")
 
 

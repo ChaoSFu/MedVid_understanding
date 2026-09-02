@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import random
 import sys
@@ -25,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--parse_failures", default="outputs/tal_pilot/parse_failures.jsonl")
     p.add_argument("--excluded_temporal_output", default="outputs/tal_pilot/excluded_temporal_samples.jsonl")
     p.add_argument("--summary_output", default="outputs/tal_pilot/prepare_summary.json")
+    p.add_argument("--temporal_status_by_dataset_output", default="outputs/tal_pilot/temporal_status_by_dataset.csv")
     p.add_argument("--max_samples", type=int, default=300)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--no_verify_paths", action="store_true")
@@ -48,8 +50,11 @@ def main() -> None:
     counts = Counter()
     temporal_counts = Counter()
     dataset_counts = Counter()
+    temporal_by_dataset = Counter()
     missing_path_samples = 0
     examples = []
+    qa_ids: set[str] = set()
+    clip_ids: list[str] = []
 
     for original_idx, sample in tal:
         normalized, failure = normalize_tal_sample(
@@ -64,10 +69,17 @@ def main() -> None:
             counts["parse_failed"] += 1
             continue
 
+        qa_id = normalized["qa_id"]
+        if qa_id in qa_ids:
+            raise RuntimeError(f"Duplicate qa_id detected: {qa_id}")
+        qa_ids.add(qa_id)
+        clip_ids.append(normalized["clip_id"])
+
         append_jsonl(args.output, normalized)
         counts["ok"] += 1
         temporal_counts[normalized["temporal_status"]] += 1
         dataset_counts[normalized["dataset_name"]] += 1
+        temporal_by_dataset[(normalized["dataset_name"], normalized["temporal_status"])] += 1
         if normalized.get("first_missing_frame"):
             missing_path_samples += 1
         if normalized["temporal_status"] in {"GT_OUT_OF_RANGE", "GT_INVALID", "NO_VISIBLE_GT_FRAME"}:
@@ -75,9 +87,13 @@ def main() -> None:
         if len(examples) < 10:
             examples.append({
                 "sample_id": normalized["sample_id"],
+                "qa_id": normalized["qa_id"],
+                "clip_id": normalized["clip_id"],
                 "dataset_name": normalized["dataset_name"],
                 "fps": normalized["fps"],
                 "clip_duration": normalized["clip_duration"],
+                "time_mapping_method": normalized["time_mapping_method"],
+                "source_timebase_hz": normalized["source_timebase_hz"],
                 "frame_index_range": [
                     normalized["sampled_frame_indices"][0],
                     normalized["sampled_frame_indices"][-1],
@@ -87,11 +103,27 @@ def main() -> None:
                     normalized["frame_observations"][-1]["local_time"],
                 ],
                 "gt_spans": normalized["gt_spans"],
+                "invalid_gt_spans": normalized["invalid_gt_spans"],
                 "n_gt_visible_total": normalized["n_gt_visible_total"],
                 "temporal_status": normalized["temporal_status"],
+                "analysis_eligible": normalized["analysis_eligible"],
                 "gt_boundary_clipped": normalized["gt_boundary_clipped"],
                 "duplicate_count": normalized["duplicate_count"],
             })
+
+    statuses = sorted(temporal_counts)
+    datasets = sorted(dataset_counts)
+    with Path(args.temporal_status_by_dataset_output).open("w", encoding="utf-8", newline="") as f:
+        fieldnames = ["dataset_name", "n"] + statuses
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for dataset in datasets:
+            row = {"dataset_name": dataset, "n": dataset_counts[dataset]}
+            for status in statuses:
+                row[status] = temporal_by_dataset[(dataset, status)]
+            writer.writerow(row)
+
+    shared_clip_ids = sum(1 for _, count in Counter(clip_ids).items() if count > 1)
 
     summary = {
         "data_json": args.data_json,
@@ -99,6 +131,10 @@ def main() -> None:
         "max_samples": args.max_samples,
         "seed": args.seed,
         "counts": dict(counts),
+        "n_qa": counts["ok"],
+        "n_unique_qa_id": len(qa_ids),
+        "n_unique_clip_id": len(set(clip_ids)),
+        "n_shared_clip_ids": shared_clip_ids,
         "dataset_counts": dict(dataset_counts),
         "temporal_status_counts": dict(temporal_counts),
         "missing_path_samples": missing_path_samples,

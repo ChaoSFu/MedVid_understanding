@@ -8,11 +8,11 @@ def make_sample():
     return {
         "id": "sample-1",
         "qa_type": "tal",
-        "dataset_name": "Toy",
-        "data_source": "Toy",
+        "dataset_name": "AVOS",
+        "data_source": "AVOS",
         "metadata": {"fps": "1.0"},
-        "video": [f"/root/data/Toy/{i}.jpg" for i in range(6)],
-        "sampled_video_frames": [0, 1, 2, 3, 4, 5],
+        "video": [f"/root/data/AVOS/frames_15fps/v/{i}.jpg" for i in [0, 15, 30, 45, 60, 75]],
+        "sampled_video_frames": [0, 15, 30, 45, 60, 75],
         "conversations": [
             {"from": "human", "value": "<video>\nWhen does action happen?"},
             {"from": "gpt", "value": "1.0-2.0 seconds."},
@@ -39,6 +39,18 @@ class WindowTests(unittest.TestCase):
         metrics = compute_window_alignment(normalized, windows[0])
         self.assertGreater(metrics["n_gt_visible_in_window"], 0)
         self.assertGreater(metrics["evidence_density"], 0)
+        self.assertIn(metrics["gt_alignment_class"], {"STRONG_GT_ALIGNED", "WEAK_GT_ALIGNED"})
+
+    def test_same_clip_different_qa_have_different_window_ids(self):
+        sample_a = make_sample()
+        sample_b = make_sample()
+        normalized_a, _ = normalize_tal_sample(sample_a, 0, verify_paths=False)
+        normalized_b, _ = normalize_tal_sample(sample_b, 1, verify_paths=False)
+        self.assertEqual(normalized_a["clip_id"], normalized_b["clip_id"])
+        self.assertNotEqual(normalized_a["qa_id"], normalized_b["qa_id"])
+        window_a = generate_position_windows(normalized_a, window_size=4, stride=2)[0]
+        window_b = generate_position_windows(normalized_b, window_size=4, stride=2)[0]
+        self.assertNotEqual(window_a["window_id"], window_b["window_id"])
 
 
 if __name__ == "__main__":

@@ -55,7 +55,8 @@ class TemporalCell:
 @dataclass(frozen=True)
 class TemporalValidation:
     temporal_status: str
-    spans: tuple[GTSpan, ...]
+    processed_spans: tuple[GTSpan, ...]
+    invalid_gt_spans: tuple[dict[str, Any], ...]
     gt_boundary_clipped: bool
     excluded_reason: str | None
     tolerance: float
@@ -79,13 +80,117 @@ class AlignmentMetrics:
         }
 
 
-def infer_clip_duration(metadata: dict[str, Any], n_frames: int) -> float:
-    fps = float(metadata["fps"])
-    start_time = metadata.get("input_video_start_time")
-    end_time = metadata.get("input_video_end_time")
-    if start_time is not None and end_time is not None:
-        return float(end_time) - float(start_time)
-    return (n_frames - 1) / fps if n_frames > 0 else 0.0
+@dataclass(frozen=True)
+class MappingResult:
+    clip_duration: float
+    observations: tuple[FrameObservation, ...]
+    time_mapping_method: str
+    source_timebase_hz: float | None
+    clip_duration_source: str
+
+
+class TemporalMapper:
+    """Dataset-aware TAL frame-index to clip-local time mapper."""
+
+    SOURCE_TIMEBASE_HZ = {
+        "AVOS": 15.0,
+        "CholecT50": 1.0,
+        "CoPESD": 1.0,
+        "EgoSurgery": 0.5,
+    }
+
+    @classmethod
+    def map(
+        cls,
+        dataset_name: str,
+        sampled_video_frames: list[int],
+        frame_paths: list[str],
+        metadata: dict[str, Any],
+    ) -> MappingResult:
+        if len(sampled_video_frames) != len(frame_paths):
+            raise ValueError("len(sampled_video_frames) must equal len(frame_paths)")
+        if not sampled_video_frames:
+            raise ValueError("sampled_video_frames is empty")
+
+        if dataset_name == "NurViD":
+            return cls._map_nurvid(sampled_video_frames, frame_paths, metadata)
+        if dataset_name in cls.SOURCE_TIMEBASE_HZ:
+            return cls._map_source_timebase(
+                sampled_video_frames,
+                frame_paths,
+                source_timebase_hz=cls.SOURCE_TIMEBASE_HZ[dataset_name],
+            )
+        raise ValueError(f"Unsupported TAL dataset for temporal mapping: {dataset_name}")
+
+    @staticmethod
+    def _map_nurvid(
+        sampled_video_frames: list[int],
+        frame_paths: list[str],
+        metadata: dict[str, Any],
+    ) -> MappingResult:
+        start_time = metadata.get("input_video_start_time")
+        end_time = metadata.get("input_video_end_time")
+        if start_time is None or end_time is None:
+            raise ValueError("NurViD requires input_video_start_time and input_video_end_time")
+
+        clip_duration = float(end_time) - float(start_time)
+        first = sampled_video_frames[0]
+        last = sampled_video_frames[-1]
+        fps = float(metadata["fps"])
+        source_timebase_hz = (last - first) / clip_duration if clip_duration > 0 and last > first else None
+
+        observations: list[FrameObservation] = []
+        for i, frame_index in enumerate(sampled_video_frames):
+            if last > first:
+                local_time = (frame_index - first) / (last - first) * clip_duration
+            else:
+                local_time = i / fps
+            observations.append(
+                FrameObservation(
+                    frame_position=i,
+                    source_frame_index=int(frame_index),
+                    frame_path=frame_paths[i],
+                    local_time=float(local_time),
+                )
+            )
+
+        return MappingResult(
+            clip_duration=float(clip_duration),
+            observations=tuple(observations),
+            time_mapping_method="known_duration_endpoint_interpolation",
+            source_timebase_hz=source_timebase_hz,
+            clip_duration_source="metadata_input_video_times",
+        )
+
+    @staticmethod
+    def _map_source_timebase(
+        sampled_video_frames: list[int],
+        frame_paths: list[str],
+        source_timebase_hz: float,
+    ) -> MappingResult:
+        first = sampled_video_frames[0]
+        last = sampled_video_frames[-1]
+        clip_duration = (last - first) / source_timebase_hz if last >= first else 0.0
+
+        observations: list[FrameObservation] = []
+        for i, frame_index in enumerate(sampled_video_frames):
+            local_time = (frame_index - first) / source_timebase_hz
+            observations.append(
+                FrameObservation(
+                    frame_position=i,
+                    source_frame_index=int(frame_index),
+                    frame_path=frame_paths[i],
+                    local_time=float(local_time),
+                )
+            )
+
+        return MappingResult(
+            clip_duration=float(clip_duration),
+            observations=tuple(observations),
+            time_mapping_method="source_frame_rate",
+            source_timebase_hz=float(source_timebase_hz),
+            clip_duration_source="source_frame_index_range",
+        )
 
 
 def map_frames_mapping_c(
@@ -93,36 +198,20 @@ def map_frames_mapping_c(
     frame_paths: list[str],
     metadata: dict[str, Any],
 ) -> tuple[float, list[FrameObservation]]:
-    """Endpoint-anchored frame-index interpolation.
-
-    GT remains in clip-local coordinates. `input_video_start_time` is used only
-    to infer clip duration when both endpoint times are available.
-    """
-    if len(sampled_video_frames) != len(frame_paths):
-        raise ValueError("len(sampled_video_frames) must equal len(frame_paths)")
-    if not sampled_video_frames:
-        raise ValueError("sampled_video_frames is empty")
-
-    fps = float(metadata["fps"])
-    clip_duration = infer_clip_duration(metadata, len(sampled_video_frames))
-    first = sampled_video_frames[0]
-    last = sampled_video_frames[-1]
-
-    observations: list[FrameObservation] = []
-    for i, frame_index in enumerate(sampled_video_frames):
-        if last > first:
-            local_time = (frame_index - first) / (last - first) * clip_duration
-        else:
-            local_time = i / fps
-        observations.append(
-            FrameObservation(
-                frame_position=i,
-                source_frame_index=int(frame_index),
-                frame_path=frame_paths[i],
-                local_time=float(local_time),
-            )
-        )
-    return float(clip_duration), observations
+    """Backward-compatible Mapping C helper used only by legacy tests."""
+    result = TemporalMapper._map_nurvid(
+        sampled_video_frames,
+        frame_paths,
+        {
+            **metadata,
+            "input_video_start_time": metadata.get("input_video_start_time", 0.0),
+            "input_video_end_time": metadata.get(
+                "input_video_end_time",
+                (len(sampled_video_frames) - 1) / float(metadata["fps"]),
+            ),
+        },
+    )
+    return result.clip_duration, list(result.observations)
 
 
 def build_temporal_cells(
@@ -194,44 +283,88 @@ def validate_and_clip_gt_spans(
     metadata_fps: float,
 ) -> TemporalValidation:
     tolerance = max(1.0, 1.0 / metadata_fps)
-    clipped: list[GTSpan] = []
+    processed: list[GTSpan] = []
+    invalid: list[dict[str, Any]] = []
     boundary_clipped = False
+    has_far_out = False
+    has_invalid = False
 
-    for span in spans:
+    for idx, span in enumerate(spans):
+        raw = span.to_dict()
         if span.end < span.start:
-            return TemporalValidation(
-                temporal_status="GT_INVALID",
-                spans=tuple(clipped),
-                gt_boundary_clipped=boundary_clipped,
-                excluded_reason="GT_END_BEFORE_START",
-                tolerance=tolerance,
-            )
+            has_invalid = True
+            invalid.append({"span_index": idx, "span": raw, "reason": "GT_END_BEFORE_START"})
+            continue
+
+        outside_left = span.end < 0.0
+        outside_right = span.start > clip_duration
+        if outside_left or outside_right:
+            distance = abs(span.end) if outside_left else span.start - clip_duration
+            reason = "OUTSIDE_CLIP_NEAR_BOUNDARY" if distance <= tolerance else "GT_OUT_OF_RANGE"
+            if reason == "GT_OUT_OF_RANGE":
+                has_far_out = True
+            invalid.append({"span_index": idx, "span": raw, "reason": reason})
+            continue
 
         overflow = max(0.0, -span.start, span.end - clip_duration)
         if overflow > tolerance:
-            return TemporalValidation(
-                temporal_status="GT_OUT_OF_RANGE",
-                spans=tuple(clipped),
-                gt_boundary_clipped=boundary_clipped,
-                excluded_reason="GT_OUT_OF_RANGE",
-                tolerance=tolerance,
-            )
+            has_far_out = True
+            invalid.append({"span_index": idx, "span": raw, "reason": "GT_OUT_OF_RANGE"})
+            continue
 
         start = span.start
         end = span.end
+        reason = None
         if start < 0.0:
             start = 0.0
             boundary_clipped = True
+            reason = "PARTIAL_BOUNDARY_CLIPPED"
         if end > clip_duration:
             end = clip_duration
             boundary_clipped = True
-        clipped.append(GTSpan(start=start, end=end))
+            reason = "PARTIAL_BOUNDARY_CLIPPED"
+        clipped_span = GTSpan(start=start, end=end)
+        if not (0.0 <= clipped_span.start <= clipped_span.end <= clip_duration):
+            has_invalid = True
+            invalid.append(
+                {
+                    "span_index": idx,
+                    "span": raw,
+                    "processed_span": clipped_span.to_dict(),
+                    "reason": "CLIPPED_SPAN_INVARIANT_VIOLATION",
+                }
+            )
+            continue
+        if reason:
+            invalid.append(
+                {
+                    "span_index": idx,
+                    "span": raw,
+                    "processed_span": clipped_span.to_dict(),
+                    "reason": reason,
+                }
+            )
+        processed.append(clipped_span)
+
+    if has_invalid:
+        status = "GT_INVALID"
+        excluded_reason = "GT_INVALID"
+    elif has_far_out:
+        status = "GT_OUT_OF_RANGE"
+        excluded_reason = "GT_OUT_OF_RANGE"
+    elif processed:
+        status = "OK"
+        excluded_reason = None
+    else:
+        status = "GT_NEAR_BOUNDARY_NOT_VISIBLE"
+        excluded_reason = "GT_NEAR_BOUNDARY_NOT_VISIBLE"
 
     return TemporalValidation(
-        temporal_status="OK",
-        spans=tuple(clipped),
+        temporal_status=status,
+        processed_spans=tuple(processed),
+        invalid_gt_spans=tuple(invalid),
         gt_boundary_clipped=boundary_clipped,
-        excluded_reason=None,
+        excluded_reason=excluded_reason,
         tolerance=tolerance,
     )
 
@@ -258,6 +391,25 @@ def compute_alignment_metrics(
     )
 
 
+def classify_gt_alignment(
+    metrics: AlignmentMetrics,
+    analysis_eligible: bool = True,
+    min_density: float = 0.25,
+    min_gt_recall: float = 0.50,
+) -> str:
+    if not analysis_eligible:
+        return "INVALID_TEMPORAL"
+    if metrics.n_gt_visible_total == 0:
+        return "NO_VISIBLE_GT"
+    if metrics.n_gt_visible_in_window == 0:
+        return "NO_GT_OVERLAP"
+    density = metrics.evidence_density or 0.0
+    recall = metrics.gt_evidence_recall or 0.0
+    if density >= min_density or recall >= min_gt_recall:
+        return "STRONG_GT_ALIGNED"
+    return "WEAK_GT_ALIGNED"
+
+
 def label_support(
     prediction: str,
     metrics: AlignmentMetrics,
@@ -266,15 +418,21 @@ def label_support(
 ) -> str:
     if prediction != "YES":
         return "NOT_SUPPORT_CANDIDATE"
-    if metrics.n_gt_visible_total == 0:
+    alignment_class = classify_gt_alignment(
+        metrics,
+        analysis_eligible=True,
+        min_density=min_density,
+        min_gt_recall=min_gt_recall,
+    )
+    if alignment_class == "NO_VISIBLE_GT":
         return "NO_VISIBLE_GT_FRAME"
-    if metrics.n_gt_visible_in_window == 0:
+    if alignment_class == "NO_GT_OVERLAP":
         return "SPURIOUS_SUPPORT"
-    density = metrics.evidence_density or 0.0
-    recall = metrics.gt_evidence_recall or 0.0
-    if density >= min_density or recall >= min_gt_recall:
+    if alignment_class == "STRONG_GT_ALIGNED":
         return "STRONG_GT_SUPPORT"
-    return "WEAK_GT_SUPPORT"
+    if alignment_class == "WEAK_GT_ALIGNED":
+        return "WEAK_GT_SUPPORT"
+    return alignment_class
 
 
 def frame_quality_stats(frames: list[int]) -> dict[str, Any]:
