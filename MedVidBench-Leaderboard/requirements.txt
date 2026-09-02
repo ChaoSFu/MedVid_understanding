@@ -1,0 +1,18 @@
+# Core dependencies
+gradio==5.50.0
+pandas
+numpy
+python-dateutil
+huggingface_hub>=0.20.0
+
+# Evaluation dependencies
+transformers
+tokenizers>=0.15.0
+sentence-transformers
+scipy
+scikit-learn
+matplotlib
+
+# LLM judge for caption evaluation (DVC, VS, RC)
+openai>=1.0.0
+torch  # For sentence-transformers and embeddings

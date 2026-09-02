@@ -1,0 +1,21 @@
+auto_evals/
+venv/
+__pycache__/
+.env
+.ipynb_checkpoints
+*ipynb
+.vscode/
+
+eval-queue/
+eval-results/
+eval-queue-bk/
+eval-results-bk/
+logs/
+.gradio/
+data/*.json
+cache/
+
+# User submission data - DO NOT commit (will lose user data)
+leaderboard.json
+submissions/
+results/
