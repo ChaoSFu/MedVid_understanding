@@ -18,10 +18,17 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 import json
+import multiprocessing as mp
 import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
+
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+try:
+    mp.set_start_method("spawn", force=True)
+except RuntimeError:
+    pass
 
 from transformers import AutoProcessor
 from vllm import LLM, SamplingParams

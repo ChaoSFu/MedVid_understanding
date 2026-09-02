@@ -13,11 +13,18 @@ import argparse
 import copy
 import json
 import logging
+import multiprocessing as mp
 import os
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+os.environ.setdefault("VLLM_WORKER_MULTIPROC_METHOD", "spawn")
+try:
+    mp.set_start_method("spawn", force=True)
+except RuntimeError:
+    pass
 
 import torch
 from PIL import Image
