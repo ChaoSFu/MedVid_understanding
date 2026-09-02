@@ -17,7 +17,11 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-from sentence_transformers import SentenceTransformer
+
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None
 
 # Try to import OpenAI (may not be available in all environments)
 try:
@@ -420,6 +424,10 @@ def compute_semantic_similarity_fallback(results_data, task_type):
         float: Average semantic similarity score (0-1 scale)
     """
     # Load sentence transformer model
+    if SentenceTransformer is None:
+        print("⚠ sentence-transformers not available, semantic similarity fallback disabled")
+        return 0.0
+
     print(f"Loading SentenceTransformer for {task_type} fallback evaluation...")
     model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
