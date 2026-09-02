@@ -26,7 +26,17 @@ from vllm import LLM, SamplingParams
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
+MEDGRPO_INFERENCE_DIR = REPO_ROOT / "MedGRPO-Code-main" / "inference"
+DEFAULT_EXAMPLES_PATH = SCRIPT_DIR / "oneshot_examples.json"
+
 sys.path.insert(0, str(SCRIPT_DIR))
+
+if not (SCRIPT_DIR / "vision_process_medical.py").exists():
+    sys.path.insert(0, str(MEDGRPO_INFERENCE_DIR))
+
+if not DEFAULT_EXAMPLES_PATH.exists():
+    DEFAULT_EXAMPLES_PATH = MEDGRPO_INFERENCE_DIR / "oneshot_examples.json"
+
 from vision_process_medical import process_vision_info_medical  # noqa: E402
 
 TARGET_QA_TYPES = {
@@ -243,13 +253,16 @@ def save_json_atomic(data: Any, path: str) -> None:
 def create_submission(results: Dict[str, Any], output_path: str) -> None:
     submission = []
     for _, rec in sorted(results.items(), key=lambda x: int(x[0])):
-        m = rec.get("metadata", {}) or {}
-        video_id = m.get("video_id", "")
-        start_frame = m.get("input_video_start_frame", "") or m.get("start_frame", "")
-        end_frame = m.get("input_video_end_frame", "") or m.get("end_frame", "")
-        fps = m.get("fps", "")
+        submission_id = rec.get("id")
+        if not submission_id:
+            m = rec.get("metadata", {}) or {}
+            video_id = m.get("video_id", "")
+            start_frame = m.get("input_video_start_frame", "") or m.get("start_frame", "")
+            end_frame = m.get("input_video_end_frame", "") or m.get("end_frame", "")
+            fps = m.get("fps", "")
+            submission_id = f"{video_id}&&{start_frame}&&{end_frame}&&{fps}"
         submission.append({
-            "id": f"{video_id}&&{start_frame}&&{end_frame}&&{fps}",
+            "id": submission_id,
             "qa_type": rec.get("qa_type", ""),
             "prediction": rec.get("answer", ""),
         })
@@ -319,7 +332,7 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--model_path", default=DEFAULT_MODEL_PATH)
     p.add_argument("--data_path", required=True)
-    p.add_argument("--examples_path", default=str(SCRIPT_DIR / "oneshot_examples.json"))
+    p.add_argument("--examples_path", default=str(DEFAULT_EXAMPLES_PATH))
     p.add_argument("--old_data_root", default=DEFAULT_OLD_DATA_ROOT)
     p.add_argument("--new_data_root", default=DEFAULT_NEW_DATA_ROOT)
     p.add_argument("--output_path", default=str(REPO_ROOT / "results/qwen38_27b_vllm_4tasks/results.json"))
@@ -505,6 +518,7 @@ def main() -> None:
             finish_reason = getattr(cand, "finish_reason", None) or getattr(cand, "stop_reason", None) or ""
 
             results[key] = {
+                "id": sample.get("id"),
                 "metadata": meta,
                 "qa_type": qa_type,
                 "struc_info": sample.get("struc_info"),
