@@ -398,6 +398,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--validate_only", action="store_true")
+    parser.add_argument(
+        "--dry_run",
+        action="store_true",
+        help=(
+            "Build real processor inputs for a few samples, then exit before "
+            "initializing vLLM. Useful on machines without usable GPUs."
+        ),
+    )
+    parser.add_argument(
+        "--dry_run_limit",
+        type=int,
+        default=1,
+        help="Number of selected samples to preprocess when --dry_run is set.",
+    )
 
     parser.add_argument("--tensor_parallel_size", type=int, default=2)
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.90)
@@ -516,6 +530,59 @@ def main() -> None:
         trust_remote_code=True,
     )
     logger.info("Processor loaded in %.1fs", time.time() - t0)
+
+    if args.dry_run:
+        dry_samples = selected[: max(args.dry_run_limit, 0)]
+        if not dry_samples:
+            raise RuntimeError("No samples selected for dry run.")
+
+        logger.info(
+            "Dry run: preprocessing %d sample(s); vLLM will not be initialized",
+            len(dry_samples),
+        )
+        failures: Dict[str, Any] = {}
+        success = 0
+        for sample in dry_samples:
+            try:
+                prepared = prepare_one(
+                    sample,
+                    examples,
+                    processor,
+                    args.debug_rc_dir,
+                )
+                prompt = prepared[2].get("prompt", "")
+                mm_data = prepared[2].get("multi_modal_data", {})
+                logger.info(
+                    "DRY RUN OK idx=%s id=%s type=%s frames=%d prompt_chars=%d mm_keys=%s",
+                    sample.get("original_idx"),
+                    sample.get("id"),
+                    sample.get("qa_type"),
+                    prepared[1]["num_processed_frames"],
+                    len(prompt),
+                    sorted(mm_data.keys()),
+                )
+                success += 1
+            except Exception as exc:
+                logger.exception(
+                    "DRY RUN FAILED idx=%s id=%s type=%s error=%s",
+                    sample.get("original_idx"),
+                    sample.get("id"),
+                    sample.get("qa_type"),
+                    exc,
+                )
+                save_preprocess_failure(
+                    sample,
+                    exc,
+                    failures,
+                    args.failure_path,
+                )
+
+        logger.info(
+            "Dry run complete success=%d failed=%d. No predictions were generated.",
+            success,
+            len(dry_samples) - success,
+        )
+        return
 
     logger.info("Loading Qwen3.8-27B into vLLM...")
     t0 = time.time()
