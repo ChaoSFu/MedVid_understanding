@@ -1,0 +1,830 @@
+{
+  "3809": {
+    "original_idx": 3809,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "147.2",
+      "input_video_end_time": "274.4"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-4c76c686-454f-9046-93c7-ef52214d375f', 'request_id': '4c76c686-454f-9046-93c7-ef52214d375f'}\")",
+    "time": "2026-09-01 21:52:06"
+  },
+  "3811": {
+    "original_idx": 3811,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "RauG9bE3klg",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "67.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-d9bc336b-26be-9332-a7d1-ad1455db67fa', 'request_id': 'd9bc336b-26be-9332-a7d1-ad1455db67fa'}\")",
+    "time": "2026-09-01 21:53:17"
+  },
+  "3816": {
+    "original_idx": 3816,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "TH1IVwZmAEE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "91.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-23446fe2-5554-98bc-84e0-65c26ab7a67e', 'request_id': '23446fe2-5554-98bc-84e0-65c26ab7a67e'}\")",
+    "time": "2026-09-01 21:55:27"
+  },
+  "3821": {
+    "original_idx": 3821,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "282.0",
+      "input_video_end_time": "407.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-bec4ae95-c5e1-9c89-a681-f40e8dcb56f1', 'request_id': 'bec4ae95-c5e1-9c89-a681-f40e8dcb56f1'}\")",
+    "time": "2026-09-01 21:57:24"
+  },
+  "3834": {
+    "original_idx": 3834,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "80.1",
+      "input_video_end_time": "239.2"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-64eee5ec-ab51-9cc0-9f9e-66328e3e5356', 'request_id': '64eee5ec-ab51-9cc0-9f9e-66328e3e5356'}\")",
+    "time": "2026-09-01 22:01:21"
+  },
+  "3836": {
+    "original_idx": 3836,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "147.2",
+      "input_video_end_time": "267.6"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-cbd9002b-8f5f-95ab-920f-606bf0f74e70', 'request_id': 'cbd9002b-8f5f-95ab-920f-606bf0f74e70'}\")",
+    "time": "2026-09-01 22:03:12"
+  },
+  "3843": {
+    "original_idx": 3843,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "149.9",
+      "input_video_end_time": "225.3"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-90bac5b4-578b-985e-b20c-4628800dfd20', 'request_id': '90bac5b4-578b-985e-b20c-4628800dfd20'}\")",
+    "time": "2026-09-01 22:06:23"
+  },
+  "3855": {
+    "original_idx": 3855,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "175.5",
+      "input_video_end_time": "226.1"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-1fe18b0b-0fbf-9152-b0a1-f8b256c34784', 'request_id': '1fe18b0b-0fbf-9152-b0a1-f8b256c34784'}\")",
+    "time": "2026-09-01 22:08:52"
+  },
+  "3857": {
+    "original_idx": 3857,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "60.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-06fee458-a492-9b5d-a067-dbf5438e52e1', 'request_id': '06fee458-a492-9b5d-a067-dbf5438e52e1'}\")",
+    "time": "2026-09-01 22:10:03"
+  },
+  "3859": {
+    "original_idx": 3859,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wKCPiSnYqwA",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "108.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-4297506d-2ea7-9a2a-a0e9-47c1c2741019', 'request_id': '4297506d-2ea7-9a2a-a0e9-47c1c2741019'}\")",
+    "time": "2026-09-01 22:11:29"
+  },
+  "3861": {
+    "original_idx": 3861,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "YywoU3jetMU",
+      "fps": "1.0",
+      "input_video_start_time": "170.4",
+      "input_video_end_time": "297.9"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-9cd15e0a-7b6b-985f-8acc-62cbd9254b36', 'request_id': '9cd15e0a-7b6b-985f-8acc-62cbd9254b36'}\")",
+    "time": "2026-09-01 22:13:20"
+  },
+  "3862": {
+    "original_idx": 3862,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "NP0ybURoSz4",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "129.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-9f1a89e5-1074-9fce-803c-10b27d09a8bd', 'request_id': '9f1a89e5-1074-9fce-803c-10b27d09a8bd'}\")",
+    "time": "2026-09-01 22:14:32"
+  },
+  "3866": {
+    "original_idx": 3866,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "223.6",
+      "input_video_end_time": "288.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-4e5d1ebd-aba8-93eb-b566-a4991d541d62', 'request_id': '4e5d1ebd-aba8-93eb-b566-a4991d541d62'}\")",
+    "time": "2026-09-01 22:15:52"
+  },
+  "3875": {
+    "original_idx": 3875,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "RauG9bE3klg",
+      "fps": "1.0",
+      "input_video_start_time": "90.1",
+      "input_video_end_time": "161.4"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-8f3468f7-b53e-9e1d-8873-3fd65ad10196', 'request_id': '8f3468f7-b53e-9e1d-8873-3fd65ad10196'}\")",
+    "time": "2026-09-01 22:18:40"
+  },
+  "3876": {
+    "original_idx": 3876,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "247.4",
+      "input_video_end_time": "370.6"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-53992757-2643-9ba1-acdd-a23b8c246bf4', 'request_id': '53992757-2643-9ba1-acdd-a23b8c246bf4'}\")",
+    "time": "2026-09-01 22:19:41"
+  },
+  "3877": {
+    "original_idx": 3877,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "TH1IVwZmAEE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "138.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-afd0f33a-a349-9343-bec5-8ca89e862283', 'request_id': 'afd0f33a-a349-9343-bec5-8ca89e862283'}\")",
+    "time": "2026-09-01 22:21:00"
+  },
+  "3878": {
+    "original_idx": 3878,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "YywoU3jetMU",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "176.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-2c3e18ef-67aa-97e9-80ac-12088f466dc0', 'request_id': '2c3e18ef-67aa-97e9-80ac-12088f466dc0'}\")",
+    "time": "2026-09-01 22:22:35"
+  },
+  "3883": {
+    "original_idx": 3883,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "225.3",
+      "input_video_end_time": "288.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-da9cc02b-48b0-9ac4-8fe1-1e275e6bc527', 'request_id': 'da9cc02b-48b0-9ac4-8fe1-1e275e6bc527'}\")",
+    "time": "2026-09-01 22:24:13"
+  },
+  "3885": {
+    "original_idx": 3885,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "TH1IVwZmAEE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "165.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-5caea7d9-202e-9880-94ec-781612570e79', 'request_id': '5caea7d9-202e-9880-94ec-781612570e79'}\")",
+    "time": "2026-09-01 22:26:07"
+  },
+  "3887": {
+    "original_idx": 3887,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "256.2",
+      "input_video_end_time": "407.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-c65f808c-745f-9d23-95a3-1e47d9e8372f', 'request_id': 'c65f808c-745f-9d23-95a3-1e47d9e8372f'}\")",
+    "time": "2026-09-01 22:27:33"
+  },
+  "3895": {
+    "original_idx": 3895,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "159.2",
+      "input_video_end_time": "250.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-7fc4a424-12e0-9834-8000-b60a612ca89b', 'request_id': '7fc4a424-12e0-9834-8000-b60a612ca89b'}\")",
+    "time": "2026-09-01 22:29:32"
+  },
+  "3900": {
+    "original_idx": 3900,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "166.7",
+      "input_video_end_time": "299.4"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-b9a473e6-672e-9357-ba1c-4b049b534863', 'request_id': 'b9a473e6-672e-9357-ba1c-4b049b534863'}\")",
+    "time": "2026-09-01 22:34:04"
+  },
+  "3913": {
+    "original_idx": 3913,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "NP0ybURoSz4",
+      "fps": "1.0",
+      "input_video_start_time": "358.0",
+      "input_video_end_time": "484.4"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-19a98b6e-2311-931e-bf30-d45bf26c223d', 'request_id': '19a98b6e-2311-931e-bf30-d45bf26c223d'}\")",
+    "time": "2026-09-01 22:38:42"
+  },
+  "3914": {
+    "original_idx": 3914,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "345.3",
+      "input_video_end_time": "515.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-5ff94189-956b-9625-8c1f-716cdc18ce39', 'request_id': '5ff94189-956b-9625-8c1f-716cdc18ce39'}\")",
+    "time": "2026-09-01 22:40:36"
+  },
+  "3915": {
+    "original_idx": 3915,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "100.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-6cda12bc-26d0-93ac-bb86-fc675a49faaa', 'request_id': '6cda12bc-26d0-93ac-bb86-fc675a49faaa'}\")",
+    "time": "2026-09-01 22:43:53"
+  },
+  "3932": {
+    "original_idx": 3932,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "168.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-dd286bd6-1987-9d13-b43f-5c41f21dc1d1', 'request_id': 'dd286bd6-1987-9d13-b43f-5c41f21dc1d1'}\")",
+    "time": "2026-09-01 22:49:38"
+  },
+  "3939": {
+    "original_idx": 3939,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "226.7",
+      "input_video_end_time": "292.1"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-99114e97-0832-9a6a-a517-1db88e005d79', 'request_id': '99114e97-0832-9a6a-a517-1db88e005d79'}\")",
+    "time": "2026-09-01 22:51:41"
+  },
+  "3947": {
+    "original_idx": 3947,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "318.8",
+      "input_video_end_time": "410.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-4c7621dd-8214-9c0c-b414-365ac5033a97', 'request_id': '4c7621dd-8214-9c0c-b414-365ac5033a97'}\")",
+    "time": "2026-09-01 22:58:30"
+  },
+  "3950": {
+    "original_idx": 3950,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "259.2",
+      "input_video_end_time": "345.3"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-19dbc844-f463-9047-8f18-2588eb8a65a5', 'request_id': '19dbc844-f463-9047-8f18-2588eb8a65a5'}\")",
+    "time": "2026-09-01 23:00:25"
+  },
+  "3951": {
+    "original_idx": 3951,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "RauG9bE3klg",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "79.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-b28c9f2c-64a3-9e92-b356-ecb0b9948452', 'request_id': 'b28c9f2c-64a3-9e92-b356-ecb0b9948452'}\")",
+    "time": "2026-09-01 23:01:41"
+  },
+  "3953": {
+    "original_idx": 3953,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "170.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-c06f8742-8e44-92f6-9b76-4d39fd41c51d', 'request_id': 'c06f8742-8e44-92f6-9b76-4d39fd41c51d'}\")",
+    "time": "2026-09-01 23:03:24"
+  },
+  "3975": {
+    "original_idx": 3975,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "158.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-93a8807a-ac4b-93dd-ba1c-f5455b414bb4', 'request_id': '93a8807a-ac4b-93dd-ba1c-f5455b414bb4'}\")",
+    "time": "2026-09-01 23:10:46"
+  },
+  "3982": {
+    "original_idx": 3982,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "NP0ybURoSz4",
+      "fps": "1.0",
+      "input_video_start_time": "402.2",
+      "input_video_end_time": "466.3"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-77542d43-72e7-9748-8e1c-f5be9ed3776a', 'request_id': '77542d43-72e7-9748-8e1c-f5be9ed3776a'}\")",
+    "time": "2026-09-01 23:13:22"
+  },
+  "3987": {
+    "original_idx": 3987,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "151.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-e943ac07-5aa1-9a7a-9ab9-78e136e8364d', 'request_id': 'e943ac07-5aa1-9a7a-9ab9-78e136e8364d'}\")",
+    "time": "2026-09-01 23:15:46"
+  },
+  "3988": {
+    "original_idx": 3988,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "172.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-5c6a6d07-b3e9-9f7d-a772-9a42f9cb32ee', 'request_id': '5c6a6d07-b3e9-9f7d-a772-9a42f9cb32ee'}\")",
+    "time": "2026-09-01 23:17:38"
+  },
+  "4005": {
+    "original_idx": 4005,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "NP0ybURoSz4",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "63.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-eeb027b6-69f7-9301-91a3-0926d2ffc941', 'request_id': 'eeb027b6-69f7-9301-91a3-0926d2ffc941'}\")",
+    "time": "2026-09-01 23:24:43"
+  },
+  "4008": {
+    "original_idx": 4008,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "160.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-d17f4ee1-ec47-9e09-9ae5-ad76a21902ba', 'request_id': 'd17f4ee1-ec47-9e09-9ae5-ad76a21902ba'}\")",
+    "time": "2026-09-01 23:28:37"
+  },
+  "4012": {
+    "original_idx": 4012,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "166.7",
+      "input_video_end_time": "226.1"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-19125c6e-a43e-9ef2-bb6c-0fdf414c4333', 'request_id': '19125c6e-a43e-9ef2-bb6c-0fdf414c4333'}\")",
+    "time": "2026-09-01 23:29:59"
+  },
+  "4014": {
+    "original_idx": 4014,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "166.7",
+      "input_video_end_time": "318.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-b0e591cf-1259-94e2-9a29-7c46f6157dc7', 'request_id': 'b0e591cf-1259-94e2-9a29-7c46f6157dc7'}\")",
+    "time": "2026-09-01 23:33:15"
+  },
+  "4017": {
+    "original_idx": 4017,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "215.1",
+      "input_video_end_time": "287.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-5a69d991-7588-9780-83d6-9646e28afc84', 'request_id': '5a69d991-7588-9780-83d6-9646e28afc84'}\")",
+    "time": "2026-09-01 23:34:33"
+  },
+  "4026": {
+    "original_idx": 4026,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "226.1",
+      "input_video_end_time": "394.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-57ed1f96-d0ac-9909-aec1-395d03ca70bd', 'request_id': '57ed1f96-d0ac-9909-aec1-395d03ca70bd'}\")",
+    "time": "2026-09-01 23:39:53"
+  },
+  "4027": {
+    "original_idx": 4027,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "105.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-6de1b596-9293-93ad-90f6-44d267ece46d', 'request_id': '6de1b596-9293-93ad-90f6-44d267ece46d'}\")",
+    "time": "2026-09-01 23:41:00"
+  },
+  "4028": {
+    "original_idx": 4028,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "165.8",
+      "input_video_end_time": "226.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-a8c30ff6-000b-95d3-bbcd-bbe52d0d1a24', 'request_id': 'a8c30ff6-000b-95d3-bbcd-bbe52d0d1a24'}\")",
+    "time": "2026-09-01 23:41:57"
+  },
+  "4038": {
+    "original_idx": 4038,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "239.2",
+      "input_video_end_time": "288.7"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-67ece489-3fdd-96d4-ade1-13892f0166a2', 'request_id': '67ece489-3fdd-96d4-ade1-13892f0166a2'}\")",
+    "time": "2026-09-01 23:44:11"
+  },
+  "4040": {
+    "original_idx": 4040,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "290.5",
+      "input_video_end_time": "402.1"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-732a1877-0c02-91fb-b84d-0233fcc1c97b', 'request_id': '732a1877-0c02-91fb-b84d-0233fcc1c97b'}\")",
+    "time": "2026-09-01 23:45:41"
+  },
+  "4074": {
+    "original_idx": 4074,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "329.0",
+      "input_video_end_time": "407.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-a433ecbc-f16b-9ec8-a6d7-a376bf031da7', 'request_id': 'a433ecbc-f16b-9ec8-a6d7-a376bf031da7'}\")",
+    "time": "2026-09-01 23:53:30"
+  },
+  "4076": {
+    "original_idx": 4076,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "aR73Ik_GthM",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "77.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-89d0fade-a613-9609-9f1c-d5d0d2b2be79', 'request_id': '89d0fade-a613-9609-9f1c-d5d0d2b2be79'}\")",
+    "time": "2026-09-01 23:54:50"
+  },
+  "4082": {
+    "original_idx": 4082,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "RauG9bE3klg",
+      "fps": "1.0",
+      "input_video_start_time": "66.6",
+      "input_video_end_time": "193.8"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-6609527a-8d4e-971a-9a30-7f18f5e10976', 'request_id': '6609527a-8d4e-971a-9a30-7f18f5e10976'}\")",
+    "time": "2026-09-01 23:57:26"
+  },
+  "4084": {
+    "original_idx": 4084,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "93.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-4d7d56ca-c0f3-9b45-ad44-891e09ebd8cd', 'request_id': '4d7d56ca-c0f3-9b45-ad44-891e09ebd8cd'}\")",
+    "time": "2026-09-02 00:00:41"
+  },
+  "4085": {
+    "original_idx": 4085,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "159.2",
+      "input_video_end_time": "285.1"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-fe54cc3d-2990-9879-8dce-690621399f25', 'request_id': 'fe54cc3d-2990-9879-8dce-690621399f25'}\")",
+    "time": "2026-09-02 00:02:00"
+  },
+  "4091": {
+    "original_idx": 4091,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "88.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-7d768f4a-ff5f-92f6-84c6-3b48e4b11a2f', 'request_id': '7d768f4a-ff5f-92f6-84c6-3b48e4b11a2f'}\")",
+    "time": "2026-09-02 00:03:54"
+  },
+  "4097": {
+    "original_idx": 4097,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "165.8",
+      "input_video_end_time": "267.6"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-9fc34b48-f11e-94d8-8b61-5a0c7fdb99cc', 'request_id': '9fc34b48-f11e-94d8-8b61-5a0c7fdb99cc'}\")",
+    "time": "2026-09-02 00:06:34"
+  },
+  "4102": {
+    "original_idx": 4102,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "8w-3h50E17Q",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "178.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-f86ea8b1-2cb8-9502-9508-f56f8a7d809c', 'request_id': 'f86ea8b1-2cb8-9502-9508-f56f8a7d809c'}\")",
+    "time": "2026-09-02 00:09:05"
+  },
+  "4105": {
+    "original_idx": 4105,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "8w-3h50E17Q",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "145.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-d932d106-73a1-9026-93b0-a751378599b8', 'request_id': 'd932d106-73a1-9026-93b0-a751378599b8'}\")",
+    "time": "2026-09-02 00:10:34"
+  },
+  "4109": {
+    "original_idx": 4109,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "165.8",
+      "input_video_end_time": "283.6"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-f83b2442-7867-9bd0-90ce-ec52be12aa69', 'request_id': 'f83b2442-7867-9bd0-90ce-ec52be12aa69'}\")",
+    "time": "2026-09-02 00:12:24"
+  },
+  "4110": {
+    "original_idx": 4110,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "223.6",
+      "input_video_end_time": "316.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-af276d49-f3ab-91d3-88ac-f7eb6f2fd710', 'request_id': 'af276d49-f3ab-91d3-88ac-f7eb6f2fd710'}\")",
+    "time": "2026-09-02 00:13:37"
+  },
+  "4118": {
+    "original_idx": 4118,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "YywoU3jetMU",
+      "fps": "1.0",
+      "input_video_start_time": "123.0",
+      "input_video_end_time": "297.9"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-da41e3dc-e45f-92ab-83a1-9aaef4cab7b1', 'request_id': 'da41e3dc-e45f-92ab-83a1-9aaef4cab7b1'}\")",
+    "time": "2026-09-02 00:17:19"
+  },
+  "4125": {
+    "original_idx": 4125,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "166.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-6b537ba1-82b0-9eb3-a7a7-4f8b5a6bf4ae', 'request_id': '6b537ba1-82b0-9eb3-a7a7-4f8b5a6bf4ae'}\")",
+    "time": "2026-09-02 00:19:40"
+  },
+  "4129": {
+    "original_idx": 4129,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "TH1IVwZmAEE",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "125.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-6416c017-5726-935b-988d-3e2cb9ff3048', 'request_id': '6416c017-5726-935b-988d-3e2cb9ff3048'}\")",
+    "time": "2026-09-02 00:21:44"
+  },
+  "4131": {
+    "original_idx": 4131,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "JGgzTJtzaqc",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "56.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-c8b5001f-9ebf-9cbd-97ce-9170db337fb2', 'request_id': 'c8b5001f-9ebf-9cbd-97ce-9170db337fb2'}\")",
+    "time": "2026-09-02 00:22:51"
+  },
+  "4151": {
+    "original_idx": 4151,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "147.2",
+      "input_video_end_time": "235.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-66d69637-517e-9eb0-8725-84a6b2a028ad', 'request_id': '66d69637-517e-9eb0-8725-84a6b2a028ad'}\")",
+    "time": "2026-09-02 00:28:49"
+  },
+  "4155": {
+    "original_idx": 4155,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "235.0",
+      "input_video_end_time": "286.4"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-b1d35437-b95b-9720-af9a-cf9eb77ddc32', 'request_id': 'b1d35437-b95b-9720-af9a-cf9eb77ddc32'}\")",
+    "time": "2026-09-02 00:30:14"
+  },
+  "4159": {
+    "original_idx": 4159,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "RauG9bE3klg",
+      "fps": "1.0",
+      "input_video_start_time": "161.4",
+      "input_video_end_time": "226.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-c63e346b-6236-95f0-9ec4-9f87ba3f485a', 'request_id': 'c63e346b-6236-95f0-9ec4-9f87ba3f485a'}\")",
+    "time": "2026-09-02 00:32:14"
+  },
+  "4164": {
+    "original_idx": 4164,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "YywoU3jetMU",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "88.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-3c1a4795-7be4-9e69-bf18-2581ccaa71e2', 'request_id': '3c1a4795-7be4-9e69-bf18-2581ccaa71e2'}\")",
+    "time": "2026-09-02 00:34:23"
+  },
+  "4166": {
+    "original_idx": 4166,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "hcPB2R1o0T0",
+      "fps": "1.0",
+      "input_video_start_time": "45.4",
+      "input_video_end_time": "94.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-f36c040b-9277-97f1-b8b6-19be748da2b4', 'request_id': 'f36c040b-9277-97f1-b8b6-19be748da2b4'}\")",
+    "time": "2026-09-02 00:35:30"
+  },
+  "4168": {
+    "original_idx": 4168,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "207.2",
+      "input_video_end_time": "374.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-88ab1847-7348-9eb5-9c1b-fa2f2618d860', 'request_id': '88ab1847-7348-9eb5-9c1b-fa2f2618d860'}\")",
+    "time": "2026-09-02 00:37:18"
+  },
+  "4188": {
+    "original_idx": 4188,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "6eGGq4fz8SE",
+      "fps": "1.0",
+      "input_video_start_time": "290.5",
+      "input_video_end_time": "412.9"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-209ebb61-3b94-920c-adab-032f38948cb3', 'request_id': '209ebb61-3b94-920c-adab-032f38948cb3'}\")",
+    "time": "2026-09-02 00:43:06"
+  },
+  "4195": {
+    "original_idx": 4195,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "wlssXdkjCLs",
+      "fps": "1.0",
+      "input_video_start_time": "0.0",
+      "input_video_end_time": "98.0"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-278f0c10-f51a-9407-a96f-454e4173b14c', 'request_id': '278f0c10-f51a-9407-a96f-454e4173b14c'}\")",
+    "time": "2026-09-02 00:45:35"
+  },
+  "4198": {
+    "original_idx": 4198,
+    "qa_type": "dense_captioning_gpt",
+    "metadata": {
+      "video_id": "aR73Ik_GthM",
+      "fps": "1.0",
+      "input_video_start_time": "45.5",
+      "input_video_end_time": "192.5"
+    },
+    "error": "RuntimeError(\"Qwen API failed after 4 attempts: Error code: 400 - {'error': {'message': '<400> InternalError.Algo.DataInspectionFailed: Input video data may contain inappropriate content.', 'type': 'data_inspection_failed', 'param': None, 'code': 'data_inspection_failed'}, 'id': 'chatcmpl-de26ff14-c92a-9090-97ba-f129c15aa7cb', 'request_id': 'de26ff14-c92a-9090-97ba-f129c15aa7cb'}\")",
+    "time": "2026-09-02 00:47:24"
+  }
+}

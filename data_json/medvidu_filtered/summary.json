@@ -1,0 +1,56 @@
+{
+  "test": {
+    "input": "/Users/huihui/Downloads/cleaned_test_data_11_04.json",
+    "total_records": 6245,
+    "filtered_records": 4202,
+    "output": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/medvidu_test_stg_tal_region_dense.json",
+    "group_outputs": {
+      "STG": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/test/stg.json",
+      "TAL": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/test/tal.json",
+      "Region Caption": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/test/region_caption.json",
+      "Dense Caption": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/test/dense_caption.json"
+    },
+    "counts_by_group": {
+      "TAL": 1637,
+      "Dense Caption": 1479,
+      "STG": 780,
+      "Region Caption": 306
+    },
+    "counts_by_original_qa_type": {
+      "tal": 1637,
+      "dense_captioning_gpt": 751,
+      "dense_captioning_gemini": 728,
+      "stg": 780,
+      "region_caption_gpt": 138,
+      "region_caption_gemini": 168
+    },
+    "record_schema_note": "Filtered records preserve original fields; no helper fields were added."
+  },
+  "trainval": {
+    "input": "/Users/huihui/Downloads/medvidu_eccv2026_trainval.json",
+    "total_records": 6270,
+    "filtered_records": 4270,
+    "output": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/medvidu_trainval_stg_tal_region_dense.json",
+    "group_outputs": {
+      "STG": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/trainval/stg.json",
+      "TAL": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/trainval/tal.json",
+      "Region Caption": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/trainval/region_caption.json",
+      "Dense Caption": "/Users/huihui/code/evidenced_surgery_understanding/outputs/medvidu_filtered/trainval/dense_caption.json"
+    },
+    "counts_by_group": {
+      "TAL": 1700,
+      "STG": 780,
+      "Region Caption": 310,
+      "Dense Caption": 1480
+    },
+    "counts_by_original_qa_type": {
+      "tal": 1700,
+      "stg": 780,
+      "region_caption_gemini": 170,
+      "region_caption_gpt": 140,
+      "dense_captioning_gpt": 750,
+      "dense_captioning_gemini": 730
+    },
+    "record_schema_note": "Filtered records preserve original fields; no helper fields were added."
+  }
+}
