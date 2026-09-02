@@ -59,8 +59,16 @@ from openai import OpenAI
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
+MEDGRPO_INFERENCE_DIR = REPO_ROOT / "MedGRPO-Code-main" / "inference"
+DEFAULT_EXAMPLES_PATH = SCRIPT_DIR / "oneshot_examples.json"
 
 sys.path.insert(0, str(SCRIPT_DIR))
+
+if not (SCRIPT_DIR / "vision_process_medical.py").exists():
+    sys.path.insert(0, str(MEDGRPO_INFERENCE_DIR))
+
+if not DEFAULT_EXAMPLES_PATH.exists():
+    DEFAULT_EXAMPLES_PATH = MEDGRPO_INFERENCE_DIR / "oneshot_examples.json"
 
 # Reuse the official MedGRPO preprocessing implementation.
 from vision_process_medical import process_vision_info_medical  # noqa: E402
@@ -841,7 +849,7 @@ def main() -> None:
 
     parser.add_argument(
         "--examples_path",
-        default=str(SCRIPT_DIR / "oneshot_examples.json"),
+        default=str(DEFAULT_EXAMPLES_PATH),
         help="Official MedGRPO one-shot examples JSON.",
     )
 
