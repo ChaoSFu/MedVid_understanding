@@ -118,12 +118,13 @@ def prepare_one(
     processor: Any,
     debug_rc_dir: str | None,
 ) -> PreparedRequest:
-    return prepare_request(
+    request, prep_info = prepare_request(
         sample=sample,
         examples=examples,
         processor=processor,
         debug_rc_dir=debug_rc_dir,
     )
+    return sample, prep_info, request
 
 
 def save_preprocess_failure(
