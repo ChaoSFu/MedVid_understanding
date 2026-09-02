@@ -697,25 +697,28 @@ def create_submission(
         results.items(),
         key=lambda item: int(item[0]),
     ):
-        metadata = record.get("metadata", {}) or {}
+        submission_id = record.get("id")
 
-        video_id = metadata.get("video_id", "")
+        if not submission_id:
+            metadata = record.get("metadata", {}) or {}
 
-        start_frame = (
-            metadata.get("input_video_start_frame", "")
-            or metadata.get("start_frame", "")
-        )
+            video_id = metadata.get("video_id", "")
 
-        end_frame = (
-            metadata.get("input_video_end_frame", "")
-            or metadata.get("end_frame", "")
-        )
+            start_frame = (
+                metadata.get("input_video_start_frame", "")
+                or metadata.get("start_frame", "")
+            )
 
-        fps = metadata.get("fps", "")
+            end_frame = (
+                metadata.get("input_video_end_frame", "")
+                or metadata.get("end_frame", "")
+            )
 
-        submission_id = (
-            f"{video_id}&&{start_frame}&&{end_frame}&&{fps}"
-        )
+            fps = metadata.get("fps", "")
+
+            submission_id = (
+                f"{video_id}&&{start_frame}&&{end_frame}&&{fps}"
+            )
 
         submission.append(
             {
@@ -1190,6 +1193,7 @@ def main() -> None:
             total_elapsed = time.time() - sample_start_time
 
             result = {
+                "id": sample.get("id"),
                 "metadata": metadata,
                 "qa_type": qa_type,
                 "struc_info": sample.get("struc_info"),
