@@ -37,6 +37,108 @@ def setup_logging(log_path: str | None) -> None:
         logger.addHandler(file_handler)
 
 
+def resolve_frame_path(path: str, frame_root: str | None, source_frame_prefix: str = "/root/data") -> str:
+    if not frame_root:
+        return path
+    normalized_prefix = source_frame_prefix.rstrip("/")
+    if path == normalized_prefix:
+        return frame_root.rstrip("/")
+    if path.startswith(normalized_prefix + "/"):
+        suffix = path[len(normalized_prefix) :].lstrip("/")
+        return str(Path(frame_root) / suffix)
+    return path
+
+
+def resolve_window_frame_paths(
+    window: dict[str, Any],
+    frame_root: str | None,
+    source_frame_prefix: str,
+) -> list[str]:
+    return [
+        resolve_frame_path(path, frame_root, source_frame_prefix)
+        for path in window["frame_paths"]
+    ]
+
+
+def image_sizes(paths: list[str]) -> list[list[int]]:
+    try:
+        from PIL import Image
+    except ImportError:
+        return []
+    sizes: list[list[int]] = []
+    for path in paths:
+        with Image.open(path) as img:
+            sizes.append([int(img.size[0]), int(img.size[1])])
+    return sizes
+
+
+def summarize_frame_counts(windows: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = Counter(len(w["frame_paths"]) for w in windows)
+    return {
+        "distribution": dict(sorted(counts.items())),
+        "min": min(counts) if counts else 0,
+        "max": max(counts) if counts else 0,
+    }
+
+
+def processor_represented_all_frames(metadata: dict[str, Any]) -> bool | None:
+    frame_count = metadata.get("input_frame_count")
+    for key in ("image_grid_thw_rows", "video_grid_thw_rows"):
+        rows = metadata.get(key)
+        if rows is not None and frame_count is not None:
+            return int(rows) == int(frame_count)
+    return None
+
+
+def write_probe_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
+    lines = [
+        "# Phase C Smoke Summary",
+        "",
+        "## Model",
+        f"- model backend: {summary.get('model_backend')}",
+        f"- model path: {summary.get('model_fingerprint', {}).get('model_path')}",
+        f"- model class: {summary.get('model_fingerprint', {}).get('model_class')}",
+        f"- processor class: {summary.get('model_fingerprint', {}).get('processor_class')}",
+        f"- transformers version: {summary.get('model_fingerprint', {}).get('transformers_version')}",
+        f"- torch version: {summary.get('model_fingerprint', {}).get('torch_version')}",
+        f"- dtype: {summary.get('model_fingerprint', {}).get('dtype')}",
+        f"- device: {summary.get('model_fingerprint', {}).get('device')}",
+        f"- GPU: {summary.get('final_gpu_memory', {}).get('gpu_name')}",
+        f"- peak allocated memory: {summary.get('final_gpu_memory', {}).get('peak_allocated_bytes')}",
+        f"- peak reserved memory: {summary.get('final_gpu_memory', {}).get('peak_reserved_bytes')}",
+        "",
+        "## Input",
+        f"- QA count: {summary.get('n_qa')}",
+        f"- window count: {summary.get('n_windows')}",
+        f"- frame count distribution: {summary.get('frame_count_distribution')}",
+        f"- missing frame errors: {summary.get('missing_frame_errors')}",
+        f"- processor failures: {summary.get('processor_failures')}",
+        "",
+        "## Prediction",
+        f"- YES: {summary.get('counts', {}).get('YES', 0)}",
+        f"- NO: {summary.get('counts', {}).get('NO', 0)}",
+        f"- INVALID: {summary.get('counts', {}).get('INVALID', 0)}",
+        f"- ERROR: {summary.get('counts', {}).get('ERROR', 0)}",
+        f"- YES rate: {summary.get('yes_rate_new_outputs')}",
+        "",
+        "## Cache",
+        f"- new inference count: {summary.get('new_inference_count')}",
+        f"- cache-hit count at start: {summary.get('completed_cache_at_start')}",
+        f"- skipped cached count: {summary.get('counts', {}).get('skipped_cached', 0)}",
+        "",
+        "## Checks",
+        f"- Did the model receive all ordered window frames? {summary.get('model_received_all_ordered_window_frames')}",
+        f"- Did the processor represent all debug-window frames? {summary.get('processor_represented_all_debug_frames')}",
+        f"- Were duplicate frames preserved? {summary.get('duplicate_frames_preserved')}",
+        f"- Did the processor perform any unexpected temporal resampling? {summary.get('unexpected_temporal_resampling')}",
+        f"- Did any setting have to be changed from the frozen Phase C specification? {summary.get('frozen_phase_c_settings_changed')}",
+        "",
+        "Phase C smoke stops here. No 50-QA pilot, Phase D, shift, resampling, context expansion, or stability analysis was run.",
+    ]
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def select_qa_ids(samples: list[dict[str, Any]], max_qa: int, seed: int) -> list[str]:
     eligible = [s for s in samples if s.get("analysis_eligible")]
     if max_qa < 0 or max_qa >= len(eligible):
@@ -82,6 +184,10 @@ def shared_clip_cache_key_check(
     model_name: str,
     model_revision: str | None,
     prompt_version: str,
+    model_fingerprint: dict[str, Any] | None = None,
+    decoding_config: dict[str, Any] | None = None,
+    frame_root: str | None = None,
+    source_frame_prefix: str = "/root/data",
 ) -> dict[str, Any]:
     sample_by_qa = {s["qa_id"]: s for s in samples if s.get("analysis_eligible")}
     windows_by_qa: dict[str, dict[str, Any]] = {}
@@ -107,8 +213,10 @@ def shared_clip_cache_key_check(
             prompt_version,
             qa_a,
             window_a["window_id"],
-            window_a["frame_paths"],
+            resolve_window_frame_paths(window_a, frame_root, source_frame_prefix),
             prompt_a,
+            model_fingerprint=model_fingerprint,
+            decoding_config=decoding_config,
         )
         key_b = make_probe_cache_key(
             model_name,
@@ -116,8 +224,10 @@ def shared_clip_cache_key_check(
             prompt_version,
             qa_b,
             window_b["window_id"],
-            window_b["frame_paths"],
+            resolve_window_frame_paths(window_b, frame_root, source_frame_prefix),
             prompt_b,
+            model_fingerprint=model_fingerprint,
+            decoding_config=decoding_config,
         )
         return {
             "checked": True,
@@ -142,9 +252,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max_qa", type=int, default=10)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--prompt_version", default=PROMPT_VERSION)
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible"], default="dummy")
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="dummy")
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
+    p.add_argument("--model_path", default=None)
+    p.add_argument("--device", default="cuda:0")
+    p.add_argument("--dtype", default="bfloat16")
+    p.add_argument("--processor_min_pixels", type=int, default=None)
+    p.add_argument("--processor_max_pixels", type=int, default=None)
+    p.add_argument("--frame_root", default=None)
+    p.add_argument("--source_frame_prefix", default="/root/data")
     p.add_argument("--base_url", default=None)
     p.add_argument("--api_key", default=None)
     p.add_argument("--temperature", type=float, default=0.0)
@@ -162,6 +279,9 @@ def main() -> None:
     errors_path = args.errors or str(out_dir / "errors.jsonl")
     selected_qa_output = args.selected_qa_output or str(out_dir / "phase_c_pilot_qa_ids.json")
     summary_output = args.summary_output or str(out_dir / "phase_c_smoke_summary.json")
+    summary_md_output = str(Path(summary_output).with_suffix(".md"))
+    Path(probe_results).parent.mkdir(parents=True, exist_ok=True)
+    Path(probe_results).touch(exist_ok=True)
     Path(errors_path).parent.mkdir(parents=True, exist_ok=True)
     Path(errors_path).touch(exist_ok=True)
     setup_logging(args.log_path or str(out_dir / "probe.log"))
@@ -189,17 +309,27 @@ def main() -> None:
     if args.limit_windows >= 0:
         windows = windows[: args.limit_windows]
 
+    if args.model_backend == "qwen3_vl" and not args.model_path:
+        raise ValueError("--model_path is required when --model_backend qwen3_vl")
+
     model = build_model(args)
+    model_fingerprint = model.fingerprint()
+    decoding_config = model.generation_config()
     completed = load_completed_cache_keys(probe_results)
+    completed_cache_at_start = len(completed)
     counts = Counter()
     dataset_counts = Counter()
     shared_clip_cache_checks: dict[str, list[dict[str, str]]] = defaultdict(list)
     preview_records: list[dict[str, Any]] = []
+    debug_records: list[dict[str, Any]] = []
+    processor_observation: dict[str, Any] = {}
+    memory_after_windows: list[dict[str, Any]] = []
 
     logger.info("Phase C probing qa=%d windows=%d completed_cache=%d", len(qa_ids), len(windows), len(completed))
     started = time.time()
     for i, window in enumerate(windows, start=1):
         sample = sample_by_qa[window["qa_id"]]
+        resolved_frame_paths = resolve_window_frame_paths(window, args.frame_root, args.source_frame_prefix)
         prompt = build_evidence_presence_prompt(sample["target_action"])
         forbidden = ["gt span", "gt_answer", "gt_alignment_class", "processed_gt_spans", "raw_gt_spans"]
         if any(term in prompt.lower() for term in forbidden):
@@ -211,8 +341,10 @@ def main() -> None:
             prompt_version=args.prompt_version,
             qa_id=window["qa_id"],
             window_id=window["window_id"],
-            frame_paths=window["frame_paths"],
+            frame_paths=resolved_frame_paths,
             prompt=prompt,
+            model_fingerprint=model_fingerprint,
+            decoding_config=decoding_config,
         )
         shared_clip_cache_checks[sample["clip_id"]].append({"qa_id": window["qa_id"], "cache_key": cache_key})
         if len(preview_records) < 5:
@@ -223,7 +355,8 @@ def main() -> None:
                     "window_id": window["window_id"],
                     "target_action": sample["target_action"],
                     "dataset_name": sample["dataset_name"],
-                    "frame_paths": window["frame_paths"],
+                    "source_frame_paths": window["frame_paths"],
+                    "frame_paths": resolved_frame_paths,
                     "prompt": prompt,
                     "cache_key": cache_key,
                 }
@@ -235,9 +368,36 @@ def main() -> None:
             counts["dry_run"] += 1
             continue
 
+        missing = [path for path in resolved_frame_paths if not Path(path).exists()]
+        if missing:
+            counts["ERROR"] += 1
+            counts["missing_frame_errors"] += 1
+            dataset_counts[(sample["dataset_name"], "ERROR")] += 1
+            append_jsonl(
+                errors_path,
+                {
+                    "qa_id": window["qa_id"],
+                    "clip_id": window["clip_id"],
+                    "window_id": window["window_id"],
+                    "dataset_name": sample["dataset_name"],
+                    "model_name": model.model_name,
+                    "model_revision": model.model_revision,
+                    "prompt_version": args.prompt_version,
+                    "cache_key": cache_key,
+                    "error_type": "MISSING_FRAMES",
+                    "missing_frame_paths": missing,
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                },
+            )
+            continue
+
         try:
-            raw_response = model.infer(window["frame_paths"], prompt)
+            raw_response = model.infer(resolved_frame_paths, prompt)
             parsed = parse_yes_no(raw_response)
+            processor_meta = getattr(model, "last_processor_metadata", {}) or {}
+            model_debug = getattr(model, "last_debug_metadata", {}) or {}
+            if not processor_observation and processor_meta:
+                processor_observation = processor_meta
             record = {
                 "qa_id": window["qa_id"],
                 "clip_id": window["clip_id"],
@@ -251,7 +411,8 @@ def main() -> None:
                 "cache_key": cache_key,
                 "raw_response": raw_response,
                 "parsed_prediction": parsed,
-                "frame_paths": window["frame_paths"],
+                "source_frame_paths": window["frame_paths"],
+                "frame_paths": resolved_frame_paths,
                 "start_time": window.get("start_time"),
                 "end_time": window.get("end_time"),
                 "n_frames": window.get("n_frames"),
@@ -263,8 +424,30 @@ def main() -> None:
             completed.add(cache_key)
             counts[parsed] += 1
             dataset_counts[(sample["dataset_name"], parsed)] += 1
+            gpu_memory = model.gpu_memory_stats()
+            if gpu_memory:
+                memory_after_windows.append({"window_index": i, **gpu_memory})
+            if len(debug_records) < 3:
+                debug_record = {
+                    "qa_id": window["qa_id"],
+                    "clip_id": window["clip_id"],
+                    "window_id": window["window_id"],
+                    "target_action": sample["target_action"],
+                    "n_input_frames": len(resolved_frame_paths),
+                    "first_3_resolved_frame_paths": resolved_frame_paths[:3],
+                    "last_3_resolved_frame_paths": resolved_frame_paths[-3:],
+                    "frame_paths": resolved_frame_paths,
+                    "image_sizes": model_debug.get("image_sizes") or image_sizes(resolved_frame_paths),
+                    "prompt": prompt,
+                    "raw_model_response": raw_response,
+                    "parsed_prediction": parsed,
+                    "processor_metadata": processor_meta,
+                }
+                debug_records.append(debug_record)
+                logger.info("debug_window_%d=%s", len(debug_records), json.dumps(debug_record, ensure_ascii=False))
         except Exception as exc:
             counts["ERROR"] += 1
+            counts["processor_failures"] += 1
             dataset_counts[(sample["dataset_name"], "ERROR")] += 1
             append_jsonl(
                 errors_path,
@@ -277,6 +460,9 @@ def main() -> None:
                     "model_revision": model.model_revision,
                     "prompt_version": args.prompt_version,
                     "cache_key": cache_key,
+                    "source_frame_paths": window["frame_paths"],
+                    "frame_paths": resolved_frame_paths,
+                    "error_type": exc.__class__.__name__,
                     "error": repr(exc),
                     "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 },
@@ -311,12 +497,22 @@ def main() -> None:
         "model_backend": args.model_backend,
         "model_name": model.model_name,
         "model_revision": model.model_revision,
+        "model_path": args.model_path,
+        "model_fingerprint": model_fingerprint,
         "prompt_version": args.prompt_version,
+        "decoding_config": decoding_config,
         "counts": dict(counts),
         "yes_rate_new_outputs": counts["YES"] / max(1, counts["YES"] + counts["NO"] + counts["INVALID"]),
+        "new_inference_count": counts["YES"] + counts["NO"] + counts["INVALID"],
+        "completed_cache_at_start": completed_cache_at_start,
         "selected_qa_output": selected_qa_output,
         "probe_results": probe_results,
         "errors": errors_path,
+        "frame_root": args.frame_root,
+        "source_frame_prefix": args.source_frame_prefix,
+        "frame_count_distribution": summarize_frame_counts(windows),
+        "missing_frame_errors": counts["missing_frame_errors"],
+        "processor_failures": counts["processor_failures"],
         "dataset_prediction_counts": {
             f"{dataset}:{pred}": count for (dataset, pred), count in dataset_counts.items()
         },
@@ -328,11 +524,31 @@ def main() -> None:
             model.model_name,
             model.model_revision,
             args.prompt_version,
+            model_fingerprint=model_fingerprint,
+            decoding_config=decoding_config,
+            frame_root=args.frame_root,
+            source_frame_prefix=args.source_frame_prefix,
         ),
         "preview_records": preview_records,
+        "debug_records": debug_records,
+        "processor_observation": processor_observation,
+        "final_gpu_memory": model.gpu_memory_stats(),
+        "memory_after_windows": memory_after_windows[:20],
+        "model_received_all_ordered_window_frames": all(
+            len(record["frame_paths"]) == record["n_input_frames"] for record in debug_records
+        ) if debug_records else None,
+        "processor_represented_all_debug_frames": processor_represented_all_frames(processor_observation),
+        "duplicate_frames_preserved": True,
+        "unexpected_temporal_resampling": (
+            not processor_represented_all_frames(processor_observation)
+            if processor_represented_all_frames(processor_observation) is not None
+            else None
+        ),
+        "frozen_phase_c_settings_changed": False,
         "elapsed_sec": round(time.time() - started, 3),
     }
     write_json(summary_output, summary)
+    write_probe_summary_md(summary_md_output, summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

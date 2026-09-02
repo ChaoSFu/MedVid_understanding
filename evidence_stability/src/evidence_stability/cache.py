@@ -17,6 +17,8 @@ def make_probe_cache_key(
     window_id: str,
     frame_paths: list[str],
     prompt: str,
+    model_fingerprint: dict | None = None,
+    decoding_config: dict | None = None,
 ) -> str:
     return stable_hash(
         {
@@ -27,5 +29,7 @@ def make_probe_cache_key(
             "window_id": window_id,
             "frame_paths": list(frame_paths),
             "prompt_hash": stable_hash({"prompt": prompt}),
+            "model_fingerprint": model_fingerprint or {},
+            "decoding_config": decoding_config or {},
         }
     )

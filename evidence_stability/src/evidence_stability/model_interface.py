@@ -17,6 +17,19 @@ class BaseVideoVLM(ABC):
     def infer(self, image_paths: list[str], prompt: str) -> str:
         raise NotImplementedError
 
+    def fingerprint(self) -> dict[str, Any]:
+        return {
+            "model_name": self.model_name,
+            "model_revision": self.model_revision,
+            "model_class": self.__class__.__name__,
+        }
+
+    def generation_config(self) -> dict[str, Any]:
+        return {}
+
+    def gpu_memory_stats(self) -> dict[str, Any]:
+        return {}
+
 
 class DummyVideoVLM(BaseVideoVLM):
     """Deterministic frozen dummy model for smoke/integration tests."""
@@ -29,6 +42,9 @@ class DummyVideoVLM(BaseVideoVLM):
         payload = "\n".join(image_paths) + "\n" + prompt
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return "YES" if int(digest[:2], 16) % 3 == 0 else "NO"
+
+    def generation_config(self) -> dict[str, Any]:
+        return {"deterministic_dummy": True}
 
 
 class OpenAICompatibleVideoVLM(BaseVideoVLM):
@@ -86,6 +102,12 @@ class OpenAICompatibleVideoVLM(BaseVideoVLM):
         )
         return response.choices[0].message.content or ""
 
+    def generation_config(self) -> dict[str, Any]:
+        return {
+            "temperature": self.temperature,
+            "max_new_tokens": self.max_new_tokens,
+        }
+
 
 def build_model(args: Any) -> BaseVideoVLM:
     if args.model_backend == "dummy":
@@ -98,5 +120,17 @@ def build_model(args: Any) -> BaseVideoVLM:
             api_key=args.api_key,
             temperature=args.temperature,
             max_new_tokens=args.max_new_tokens,
+        )
+    if args.model_backend == "qwen3_vl":
+        from evidence_stability.models.qwen3_vl import Qwen3VLVideoWindowModel
+
+        return Qwen3VLVideoWindowModel(
+            model_path=args.model_path,
+            device=args.device,
+            dtype=args.dtype,
+            max_new_tokens=args.max_new_tokens,
+            do_sample=False,
+            processor_min_pixels=args.processor_min_pixels,
+            processor_max_pixels=args.processor_max_pixels,
         )
     raise ValueError(f"Unsupported model_backend: {args.model_backend}")

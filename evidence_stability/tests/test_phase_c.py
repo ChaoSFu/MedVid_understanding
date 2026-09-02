@@ -1,10 +1,18 @@
 import tempfile
 import unittest
+import importlib.util
 from pathlib import Path
 
 from evidence_stability.cache import make_probe_cache_key
 from evidence_stability.phase_c import phase_c_label
 from evidence_stability.prompts import build_evidence_presence_prompt, parse_yes_no
+
+
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "03_probe_evidence.py"
+SPEC = importlib.util.spec_from_file_location("phase_c_probe_script", SCRIPT_PATH)
+phase_c_probe_script = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+SPEC.loader.exec_module(phase_c_probe_script)
 
 
 class PhaseCTests(unittest.TestCase):
@@ -36,6 +44,23 @@ class PhaseCTests(unittest.TestCase):
         key_a = make_probe_cache_key("m", "r1", "evidence_presence_v1", "q", "w", ["a.jpg", "b.jpg"], prompt)
         key_b = make_probe_cache_key("m", "r1", "evidence_presence_v1", "q", "w", ["b.jpg", "a.jpg"], prompt)
         self.assertNotEqual(key_a, key_b)
+
+    def test_cache_key_separates_model_fingerprint_and_decoding(self):
+        prompt = build_evidence_presence_prompt("suturing")
+        base = ("m", "r1", "evidence_presence_v1", "q", "w", ["a.jpg", "b.jpg"], prompt)
+        key_a = make_probe_cache_key(*base, model_fingerprint={"config_sha256": "a"}, decoding_config={"max_new_tokens": 8})
+        key_b = make_probe_cache_key(*base, model_fingerprint={"config_sha256": "b"}, decoding_config={"max_new_tokens": 8})
+        key_c = make_probe_cache_key(*base, model_fingerprint={"config_sha256": "a"}, decoding_config={"max_new_tokens": 16})
+        self.assertNotEqual(key_a, key_b)
+        self.assertNotEqual(key_a, key_c)
+
+    def test_frame_root_remap(self):
+        resolved = phase_c_probe_script.resolve_frame_path(
+            "/root/data/NurViD/foo/0001.jpg",
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata",
+            "/root/data",
+        )
+        self.assertEqual(resolved, "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/NurViD/foo/0001.jpg")
 
     def test_posthoc_phase_c_labels(self):
         self.assertEqual(phase_c_label("YES", "STRONG_GT_ALIGNED"), "TRUE_SUPPORT")
