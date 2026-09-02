@@ -1,0 +1,16 @@
+experiment:
+  name: tal_pilot
+  seed: 42
+  max_samples: 300
+
+data:
+  qa_type: tal
+
+windows:
+  size: 16
+  stride: 8
+  drop_last: true
+
+strong_support:
+  min_density: 0.25
+  min_gt_recall: 0.50
