@@ -181,10 +181,14 @@ def select_samples(args: argparse.Namespace) -> List[Dict[str, Any]]:
     if not isinstance(all_data, list):
         raise TypeError("Input JSON must be a list of samples.")
 
+    selected_qa_types = None
+    if args.qa_types != ["all"]:
+        selected_qa_types = set(args.qa_types)
+
     selected: List[Dict[str, Any]] = []
     for original_idx, original_sample in enumerate(all_data):
         qa_type = original_sample.get("qa_type", "")
-        if qa_type not in set(args.qa_types):
+        if selected_qa_types is not None and qa_type not in selected_qa_types:
             continue
         sample = remap_sample_paths(
             original_sample,
@@ -402,7 +406,10 @@ def parse_args() -> argparse.Namespace:
         "--qa_types",
         nargs="+",
         default=sorted(TARGET_QA_TYPES),
-        choices=sorted(TARGET_QA_TYPES),
+        help=(
+            "qa_type values to run. Use '--qa_types all' to run every sample "
+            "in the input JSON. Default keeps the original six targeted tasks."
+        ),
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--validate_only", action="store_true")
