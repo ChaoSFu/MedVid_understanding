@@ -83,6 +83,18 @@ def model_identity_hash(model_fingerprint: dict[str, Any], model_revision: str |
     return str(model_fingerprint.get("model_identity_hash") or model_revision or stable_hash(model_fingerprint))
 
 
+def normalize_model_path(path: Any) -> str | None:
+    if path is None:
+        return None
+    return str(Path(str(path)).expanduser().resolve(strict=False))
+
+
+def core_fingerprint_value_matches(field: str, old_value: Any, new_value: Any) -> bool:
+    if field == "model_path":
+        return normalize_model_path(old_value) == normalize_model_path(new_value)
+    return old_value == new_value
+
+
 def image_sizes(paths: list[str]) -> list[list[int]]:
     try:
         from PIL import Image
@@ -143,7 +155,7 @@ def decoding_config_is_frozen(decoding_config: dict[str, Any]) -> bool:
 def fingerprint_is_frozen_qwen(args: argparse.Namespace, fingerprint: dict[str, Any]) -> dict[str, bool]:
     return {
         "model_backend": args.model_backend == FROZEN_QWEN_BACKEND,
-        "model_path": str(args.model_path) == FROZEN_QWEN_MODEL_PATH,
+        "model_path": normalize_model_path(args.model_path) == normalize_model_path(FROZEN_QWEN_MODEL_PATH),
         "architecture": "Qwen3VLForConditionalGeneration" in (fingerprint.get("architectures") or []),
         "model_class": fingerprint.get("model_class") == "Qwen3VLForConditionalGeneration",
         "processor_class": fingerprint.get("processor_class") == "Qwen3VLProcessor",
@@ -229,7 +241,7 @@ def phase_c_consistency_check(
     for field in CORE_PHASE_C_FINGERPRINT_FIELDS:
         old_value = phase_c_fp.get(field)
         new_value = model_fingerprint.get(field)
-        same = old_value == new_value
+        same = core_fingerprint_value_matches(field, old_value, new_value)
         core_matches.append(same)
         if not same:
             differences[field] = {

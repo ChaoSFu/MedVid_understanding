@@ -347,6 +347,32 @@ class PhaseD2Tests(unittest.TestCase):
             self.assertTrue(checks["core_model_fingerprint_matches"])
             phase_d2_script.assert_phase_c_consistency(checks)
 
+    def test_frozen_qwen_model_path_allows_equivalent_trailing_slash(self):
+        args = argparse.Namespace(
+            model_backend="qwen3_vl",
+            model_path="/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct/",
+        )
+        fingerprint = {
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_class": "Qwen3VLForConditionalGeneration",
+            "processor_class": "Qwen3VLProcessor",
+            "dtype": "bfloat16",
+            "do_sample": False,
+            "max_new_tokens": 8,
+            "enable_thinking": False,
+        }
+        checks = phase_d2_script.fingerprint_is_frozen_qwen(args, fingerprint)
+        self.assertTrue(checks["model_path"])
+
+    def test_phase_c_consistency_allows_equivalent_model_path(self):
+        self.assertTrue(
+            phase_d2_script.core_fingerprint_value_matches(
+                "model_path",
+                "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
+                "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct/",
+            )
+        )
+
     def test_phase_c_consistency_rejects_core_model_difference(self):
         args = argparse.Namespace(
             skip_phase_c_consistency=False,
