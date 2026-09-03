@@ -235,6 +235,99 @@ class PhaseD2Tests(unittest.TestCase):
             self.assertTrue(checks["prompt_version_matches"])
             self.assertTrue(checks["decoding_config_matches"])
 
+    def test_phase_c_consistency_allows_runtime_hash_only_difference(self):
+        args = argparse.Namespace(
+            skip_phase_c_consistency=False,
+            phase_c_probe_summary="",
+            phase_c_probe_results="",
+            prompt_version=PROMPT_VERSION,
+        )
+        old_fp = {
+            "model_identity_hash": "old-hash",
+            "model_path": "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
+            "config_sha256": "config",
+            "generation_config_sha256": "gen",
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_type": "qwen3_vl",
+            "processor_class": "Qwen3VLProcessor",
+            "model_class": "Qwen3VLForConditionalGeneration",
+            "dtype": "bfloat16",
+            "do_sample": False,
+            "max_new_tokens": 8,
+            "enable_thinking": False,
+            "processor_min_pixels": None,
+            "processor_max_pixels": None,
+            "device": "cuda:1",
+            "torch_version": "2.6.0+cu124",
+        }
+        new_fp = dict(old_fp)
+        new_fp["model_identity_hash"] = "new-hash"
+        new_fp["device"] = "cuda:0"
+        new_fp["torch_version"] = "2.6.1+cu124"
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.json"
+            summary.write_text(
+                '{"prompt_version":"evidence_presence_v1","model_fingerprint":'
+                + phase_d2_script.json.dumps(old_fp)
+                + ',"decoding_config":{"do_sample":false,"max_new_tokens":8,"enable_thinking":false}}',
+                encoding="utf-8",
+            )
+            args.phase_c_probe_summary = str(summary)
+            checks = phase_d2_script.phase_c_consistency_check(
+                args,
+                new_fp,
+                {"do_sample": False, "max_new_tokens": 8, "enable_thinking": False},
+                [project_intervention_for_model(make_row(1))],
+            )
+            self.assertFalse(checks["model_identity_hash_matches"])
+            self.assertTrue(checks["core_model_fingerprint_matches"])
+            phase_d2_script.assert_phase_c_consistency(checks)
+
+    def test_phase_c_consistency_rejects_core_model_difference(self):
+        args = argparse.Namespace(
+            skip_phase_c_consistency=False,
+            phase_c_probe_summary="",
+            phase_c_probe_results="",
+            prompt_version=PROMPT_VERSION,
+        )
+        old_fp = {
+            "model_identity_hash": "old-hash",
+            "model_path": "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
+            "config_sha256": "config-a",
+            "generation_config_sha256": "gen",
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_type": "qwen3_vl",
+            "processor_class": "Qwen3VLProcessor",
+            "model_class": "Qwen3VLForConditionalGeneration",
+            "dtype": "bfloat16",
+            "do_sample": False,
+            "max_new_tokens": 8,
+            "enable_thinking": False,
+            "processor_min_pixels": None,
+            "processor_max_pixels": None,
+        }
+        new_fp = dict(old_fp)
+        new_fp["model_identity_hash"] = "new-hash"
+        new_fp["config_sha256"] = "config-b"
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.json"
+            summary.write_text(
+                '{"prompt_version":"evidence_presence_v1","model_fingerprint":'
+                + phase_d2_script.json.dumps(old_fp)
+                + ',"decoding_config":{"do_sample":false,"max_new_tokens":8,"enable_thinking":false}}',
+                encoding="utf-8",
+            )
+            args.phase_c_probe_summary = str(summary)
+            checks = phase_d2_script.phase_c_consistency_check(
+                args,
+                new_fp,
+                {"do_sample": False, "max_new_tokens": 8, "enable_thinking": False},
+                [project_intervention_for_model(make_row(1))],
+            )
+            self.assertFalse(checks["core_model_fingerprint_matches"])
+            with self.assertRaises(RuntimeError):
+                phase_d2_script.assert_phase_c_consistency(checks)
+
     def test_dry_run_resume_skips_cached(self):
         rows = [
             make_row(1, label="TRUE_SUPPORT", target_field="action", intervention_type="RESAMPLE_50", n_frames=8),

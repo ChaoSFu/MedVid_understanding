@@ -36,6 +36,21 @@ logger = logging.getLogger("phase_d2_probe")
 FROZEN_QWEN_BACKEND = "qwen3_vl"
 FROZEN_QWEN_MODEL_PATH = "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct"
 EXPECTED_FRAME_COUNTS = {8, 12, 16, 24}
+CORE_PHASE_C_FINGERPRINT_FIELDS = (
+    "model_path",
+    "config_sha256",
+    "generation_config_sha256",
+    "architectures",
+    "model_type",
+    "processor_class",
+    "model_class",
+    "dtype",
+    "do_sample",
+    "max_new_tokens",
+    "enable_thinking",
+    "processor_min_pixels",
+    "processor_max_pixels",
+)
 
 
 def setup_logging(log_path: str | None) -> None:
@@ -163,6 +178,8 @@ def phase_c_consistency_check(
         "probe_results_path": args.phase_c_probe_results,
         "prompt_version_matches": None,
         "model_identity_hash_matches": None,
+        "core_model_fingerprint_matches": None,
+        "model_fingerprint_differences": {},
         "decoding_config_matches": None,
         "per_window_prompt_hash_matches": None,
     }
@@ -177,6 +194,30 @@ def phase_c_consistency_check(
     checks["model_identity_hash_matches"] = (
         phase_c_fp.get("model_identity_hash") == model_fingerprint.get("model_identity_hash")
     )
+    differences = {}
+    core_matches = []
+    for field in CORE_PHASE_C_FINGERPRINT_FIELDS:
+        old_value = phase_c_fp.get(field)
+        new_value = model_fingerprint.get(field)
+        same = old_value == new_value
+        core_matches.append(same)
+        if not same:
+            differences[field] = {
+                "phase_c": old_value,
+                "phase_d2": new_value,
+            }
+    runtime_fields = sorted((set(phase_c_fp) | set(model_fingerprint)) - set(CORE_PHASE_C_FINGERPRINT_FIELDS))
+    for field in runtime_fields:
+        old_value = phase_c_fp.get(field)
+        new_value = model_fingerprint.get(field)
+        if old_value != new_value:
+            differences[field] = {
+                "phase_c": old_value,
+                "phase_d2": new_value,
+                "runtime_or_hash_field": True,
+            }
+    checks["core_model_fingerprint_matches"] = all(core_matches)
+    checks["model_fingerprint_differences"] = differences
     checks["decoding_config_matches"] = summary.get("decoding_config") == decoding_config
 
     prompt_index = load_phase_c_prompt_index(args.phase_c_probe_results)
@@ -196,7 +237,7 @@ def phase_c_consistency_check(
 def assert_phase_c_consistency(checks: dict[str, Any]) -> None:
     if checks.get("skipped"):
         return
-    required = ["prompt_version_matches", "model_identity_hash_matches", "decoding_config_matches"]
+    required = ["prompt_version_matches", "core_model_fingerprint_matches", "decoding_config_matches"]
     failed = [name for name in required if checks.get(name) is not True]
     if checks.get("per_window_prompt_hash_matches") is False:
         failed.append("per_window_prompt_hash_matches")
