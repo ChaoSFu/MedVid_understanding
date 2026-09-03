@@ -670,6 +670,87 @@ class PhaseD2Tests(unittest.TestCase):
             self.assertIn('"skipped_cached_count": 1', summary)
             self.assertIn('"dry_run_count": 3', summary)
 
+    def test_full_mode_uses_full_summary_name_and_generation_valid_only(self):
+        rows = [
+            make_row(1, generation_valid=True, strict_valid=False, n_frames=8),
+            make_row(2, generation_valid=True, strict_valid=True, n_frames=12),
+            make_row(3, generation_valid=False, strict_valid=True, n_frames=16),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            interventions = Path(tmp) / "interventions.jsonl"
+            out_dir = Path(tmp) / "out"
+            write_jsonl(interventions, rows)
+            argv = [
+                "06_probe_interventions.py",
+                "--interventions",
+                str(interventions),
+                "--output_dir",
+                str(out_dir),
+                "--model_backend",
+                "dummy",
+                "--expected_generation_valid",
+                "-1",
+                "--skip_phase_c_consistency",
+                "--dry_run",
+                "--run_all_generation_valid",
+            ]
+            old_argv = phase_d2_script.sys.argv
+            try:
+                phase_d2_script.sys.argv = argv
+                with contextlib.redirect_stdout(io.StringIO()):
+                    phase_d2_script.main()
+            finally:
+                phase_d2_script.sys.argv = old_argv
+            self.assertTrue((out_dir / "phase_d2_full_summary.json").exists())
+            summary = phase_d2_script.json.loads((out_dir / "phase_d2_full_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["n_total_interventions"], 3)
+            self.assertEqual(summary["n_generation_valid"], 2)
+            self.assertEqual(summary["n_generation_invalid"], 1)
+            self.assertEqual(summary["n_selected_interventions"], 2)
+            self.assertEqual(summary["dry_run_count"], 2)
+
+    def test_full_mode_missing_frames_stop_before_inference(self):
+        rows = [make_row(1, generation_valid=True, strict_valid=False, n_frames=8)]
+        rows[0]["intervened_frame_paths"] = [
+            f"/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/missing_{i}.jpg"
+            for i in range(8)
+        ]
+        rows[0]["intervened_n_frames"] = 8
+        rows[0]["intervened_n_unique_frames"] = 8
+        with tempfile.TemporaryDirectory() as tmp:
+            interventions = Path(tmp) / "interventions.jsonl"
+            out_dir = Path(tmp) / "out"
+            runtime_root = Path(tmp) / "runtime_valdata"
+            runtime_root.mkdir()
+            write_jsonl(interventions, rows)
+            argv = [
+                "06_probe_interventions.py",
+                "--interventions",
+                str(interventions),
+                "--output_dir",
+                str(out_dir),
+                "--model_backend",
+                "dummy",
+                "--expected_generation_valid",
+                "-1",
+                "--skip_phase_c_consistency",
+                "--run_all_generation_valid",
+                "--frame_root",
+                str(runtime_root),
+            ]
+            old_argv = phase_d2_script.sys.argv
+            try:
+                phase_d2_script.sys.argv = argv
+                with self.assertRaises(RuntimeError):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        phase_d2_script.main()
+            finally:
+                phase_d2_script.sys.argv = old_argv
+            summary = phase_d2_script.json.loads((out_dir / "phase_d2_full_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["path_audit"]["n_missing_frame_references"], 8)
+            self.assertFalse(summary["real_model_inference_executed"])
+            self.assertIn("Missing frame", summary["stop_reason"])
+
     def test_reuse_selection_from_preserves_exact_ids(self):
         rows = [
             make_row(1, label="TRUE_SUPPORT", target_field="action", intervention_type="RESAMPLE_50", n_frames=8),

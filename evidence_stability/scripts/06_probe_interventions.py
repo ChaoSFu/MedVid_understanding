@@ -61,6 +61,8 @@ SCIENTIFIC_ENVIRONMENT_FIELDS = (
 
 def setup_logging(log_path: str | None) -> None:
     logger.setLevel(logging.INFO)
+    for existing_handler in logger.handlers:
+        existing_handler.close()
     logger.handlers.clear()
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
@@ -82,6 +84,90 @@ def load_completed_cache_keys(path: str | Path) -> set[str]:
         if cache_key:
             keys.add(str(cache_key))
     return keys
+
+
+def assert_unique_field(rows: list[dict[str, Any]], field: str, context: str) -> None:
+    counts = Counter(str(row.get(field)) for row in rows)
+    duplicates = [value for value, count in counts.items() if count > 1]
+    if duplicates:
+        raise RuntimeError(f"Duplicate {field} in {context}: {duplicates[:5]}")
+
+
+def load_final_completion_records(
+    probe_results: str | Path,
+    errors_path: str | Path,
+    expected_ids: set[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    all_result_rows = read_jsonl(probe_results)
+    extra_result_ids = sorted(
+        {str(row.get("intervention_id")) for row in all_result_rows}
+        - expected_ids
+    )
+    result_rows = [
+        row for row in all_result_rows
+        if str(row.get("intervention_id")) in expected_ids
+    ]
+    result_ids = [str(row.get("intervention_id")) for row in result_rows]
+    duplicate_result_ids = [value for value, count in Counter(result_ids).items() if count > 1]
+    if duplicate_result_ids:
+        raise RuntimeError(f"Duplicate intervention results: {duplicate_result_ids[:5]}")
+
+    for row in result_rows:
+        assert_raw_result_gt_free(row)
+
+    result_id_set = set(result_ids)
+    latest_errors: dict[str, dict[str, Any]] = {}
+    for row in read_jsonl(errors_path):
+        intervention_id = str(row.get("intervention_id"))
+        if intervention_id in expected_ids and intervention_id not in result_id_set:
+            latest_errors[intervention_id] = row
+    final_error_rows = list(latest_errors.values())
+    completed_ids = result_id_set | set(latest_errors)
+    audit = {
+        "n_completed_results": len(result_rows),
+        "n_completed_errors_without_result": len(final_error_rows),
+        "n_completed_final_records": len(completed_ids),
+        "missing_intervention_ids": sorted(expected_ids - completed_ids)[:20],
+        "extra_result_ids": extra_result_ids[:20],
+        "duplicate_result_ids": duplicate_result_ids,
+    }
+    return result_rows, final_error_rows, audit
+
+
+def final_prediction_counts(result_rows: list[dict[str, Any]], error_rows: list[dict[str, Any]]) -> Counter:
+    counts = Counter(str(row.get("parsed_prediction", "INVALID")) for row in result_rows)
+    counts["ERROR"] += len(error_rows)
+    return counts
+
+
+def prediction_distributions(
+    result_rows: list[dict[str, Any]],
+    error_rows: list[dict[str, Any]],
+    projections: list[dict[str, Any]],
+) -> dict[str, dict[str, dict[str, int]]]:
+    projection_by_id = {str(row["intervention_id"]): row for row in projections}
+    final_rows = []
+    for row in result_rows:
+        final_rows.append((str(row["intervention_id"]), str(row.get("parsed_prediction", "INVALID"))))
+    for row in error_rows:
+        final_rows.append((str(row["intervention_id"]), "ERROR"))
+
+    specs = {
+        "by_intervention_type": lambda p: str(p["intervention_type"]),
+        "by_intervention_family": lambda p: str(p["intervention_family"]),
+        "by_dataset": lambda p: str(p["dataset_name"]),
+        "by_target_field": lambda p: str(p.get("target_field")),
+        "by_frame_count": lambda p: str(p["n_frames"]),
+    }
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    for name, getter in specs.items():
+        table: dict[str, Counter] = defaultdict(Counter)
+        for intervention_id, prediction in final_rows:
+            projection = projection_by_id.get(intervention_id)
+            if projection:
+                table[getter(projection)][prediction] += 1
+        out[name] = {group: dict(counts) for group, counts in sorted(table.items())}
+    return out
 
 
 def model_identity_hash(model_fingerprint: dict[str, Any], model_revision: str | None) -> str:
@@ -390,12 +476,14 @@ def build_raw_result(
 
 
 def write_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
+    full_label = "Smoke" if summary.get("smoke_mode") else "Full"
     lines = [
-        "# Phase D.2 Smoke Probe Summary",
+        f"# Phase D.2 {full_label} Probe Summary",
         "",
         "## Scope",
         f"- smoke mode: {summary.get('smoke_mode')}",
         f"- generation-valid interventions available: {summary.get('n_generation_valid')}",
+        f"- generation-invalid interventions: {summary.get('n_generation_invalid')}",
         f"- selected interventions: {summary.get('n_selected_interventions')}",
         f"- full run executed: {summary.get('full_run_executed')}",
         "",
@@ -406,6 +494,9 @@ def write_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
         f"- target field distribution: {summary.get('target_field_distribution')}",
         "",
         "## Inference",
+        f"- completed final records: {summary.get('n_completed')}",
+        f"- remaining interventions at start: {summary.get('remaining_interventions_at_start')}",
+        f"- remaining interventions at completion: {summary.get('remaining_interventions')}",
         f"- new inference count: {summary.get('new_inference_count')}",
         f"- skipped cached count: {summary.get('skipped_cached_count')}",
         f"- YES: {summary.get('prediction_counts', {}).get('YES', 0)}",
@@ -424,7 +515,7 @@ def write_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
         f"- cache audit: {summary.get('cache_audit')}",
         f"- possible memory leak: {summary.get('possible_memory_leak')}",
         "",
-        "Phase D.2 smoke stops here. No full intervention run or H2 stability analysis was executed.",
+        "Phase D.2 stops here. No Phase D.3 join, Phase E stability analysis, or H2 interpretation was executed.",
     ]
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -479,7 +570,8 @@ def main() -> None:
     probe_results = args.probe_results or str(out_dir / "intervention_probe_results.jsonl")
     errors_path = args.errors or str(out_dir / "errors.jsonl")
     selection_output = args.selection_output or str(out_dir / "phase_d2_smoke_intervention_ids.json")
-    summary_output = args.summary_output or str(out_dir / "phase_d2_smoke_summary.json")
+    default_summary_name = "phase_d2_full_summary.json" if args.run_all_generation_valid else "phase_d2_smoke_summary.json"
+    summary_output = args.summary_output or str(out_dir / default_summary_name)
     summary_md_output = str(Path(summary_output).with_suffix(".md"))
     Path(probe_results).parent.mkdir(parents=True, exist_ok=True)
     Path(probe_results).touch(exist_ok=True)
@@ -493,8 +585,11 @@ def main() -> None:
         raise ValueError("--model_path is required when --model_backend qwen3_vl")
 
     raw_rows = read_jsonl(args.interventions)
+    assert_unique_field(raw_rows, "intervention_id", "Phase D.1 intervention manifest")
     generation_valid_rows = select_generation_valid_interventions(raw_rows)
+    assert_unique_field(generation_valid_rows, "intervention_id", "generation-valid intervention selection")
     n_generation_valid = len(generation_valid_rows)
+    n_generation_invalid = len(raw_rows) - n_generation_valid
     if args.expected_generation_valid >= 0 and n_generation_valid != args.expected_generation_valid:
         raise RuntimeError(
             f"generation_valid count mismatch: got {n_generation_valid}, expected {args.expected_generation_valid}"
@@ -532,7 +627,39 @@ def main() -> None:
         assert_no_forbidden_model_fields(projection, "model-side intervention projection")
         if projection["n_frames"] not in EXPECTED_FRAME_COUNTS:
             raise RuntimeError(f"Unexpected frame count in {projection['intervention_id']}: {projection['n_frames']}")
+        if not projection["ordered_frame_paths"]:
+            raise RuntimeError(f"Empty frame sequence for {projection['intervention_id']}")
+        if projection["n_frames"] != len(projection["ordered_frame_paths"]):
+            raise RuntimeError(f"Frame count mismatch for {projection['intervention_id']}")
     path_audit = projection_path_audit(projections)
+    if not args.dry_run and path_audit["n_missing_frame_references"]:
+        preflight_summary = {
+            "report_title": "Phase D.2 Preflight Frame Audit Stop Summary",
+            "smoke_mode": not args.run_all_generation_valid,
+            "full_run_executed": False,
+            "interventions_input": args.interventions,
+            "n_total_interventions": len(raw_rows),
+            "n_generation_valid": n_generation_valid,
+            "n_generation_invalid": n_generation_invalid,
+            "n_selected_interventions": len(projections),
+            "frame_count_distribution": frame_count_distribution(projections),
+            "intervention_type_distribution": dict(Counter(p["intervention_type"] for p in projections)),
+            "intervention_family_distribution": dict(Counter(p["intervention_family"] for p in projections)),
+            "dataset_distribution": dict(Counter(p["dataset_name"] for p in projections)),
+            "target_field_distribution": dict(Counter(str(p.get("target_field")) for p in projections)),
+            "frame_root": args.frame_root,
+            "source_frame_prefix": args.source_frame_prefix,
+            "path_audit": path_audit,
+            "real_model_inference_executed": False,
+            "stop_reason": "Missing frame references detected before model loading.",
+        }
+        write_json(summary_output, preflight_summary)
+        write_summary_md(summary_md_output, preflight_summary)
+        raise RuntimeError(
+            "Missing frame references detected before model loading: "
+            f"{path_audit['n_missing_frame_references']} frame references across "
+            f"{path_audit['n_interventions_with_missing_frames']} interventions."
+        )
 
     model = build_model(args)
     model_fingerprint = model.fingerprint()
@@ -560,6 +687,7 @@ def main() -> None:
             "interventions_input": args.interventions,
             "n_total_interventions": len(raw_rows),
             "n_generation_valid": n_generation_valid,
+            "n_generation_invalid": n_generation_invalid,
             "n_selected_interventions": len(projections),
             "frame_root": args.frame_root,
             "source_frame_prefix": args.source_frame_prefix,
@@ -587,6 +715,7 @@ def main() -> None:
             "interventions_input": args.interventions,
             "n_total_interventions": len(raw_rows),
             "n_generation_valid": n_generation_valid,
+            "n_generation_invalid": n_generation_invalid,
             "n_selected_interventions": len(projections),
             "frame_root": args.frame_root,
             "source_frame_prefix": args.source_frame_prefix,
@@ -607,6 +736,11 @@ def main() -> None:
     cache_keys, cache_audit = cache_key_audit(projections, model_hash, decoding_config)
     completed = load_completed_cache_keys(probe_results)
     completed_cache_at_start = len(completed)
+    remaining_interventions_at_start = sum(
+        1
+        for projection in projections
+        if cache_keys[projection["intervention_id"]] not in completed
+    )
     counts = Counter()
     memory_rows: list[dict[str, Any]] = []
     debug_records: list[dict[str, Any]] = []
@@ -677,7 +811,8 @@ def main() -> None:
                         **gpu_memory,
                     }
                 )
-            if len(debug_records) < 12:
+            represented_frame_counts = {record["expected_frame_count"] for record in debug_records}
+            if len(debug_records) < 12 or projection["n_frames"] not in represented_frame_counts:
                 debug_records.append(
                     {
                         "intervention_id": projection["intervention_id"],
@@ -752,14 +887,48 @@ def main() -> None:
     if unexpected_temporal_resampling:
         raise RuntimeError(f"Processor did not represent all frames: {processor_audit}")
 
+    expected_ids = {str(projection["intervention_id"]) for projection in projections}
+    result_rows, final_error_rows, completion_audit = load_final_completion_records(
+        probe_results,
+        errors_path,
+        expected_ids,
+    )
+    completed_prediction_counts = final_prediction_counts(result_rows, final_error_rows)
+    completed_count = completion_audit["n_completed_final_records"]
+    remaining_interventions = len(projections) - completed_count
+    prediction_count_total = sum(
+        completed_prediction_counts[label]
+        for label in ("YES", "NO", "INVALID", "ERROR")
+    )
+    if args.run_all_generation_valid and not args.dry_run:
+        if completed_count != len(projections):
+            raise RuntimeError(f"Full D.2b completion audit failed: {completion_audit}")
+        if prediction_count_total != completed_count:
+            raise RuntimeError(
+                "Full D.2b prediction count audit failed: "
+                f"prediction_total={prediction_count_total} completed={completed_count}"
+            )
+        if completion_audit["extra_result_ids"] or completion_audit["duplicate_result_ids"]:
+            raise RuntimeError(f"Full D.2b result identity audit failed: {completion_audit}")
+
     summary = {
-        "report_title": "Phase D.2 Frozen-Qwen Intervention Smoke Summary",
+        "report_title": (
+            "Phase D.2b Full Frozen-Qwen Intervention Probe Summary"
+            if args.run_all_generation_valid
+            else "Phase D.2 Frozen-Qwen Intervention Smoke Summary"
+        ),
         "smoke_mode": not args.run_all_generation_valid,
-        "full_run_executed": bool(args.run_all_generation_valid),
+        "full_run_executed": bool(args.run_all_generation_valid and not args.dry_run),
         "interventions_input": args.interventions,
         "n_total_interventions": len(raw_rows),
         "n_generation_valid": n_generation_valid,
+        "n_generation_invalid": n_generation_invalid,
         "n_selected_interventions": len(projections),
+        "n_completed": completed_count,
+        "n_completed_results": completion_audit["n_completed_results"],
+        "n_completed_errors_without_result": completion_audit["n_completed_errors_without_result"],
+        "remaining_interventions": remaining_interventions,
+        "completion_audit": completion_audit,
         "generation_valid_only_selection": all(p["generation_valid"] for p in projections),
         "frame_count_distribution": frame_count_distribution(projections),
         "intervention_type_distribution": dict(Counter(p["intervention_type"] for p in projections)),
@@ -782,15 +951,23 @@ def main() -> None:
         "phase_c_consistency": consistency,
         "cache_audit": cache_audit,
         "completed_cache_at_start": completed_cache_at_start,
+        "remaining_interventions_at_start": remaining_interventions_at_start,
         "skipped_cached_count": counts["skipped_cached"],
         "new_inference_count": counts["YES"] + counts["NO"] + counts["INVALID"],
         "dry_run_count": counts["dry_run"],
         "prediction_counts": {
+            "YES": completed_prediction_counts["YES"],
+            "NO": completed_prediction_counts["NO"],
+            "INVALID": completed_prediction_counts["INVALID"],
+            "ERROR": completed_prediction_counts["ERROR"],
+        },
+        "new_prediction_counts_this_run": {
             "YES": counts["YES"],
             "NO": counts["NO"],
             "INVALID": counts["INVALID"],
             "ERROR": counts["ERROR"],
         },
+        "prediction_distributions": prediction_distributions(result_rows, final_error_rows, projections),
         "probe_results": probe_results,
         "errors": errors_path,
         "selection_output": selection_output,
