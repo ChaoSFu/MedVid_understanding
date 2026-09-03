@@ -38,7 +38,6 @@ FROZEN_QWEN_BACKEND = "qwen3_vl"
 FROZEN_QWEN_MODEL_PATH = "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct"
 EXPECTED_FRAME_COUNTS = {8, 12, 16, 24}
 CORE_PHASE_C_FINGERPRINT_FIELDS = (
-    "model_path",
     "config_sha256",
     "generation_config_sha256",
     "architectures",
@@ -90,8 +89,6 @@ def normalize_model_path(path: Any) -> str | None:
 
 
 def core_fingerprint_value_matches(field: str, old_value: Any, new_value: Any) -> bool:
-    if field == "model_path":
-        return normalize_model_path(old_value) == normalize_model_path(new_value)
     return old_value == new_value
 
 
@@ -155,7 +152,7 @@ def decoding_config_is_frozen(decoding_config: dict[str, Any]) -> bool:
 def fingerprint_is_frozen_qwen(args: argparse.Namespace, fingerprint: dict[str, Any]) -> dict[str, bool]:
     return {
         "model_backend": args.model_backend == FROZEN_QWEN_BACKEND,
-        "model_path": normalize_model_path(args.model_path) == normalize_model_path(FROZEN_QWEN_MODEL_PATH),
+        "model_path_argument_matches_loaded_model": normalize_model_path(args.model_path) == normalize_model_path(fingerprint.get("model_path")),
         "architecture": "Qwen3VLForConditionalGeneration" in (fingerprint.get("architectures") or []),
         "model_class": fingerprint.get("model_class") == "Qwen3VLForConditionalGeneration",
         "processor_class": fingerprint.get("processor_class") == "Qwen3VLProcessor",

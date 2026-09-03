@@ -347,12 +347,13 @@ class PhaseD2Tests(unittest.TestCase):
             self.assertTrue(checks["core_model_fingerprint_matches"])
             phase_d2_script.assert_phase_c_consistency(checks)
 
-    def test_frozen_qwen_model_path_allows_equivalent_trailing_slash(self):
+    def test_frozen_qwen_model_path_allows_relocated_model_when_loaded_path_matches_arg(self):
         args = argparse.Namespace(
             model_backend="qwen3_vl",
-            model_path="/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct/",
+            model_path="/new/server/path/Qwen3-VL-8B-Instruct/",
         )
         fingerprint = {
+            "model_path": "/new/server/path/Qwen3-VL-8B-Instruct",
             "architectures": ["Qwen3VLForConditionalGeneration"],
             "model_class": "Qwen3VLForConditionalGeneration",
             "processor_class": "Qwen3VLProcessor",
@@ -362,16 +363,53 @@ class PhaseD2Tests(unittest.TestCase):
             "enable_thinking": False,
         }
         checks = phase_d2_script.fingerprint_is_frozen_qwen(args, fingerprint)
-        self.assertTrue(checks["model_path"])
+        self.assertTrue(checks["model_path_argument_matches_loaded_model"])
 
-    def test_phase_c_consistency_allows_equivalent_model_path(self):
-        self.assertTrue(
-            phase_d2_script.core_fingerprint_value_matches(
-                "model_path",
-                "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
-                "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct/",
-            )
+    def test_phase_c_consistency_allows_relocated_model_path_when_content_matches(self):
+        args = argparse.Namespace(
+            skip_phase_c_consistency=False,
+            phase_c_probe_summary="",
+            phase_c_probe_results="",
+            prompt_version=PROMPT_VERSION,
         )
+        old_fp = {
+            "model_identity_hash": "old-hash",
+            "model_path": "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
+            "config_sha256": "config",
+            "generation_config_sha256": "gen",
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_type": "qwen3_vl",
+            "processor_class": "Qwen3VLProcessor",
+            "model_class": "Qwen3VLForConditionalGeneration",
+            "dtype": "bfloat16",
+            "do_sample": False,
+            "max_new_tokens": 8,
+            "enable_thinking": False,
+            "processor_min_pixels": None,
+            "processor_max_pixels": None,
+        }
+        new_fp = dict(old_fp)
+        new_fp["model_identity_hash"] = "new-hash"
+        new_fp["model_path"] = "/new/server/path/Qwen3-VL-8B-Instruct"
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.json"
+            summary.write_text(
+                '{"prompt_version":"evidence_presence_v1","model_fingerprint":'
+                + phase_d2_script.json.dumps(old_fp)
+                + ',"decoding_config":{"do_sample":false,"max_new_tokens":8,"enable_thinking":false}}',
+                encoding="utf-8",
+            )
+            args.phase_c_probe_summary = str(summary)
+            checks = phase_d2_script.phase_c_consistency_check(
+                args,
+                new_fp,
+                {"do_sample": False, "max_new_tokens": 8, "enable_thinking": False},
+                [project_intervention_for_model(make_row(1))],
+            )
+            self.assertFalse(checks["model_identity_hash_matches"])
+            self.assertTrue(checks["core_model_fingerprint_matches"])
+            self.assertIn("model_path", checks["model_fingerprint_differences"])
+            phase_d2_script.assert_phase_c_consistency(checks)
 
     def test_phase_c_consistency_rejects_core_model_difference(self):
         args = argparse.Namespace(
