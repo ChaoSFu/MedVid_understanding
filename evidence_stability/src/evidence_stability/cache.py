@@ -33,3 +33,27 @@ def make_probe_cache_key(
             "decoding_config": decoding_config or {},
         }
     )
+
+
+def make_intervention_probe_cache_key(
+    model_identity_hash: str | None,
+    prompt_hash: str,
+    qa_id: str,
+    window_id: str,
+    intervention_id: str,
+    ordered_frame_paths: list[str],
+    frame_count: int,
+    decoding_config: dict | None = None,
+) -> str:
+    return stable_hash(
+        {
+            "model_identity_hash": model_identity_hash,
+            "prompt_hash": prompt_hash,
+            "qa_id": qa_id,
+            "window_id": window_id,
+            "intervention_id": intervention_id,
+            "ordered_frame_paths": list(ordered_frame_paths),
+            "frame_count": frame_count,
+            "decoding_config": decoding_config or {},
+        }
+    )
