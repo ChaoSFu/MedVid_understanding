@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import random
 from collections import Counter, defaultdict
 from typing import Any
@@ -34,21 +35,69 @@ FORBIDDEN_MODEL_SIDE_FIELDS = {
     "GT_CONTAMINATED",
 }
 
-FORBIDDEN_FIELD_TOKENS = (
-    "gt",
+FORBIDDEN_FIELD_PREFIXES = (
+    "gt_",
     "ground_truth",
-    "alignment",
+    "evidence_density",
+    "gt_evidence_recall",
+)
+
+FORBIDDEN_FIELD_EXACT = {
+    "gt",
+    "candidate_label",
+    "original_candidate_label",
     "true_support",
     "spurious_support",
-    "candidate_label",
     "strict_valid",
     "any_gt_valid",
-    "evidence_density",
-    "recall",
-    "visible_gt",
-    "contaminated",
     "validity_reason",
-)
+    "gt_contaminated",
+    "weakened_gt_support",
+    "gt_evidence_removed",
+}
+
+RAW_RESULT_ALLOWED_FIELDS = {
+    "qa_id",
+    "clip_id",
+    "window_id",
+    "intervention_id",
+    "dataset_name",
+    "target_action",
+    "intervention_family",
+    "intervention_type",
+    "model_name",
+    "model_revision",
+    "model_identity_hash",
+    "prompt_version",
+    "prompt_hash",
+    "decoding_config",
+    "ordered_frame_paths",
+    "n_frames",
+    "n_unique_frames",
+    "raw_response",
+    "parsed_prediction",
+    "cache_key",
+    "created_at",
+    "processor_metadata",
+}
+
+PROCESSOR_METADATA_ALLOWED_FIELDS = {
+    "expected_frame_count",
+    "input_frame_count",
+    "input_token_length",
+    "input_ids_shape",
+    "image_grid_thw",
+    "image_grid_thw_shape",
+    "image_grid_thw_value",
+    "image_grid_thw_rows",
+    "video_grid_thw",
+    "video_grid_thw_shape",
+    "video_grid_thw_value",
+    "video_grid_thw_rows",
+    "pixel_values_shape",
+    "input_keys",
+    "image_sizes",
+}
 
 
 def is_generation_valid_intervention(row: dict[str, Any]) -> bool:
@@ -83,6 +132,52 @@ def project_intervention_for_model(row: dict[str, Any]) -> dict[str, Any]:
     return projection
 
 
+def field_name_tokens(field_name: str) -> list[str]:
+    parts = re.split(r"[^A-Za-z0-9]+", field_name.lower())
+    return [part for part in parts if part]
+
+
+def is_forbidden_field_name(field_name: str) -> bool:
+    normalized = field_name.lower()
+    leaf = re.split(r"[.\[]", normalized)[-1].rstrip("]")
+    leaf_tokens = field_name_tokens(leaf)
+    if leaf in FORBIDDEN_MODEL_SIDE_FIELDS or leaf in FORBIDDEN_FIELD_EXACT:
+        return True
+    if any(leaf.startswith(prefix) for prefix in FORBIDDEN_FIELD_PREFIXES):
+        return True
+    if "gt" in leaf_tokens:
+        return True
+    if "ground" in leaf_tokens and "truth" in leaf_tokens:
+        return True
+    if "candidate" in leaf_tokens and "label" in leaf_tokens:
+        return True
+    if "true" in leaf_tokens and "support" in leaf_tokens:
+        return True
+    if "spurious" in leaf_tokens and "support" in leaf_tokens:
+        return True
+    if "strict" in leaf_tokens and "valid" in leaf_tokens:
+        return True
+    if "any" in leaf_tokens and "gt" in leaf_tokens and "valid" in leaf_tokens:
+        return True
+    if "evidence" in leaf_tokens and "density" in leaf_tokens:
+        return True
+    if "gt" in leaf_tokens and "evidence" in leaf_tokens and "recall" in leaf_tokens:
+        return True
+    if "n" in leaf_tokens and "gt" in leaf_tokens and "visible" in leaf_tokens:
+        return True
+    if "visible" in leaf_tokens and "gt" in leaf_tokens:
+        return True
+    if "validity" in leaf_tokens and "reason" in leaf_tokens:
+        return True
+    if "contaminated" in leaf_tokens and "gt" in leaf_tokens:
+        return True
+    if "weakened" in leaf_tokens and "gt" in leaf_tokens and "support" in leaf_tokens:
+        return True
+    if "removed" in leaf_tokens and "gt" in leaf_tokens and "evidence" in leaf_tokens:
+        return True
+    return False
+
+
 def assert_no_forbidden_model_fields(row: dict[str, Any], context: str) -> None:
     def iter_field_names(value: Any, prefix: str = ""):
         if isinstance(value, dict):
@@ -97,17 +192,37 @@ def assert_no_forbidden_model_fields(row: dict[str, Any], context: str) -> None:
     fields = list(iter_field_names(row))
     root_fields = {field.split(".", 1)[0].split("[", 1)[0] for field in fields}
     forbidden = sorted(root_fields & FORBIDDEN_MODEL_SIDE_FIELDS)
-    token_hits = sorted(
-        field
-        for field in fields
-        if any(token in field.lower() for token in FORBIDDEN_FIELD_TOKENS)
-    )
+    token_hits = sorted(field for field in fields if is_forbidden_field_name(field))
     hits = sorted(set(forbidden + token_hits))
     if hits:
         raise RuntimeError(f"Forbidden GT/label-derived fields in {context}: {hits}")
 
 
+def sanitize_processor_metadata(metadata: dict[str, Any] | None, expected_frame_count: int | None = None) -> dict[str, Any]:
+    source = dict(metadata or {})
+    if expected_frame_count is not None:
+        source["expected_frame_count"] = int(expected_frame_count)
+    sanitized = {
+        key: value
+        for key, value in source.items()
+        if key in PROCESSOR_METADATA_ALLOWED_FIELDS
+    }
+    assert_no_forbidden_model_fields(sanitized, "processor metadata")
+    disallowed_allowed_object_fields = sorted(set(sanitized) - PROCESSOR_METADATA_ALLOWED_FIELDS)
+    if disallowed_allowed_object_fields:
+        raise RuntimeError(f"Unexpected processor metadata fields: {disallowed_allowed_object_fields}")
+    return sanitized
+
+
 def assert_raw_result_gt_free(row: dict[str, Any]) -> None:
+    disallowed = sorted(set(row) - RAW_RESULT_ALLOWED_FIELDS)
+    if disallowed:
+        raise RuntimeError(f"Unexpected raw intervention result fields: {disallowed}")
+    processor_metadata = row.get("processor_metadata")
+    if processor_metadata is not None:
+        unexpected_processor_fields = sorted(set(processor_metadata) - PROCESSOR_METADATA_ALLOWED_FIELDS)
+        if unexpected_processor_fields:
+            raise RuntimeError(f"Unexpected processor metadata fields: {unexpected_processor_fields}")
     assert_no_forbidden_model_fields(row, "raw intervention result")
 
 

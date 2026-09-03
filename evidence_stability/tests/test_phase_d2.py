@@ -11,7 +11,9 @@ from evidence_stability.phase_d2 import (
     assert_no_forbidden_model_fields,
     assert_raw_result_gt_free,
     deterministic_smoke_select,
+    is_forbidden_field_name,
     project_intervention_for_model,
+    sanitize_processor_metadata,
     select_generation_valid_interventions,
     smoke_selection_artifact,
 )
@@ -88,6 +90,50 @@ class PhaseD2Tests(unittest.TestCase):
         self.assertNotIn("original_candidate_label", projection)
         self.assertEqual(projection["ordered_frame_paths"], row["intervened_frame_paths"])
         self.assertEqual(projection["n_frames"], 8)
+
+    def test_gt_field_detection_is_token_aware(self):
+        allowed = [
+            "input_token_length",
+            "length",
+            "image_grid_thw",
+            "image_grid_thw_rows",
+            "pixel_values_shape",
+            "input_frame_count",
+            "expected_frame_count",
+            "attention_mask",
+        ]
+        forbidden = [
+            "gt",
+            "gt_alignment_class",
+            "original_gt_alignment_class",
+            "n_gt_visible",
+            "candidate_label",
+            "strict_valid",
+            "gt_evidence_recall",
+        ]
+        for field in allowed:
+            self.assertFalse(is_forbidden_field_name(field), field)
+            assert_no_forbidden_model_fields({field: 1}, f"allowed {field}")
+        for field in forbidden:
+            self.assertTrue(is_forbidden_field_name(field), field)
+            with self.assertRaises(RuntimeError):
+                assert_no_forbidden_model_fields({field: 1}, f"forbidden {field}")
+
+    def test_processor_metadata_allows_engineering_length_fields(self):
+        metadata = sanitize_processor_metadata(
+            {
+                "input_token_length": 123,
+                "input_ids_shape": [1, 123],
+                "image_grid_thw_rows": 16,
+                "pixel_values_shape": [4096, 1176],
+                "input_keys": ["input_ids", "attention_mask", "image_grid_thw"],
+                "dropped_private_field": "not copied",
+            },
+            expected_frame_count=16,
+        )
+        self.assertEqual(metadata["input_token_length"], 123)
+        self.assertEqual(metadata["expected_frame_count"], 16)
+        self.assertNotIn("dropped_private_field", metadata)
 
     def test_projection_preserves_duplicate_ordered_frames(self):
         row = make_row(1, n_frames=16, duplicate=True)
@@ -202,14 +248,32 @@ class PhaseD2Tests(unittest.TestCase):
             "intervention_family": "SHIFT",
             "intervention_type": "SHIFT_LEFT_2",
             "prompt_hash": "abc",
+            "decoding_config": {"do_sample": False, "max_new_tokens": 8},
+            "ordered_frame_paths": ["a.jpg"],
+            "n_frames": 1,
+            "n_unique_frames": 1,
             "raw_response": "NO",
             "parsed_prediction": "NO",
+            "model_name": "qwen3_vl_8b",
+            "model_revision": "hash",
+            "model_identity_hash": "hash",
+            "cache_key": "cache",
+            "created_at": "2026-09-03 00:00:00",
+            "processor_metadata": {
+                "input_token_length": 123,
+                "image_grid_thw_rows": 1,
+                "expected_frame_count": 1,
+            },
         }
         assert_raw_result_gt_free(record)
         bad = dict(record)
         bad["candidate_label"] = "TRUE_SUPPORT"
         with self.assertRaises(RuntimeError):
             assert_raw_result_gt_free(bad)
+        bad_extra = dict(record)
+        bad_extra["model_fingerprint"] = {"model_class": "Qwen3VLForConditionalGeneration"}
+        with self.assertRaises(RuntimeError):
+            assert_raw_result_gt_free(bad_extra)
 
     def test_phase_c_consistency_uses_same_model_identity(self):
         args = argparse.Namespace(
@@ -380,6 +444,20 @@ class PhaseD2Tests(unittest.TestCase):
             summary = (out_dir / "phase_d2_smoke_summary.json").read_text(encoding="utf-8")
             self.assertIn('"skipped_cached_count": 1', summary)
             self.assertIn('"dry_run_count": 3', summary)
+
+    def test_reuse_selection_from_preserves_exact_ids(self):
+        rows = [
+            make_row(1, label="TRUE_SUPPORT", target_field="action", intervention_type="RESAMPLE_50", n_frames=8),
+            make_row(2, label="SPURIOUS_SUPPORT", target_field="phase", intervention_type="RESAMPLE_75", n_frames=12),
+            make_row(3, label="TRUE_SUPPORT", target_field="action", intervention_type="SHIFT_LEFT_2", n_frames=16, dataset_name="NurViD"),
+            make_row(4, label="SPURIOUS_SUPPORT", target_field="phase", intervention_type="CONTEXT_1P5X", n_frames=24, dataset_name="EgoSurgery"),
+        ]
+        artifact = smoke_selection_artifact([rows[2], rows[0], rows[3], rows[1]], seed=42)
+        selected = phase_d2_script.select_from_smoke_artifact(rows, artifact)
+        self.assertEqual(
+            [row["intervention_id"] for row in selected],
+            [rows[2]["intervention_id"], rows[0]["intervention_id"], rows[3]["intervention_id"], rows[1]["intervention_id"]],
+        )
 
 
 if __name__ == "__main__":

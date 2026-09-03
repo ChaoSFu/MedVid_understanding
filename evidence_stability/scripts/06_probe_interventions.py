@@ -25,6 +25,7 @@ from evidence_stability.phase_d2 import (  # noqa: E402
     frame_count_processor_audit,
     memory_leak_flag,
     project_intervention_for_model,
+    sanitize_processor_metadata,
     select_generation_valid_interventions,
     smoke_selection_artifact,
 )
@@ -164,6 +165,35 @@ def load_phase_c_prompt_index(path: str | None) -> dict[tuple[str, str], str]:
         if qa_id and window_id and prompt_hash:
             out[(str(qa_id), str(window_id))] = str(prompt_hash)
     return out
+
+
+def load_smoke_selection_artifact(path: str | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    return read_json(p)
+
+
+def select_from_smoke_artifact(
+    rows: list[dict[str, Any]],
+    artifact: dict[str, Any],
+) -> list[dict[str, Any]]:
+    requested_ids = [
+        str(item["intervention_id"])
+        for item in artifact.get("interventions", [])
+    ]
+    if not requested_ids:
+        raise RuntimeError("Smoke selection artifact contains no intervention IDs.")
+    by_id = {str(row["intervention_id"]): row for row in rows}
+    missing = [intervention_id for intervention_id in requested_ids if intervention_id not in by_id]
+    if missing:
+        raise RuntimeError(f"Smoke selection artifact references missing intervention IDs: {missing[:5]}")
+    selected = [by_id[intervention_id] for intervention_id in requested_ids]
+    if any(not row.get("generation_valid") for row in selected):
+        raise RuntimeError("Smoke selection artifact contains generation-invalid interventions.")
+    return selected
 
 
 def phase_c_consistency_check(
@@ -313,8 +343,10 @@ def build_raw_result(
     raw_response: str,
     parsed: str,
 ) -> dict[str, Any]:
-    processor_meta = getattr(model, "last_processor_metadata", {}) or {}
-    model_debug = getattr(model, "last_debug_metadata", {}) or {}
+    processor_meta = sanitize_processor_metadata(
+        getattr(model, "last_processor_metadata", {}) or {},
+        expected_frame_count=projection["n_frames"],
+    )
     record = {
         "qa_id": projection["qa_id"],
         "clip_id": projection["clip_id"],
@@ -327,7 +359,6 @@ def build_raw_result(
         "model_name": model.model_name,
         "model_revision": model.model_revision,
         "model_identity_hash": model_hash,
-        "model_fingerprint": model_fingerprint,
         "prompt_version": PROMPT_VERSION,
         "prompt_hash": prompt_hash,
         "decoding_config": decoding_config,
@@ -338,10 +369,6 @@ def build_raw_result(
         "parsed_prediction": parsed,
         "cache_key": cache_key,
         "processor_metadata": processor_meta,
-        "debug_metadata": {
-            "image_sizes": model_debug.get("image_sizes") or image_sizes(projection["ordered_frame_paths"]),
-            "gpu_memory": model_debug.get("gpu_memory") or model.gpu_memory_stats(),
-        },
         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     assert_raw_result_gt_free(record)
@@ -397,6 +424,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--probe_results", default=None)
     p.add_argument("--errors", default=None)
     p.add_argument("--selection_output", default=None)
+    p.add_argument("--reuse_selection_from", default=None)
     p.add_argument("--summary_output", default=None)
     p.add_argument("--log_path", default=None)
     p.add_argument("--max_interventions", type=int, default=12)
@@ -451,11 +479,22 @@ def main() -> None:
             f"generation_valid count mismatch: got {n_generation_valid}, expected {args.expected_generation_valid}"
         )
 
-    source_selection = generation_valid_rows if args.run_all_generation_valid else deterministic_smoke_select(
-        generation_valid_rows,
-        n=args.max_interventions,
-        seed=args.seed,
-    )
+    reused_selection_artifact = None
+    if args.run_all_generation_valid:
+        source_selection = generation_valid_rows
+    else:
+        reused_selection_artifact = (
+            load_smoke_selection_artifact(args.reuse_selection_from)
+            or load_smoke_selection_artifact(selection_output)
+        )
+        if reused_selection_artifact:
+            source_selection = select_from_smoke_artifact(generation_valid_rows, reused_selection_artifact)
+        else:
+            source_selection = deterministic_smoke_select(
+                generation_valid_rows,
+                n=args.max_interventions,
+                seed=args.seed,
+            )
     projections = [
         resolve_projection_frame_paths(
             project_intervention_for_model(row),
@@ -466,7 +505,7 @@ def main() -> None:
     ]
     if not args.run_all_generation_valid:
         assert_smoke_selection_coverage(projections)
-        write_json(selection_output, smoke_selection_artifact(source_selection, args.seed))
+        write_json(selection_output, reused_selection_artifact or smoke_selection_artifact(source_selection, args.seed))
 
     for projection in projections:
         assert_no_forbidden_model_fields(projection, "model-side intervention projection")
@@ -565,7 +604,10 @@ def main() -> None:
                     {
                         "intervention_id": projection["intervention_id"],
                         "expected_frame_count": projection["n_frames"],
-                        "processor_metadata": getattr(model, "last_processor_metadata", {}) or {},
+                        "processor_metadata": sanitize_processor_metadata(
+                            getattr(model, "last_processor_metadata", {}) or {},
+                            expected_frame_count=projection["n_frames"],
+                        ),
                     }
                 )
         except RuntimeError as exc:
@@ -673,6 +715,8 @@ def main() -> None:
         "probe_results": probe_results,
         "errors": errors_path,
         "selection_output": selection_output,
+        "reuse_selection_from": args.reuse_selection_from,
+        "reused_existing_smoke_selection": reused_selection_artifact is not None,
         "processor_frame_count_audit": processor_audit,
         "unexpected_temporal_resampling": unexpected_temporal_resampling,
         "memory_by_frame_count": {
