@@ -95,6 +95,33 @@ class PhaseD2Tests(unittest.TestCase):
         self.assertEqual(projection["ordered_frame_paths"], row["intervened_frame_paths"])
         self.assertLess(projection["n_unique_frames"], projection["n_frames"])
 
+    def test_frame_root_remap_preserves_order_and_duplicates(self):
+        row = make_row(1, n_frames=4, duplicate=True)
+        row["intervened_frame_paths"] = [
+            "/root/data/AVOS/frames_15fps/v/0001.jpg",
+            "/root/data/AVOS/frames_15fps/v/0002.jpg",
+            "/root/data/AVOS/frames_15fps/v/0002.jpg",
+            "/root/data/AVOS/frames_15fps/v/0003.jpg",
+        ]
+        row["intervened_n_unique_frames"] = 3
+        projection = project_intervention_for_model(row)
+        remapped = phase_d2_script.resolve_projection_frame_paths(
+            projection,
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata",
+            "/root/data",
+        )
+        self.assertEqual(
+            remapped["ordered_frame_paths"],
+            [
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/v/0001.jpg",
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/v/0002.jpg",
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/v/0002.jpg",
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/v/0003.jpg",
+            ],
+        )
+        self.assertEqual(remapped["n_frames"], 4)
+        self.assertEqual(remapped["n_unique_frames"], 3)
+
     def test_smoke_selection_has_no_origin_or_strict_valid_artifact(self):
         rows = [
             make_row(1, label="TRUE_SUPPORT", target_field="action", intervention_type="RESAMPLE_50", n_frames=8),

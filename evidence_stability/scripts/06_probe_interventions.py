@@ -79,6 +79,35 @@ def image_sizes(paths: list[str]) -> list[list[int]]:
     return sizes
 
 
+def resolve_frame_path(path: str, frame_root: str | None, source_frame_prefix: str = "/root/data") -> str:
+    if not frame_root:
+        return path
+    normalized_prefix = source_frame_prefix.rstrip("/")
+    if path == normalized_prefix:
+        return frame_root.rstrip("/")
+    if path.startswith(normalized_prefix + "/"):
+        suffix = path[len(normalized_prefix) :].lstrip("/")
+        return str(Path(frame_root) / suffix)
+    return path
+
+
+def resolve_projection_frame_paths(
+    projection: dict[str, Any],
+    frame_root: str | None,
+    source_frame_prefix: str,
+) -> dict[str, Any]:
+    resolved = dict(projection)
+    ordered = [
+        resolve_frame_path(path, frame_root, source_frame_prefix)
+        for path in projection["ordered_frame_paths"]
+    ]
+    resolved["ordered_frame_paths"] = ordered
+    resolved["n_unique_frames"] = len(set(ordered))
+    if resolved["n_frames"] != len(ordered):
+        raise RuntimeError(f"Frame remap changed frame count for {projection['intervention_id']}")
+    return resolved
+
+
 def prompt_for_projection(projection: dict[str, Any]) -> tuple[str, str]:
     prompt = build_evidence_presence_prompt(str(projection["target_action"]))
     forbidden_terms = ["gt span", "ground truth", "gt_alignment", "candidate_label", "true_support", "spurious_support"]
@@ -344,6 +373,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dtype", default="bfloat16")
     p.add_argument("--processor_min_pixels", type=int, default=None)
     p.add_argument("--processor_max_pixels", type=int, default=None)
+    p.add_argument("--frame_root", default=None)
+    p.add_argument("--source_frame_prefix", default="/root/data")
     p.add_argument("--base_url", default=None)
     p.add_argument("--api_key", default=None)
     p.add_argument("--temperature", type=float, default=0.0)
@@ -384,7 +415,14 @@ def main() -> None:
         n=args.max_interventions,
         seed=args.seed,
     )
-    projections = [project_intervention_for_model(row) for row in source_selection]
+    projections = [
+        resolve_projection_frame_paths(
+            project_intervention_for_model(row),
+            args.frame_root,
+            args.source_frame_prefix,
+        )
+        for row in source_selection
+    ]
     if not args.run_all_generation_valid:
         assert_smoke_selection_coverage(projections)
         write_json(selection_output, smoke_selection_artifact(source_selection, args.seed))
@@ -571,6 +609,8 @@ def main() -> None:
         "model_name": model.model_name,
         "model_revision": model.model_revision,
         "model_path": args.model_path,
+        "frame_root": args.frame_root,
+        "source_frame_prefix": args.source_frame_prefix,
         "model_fingerprint": model_fingerprint,
         "model_identity_hash": model_hash,
         "prompt_version": args.prompt_version,
