@@ -1,0 +1,54 @@
+analysis_protocol_version: h2_protocol_v1
+stability_definition_version: stability_v1
+
+primary_target_type: action
+primary_validity_mode: strict
+preferred_summary_score: S_overall_macro
+also_report_micro: true
+
+family_scores:
+  - shift
+  - resample
+  - context
+
+invalid_intervention_policy: exclude
+model_invalid_policy: exclude_and_report
+missing_family_policy: nan
+
+primary_unit: qa
+candidate_level_analysis: secondary_correlated_window_analysis
+
+primary_h2_analysis:
+  target_type: action
+  expected_max_paired_qa_current_pilot: 9
+  question: >
+    Within the same action QA, is GT-aligned TRUE_SUPPORT more stable than
+    SPURIOUS_SUPPORT under controlled temporal interventions?
+
+secondary_analysis:
+  - all_paired_qa
+
+additional_exploratory_analysis:
+  - phase_only_paired_qa
+  - dataset_stratified_analysis
+  - gt_duration_stratification
+  - intervention_family_analysis
+
+thresholds:
+  stable_hallucination_candidate: null
+  fragile_true_evidence: null
+
+rationale: >
+  Action-only paired QA is the cleaner primary localized evidence test because
+  Phase C showed stronger separation between GT-aligned and no-GT-overlap
+  windows for action targets, while phase targets exhibited higher
+  model-positive rates outside GT. Target type and dataset are partially
+  confounded in the current pilot, so phase data are retained as secondary
+  and generalization analyses rather than removed.
+
+inferential_statistics:
+  run_in_phase_e: false
+  future_candidate_primary_test: Wilcoxon signed-rank on QA-level delta_S_macro
+  note: >
+    Do not choose or tune inferential statistics, thresholds, or primary
+    subgroup definitions after observing real Phase D.2b stability results.
