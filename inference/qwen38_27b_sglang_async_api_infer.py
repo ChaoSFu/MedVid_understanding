@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import time
 from pathlib import Path
@@ -61,6 +62,66 @@ def describe_exception(exc: BaseException) -> str:
     if response_text:
         details.append(f"response_text={response_text}")
     return " | ".join(details)
+
+
+def to_jsonable(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {
+            k: to_jsonable(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [to_jsonable(v) for v in value]
+    if isinstance(value, tuple):
+        return [to_jsonable(v) for v in value]
+    return value
+
+
+def compact_json(value: Any, max_chars: int = 4000) -> str:
+    try:
+        text = json.dumps(to_jsonable(value), ensure_ascii=False)
+    except TypeError:
+        text = repr(value)
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...<truncated>"
+
+
+def extract_message_text(message: Any) -> Tuple[str, str]:
+    content = getattr(message, "content", None)
+
+    if isinstance(content, str) and content.strip():
+        return content, "content"
+
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text:
+                    parts.append(text)
+            else:
+                text = getattr(item, "text", None)
+                if isinstance(text, str) and text:
+                    parts.append(text)
+        if parts:
+            return "\n".join(parts), "content_list_text"
+
+    for attr in ("reasoning_content", "reasoning", "reasoning_text"):
+        text = getattr(message, attr, None)
+        if isinstance(text, str) and text.strip():
+            return text, attr
+
+    message_dict = to_jsonable(message)
+    if isinstance(message_dict, dict):
+        for key in ("reasoning_content", "reasoning", "reasoning_text", "content"):
+            text = message_dict.get(key)
+            if isinstance(text, str) and text.strip():
+                return text, key
+
+    return "", "empty"
 
 
 def build_messages(
@@ -116,7 +177,7 @@ async def call_sglang(
     model: str,
     messages: List[Dict[str, Any]],
     args: argparse.Namespace,
-) -> Tuple[str, float, Dict[str, Any], str]:
+) -> Tuple[str, float, Dict[str, Any], str, Dict[str, Any]]:
     last_error: BaseException | None = None
 
     for attempt in range(1, args.max_attempts + 1):
@@ -140,9 +201,10 @@ async def call_sglang(
             if not response.choices:
                 raise RuntimeError("SGLang returned no choices.")
 
-            message = response.choices[0].message
-            answer = message.content or ""
-            finish_reason = getattr(response.choices[0], "finish_reason", "") or ""
+            choice = response.choices[0]
+            message = choice.message
+            answer, answer_source = extract_message_text(message)
+            finish_reason = getattr(choice, "finish_reason", "") or ""
 
             usage: Dict[str, Any] = {}
             if getattr(response, "usage", None) is not None:
@@ -153,7 +215,18 @@ async def call_sglang(
                     "total_tokens": getattr(usage_obj, "total_tokens", None),
                 }
 
-            return answer, elapsed, usage, finish_reason
+            raw_info = {
+                "answer_source": answer_source,
+            }
+            if not answer:
+                raw_info["empty_answer_choice"] = compact_json(choice)
+                logger.warning(
+                    "SGLang returned an empty answer. finish_reason=%s choice=%s",
+                    finish_reason,
+                    raw_info["empty_answer_choice"],
+                )
+
+            return answer, elapsed, usage, finish_reason, raw_info
 
         except Exception as exc:
             last_error = exc
@@ -272,6 +345,7 @@ async def process_one(
             api_elapsed = 0.0
             usage: Dict[str, Any] = {}
             finish_reason = ""
+            raw_response_info: Dict[str, Any] = {}
             used_media_schema = ""
             schema_errors: List[str] = []
 
@@ -283,7 +357,7 @@ async def process_one(
                     media_schema=media_schema,
                 )
                 try:
-                    answer, api_elapsed, usage, finish_reason = await call_sglang(
+                    answer, api_elapsed, usage, finish_reason, raw_response_info = await call_sglang(
                         client=client,
                         model=args.model,
                         messages=messages,
@@ -335,6 +409,8 @@ async def process_one(
                     "total_elapsed_sec": round(total_elapsed, 3),
                     "finish_reason": finish_reason,
                     "usage": usage,
+                    "answer_source": raw_response_info.get("answer_source", ""),
+                    "raw_response_info": raw_response_info,
                 },
             }
 
