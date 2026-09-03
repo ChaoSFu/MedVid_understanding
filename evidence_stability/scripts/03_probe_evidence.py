@@ -91,8 +91,10 @@ def processor_represented_all_frames(metadata: dict[str, Any]) -> bool | None:
 
 
 def write_probe_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
+    title = summary.get("report_title") or "Phase C Probe Summary"
+    stop_note = summary.get("stop_note") or "Phase C probing stops here."
     lines = [
-        "# Phase C Smoke Summary",
+        f"# {title}",
         "",
         "## Model",
         f"- model backend: {summary.get('model_backend')}",
@@ -133,7 +135,7 @@ def write_probe_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
         f"- Did the processor perform any unexpected temporal resampling? {summary.get('unexpected_temporal_resampling')}",
         f"- Did any setting have to be changed from the frozen Phase C specification? {summary.get('frozen_phase_c_settings_changed')}",
         "",
-        "Phase C smoke stops here. No 50-QA pilot, Phase D, shift, resampling, context expansion, or stability analysis was run.",
+        stop_note,
     ]
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -492,6 +494,12 @@ def main() -> None:
                 break
 
     summary = {
+        "report_title": "Phase C Pilot Probe Summary" if len(qa_ids) > 10 else "Phase C Smoke Summary",
+        "stop_note": (
+            "Phase C pilot probing stops here. No Phase D, shift, resampling, context expansion, or stability analysis was run."
+            if len(qa_ids) > 10
+            else "Phase C smoke stops here. No 50-QA pilot, Phase D, shift, resampling, context expansion, or stability analysis was run."
+        ),
         "n_qa": len(qa_ids),
         "n_windows": len(windows),
         "model_backend": args.model_backend,

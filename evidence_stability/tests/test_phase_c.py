@@ -14,6 +14,12 @@ phase_c_probe_script = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
 SPEC.loader.exec_module(phase_c_probe_script)
 
+LABEL_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "04_label_candidates.py"
+LABEL_SPEC = importlib.util.spec_from_file_location("phase_c_label_candidates_script", LABEL_SCRIPT_PATH)
+phase_c_label_candidates_script = importlib.util.module_from_spec(LABEL_SPEC)
+assert LABEL_SPEC and LABEL_SPEC.loader
+LABEL_SPEC.loader.exec_module(phase_c_label_candidates_script)
+
 
 class PhaseCTests(unittest.TestCase):
     def test_parse_yes_no_conservative(self):
@@ -68,6 +74,33 @@ class PhaseCTests(unittest.TestCase):
         self.assertEqual(phase_c_label("YES", "NO_GT_OVERLAP"), "SPURIOUS_SUPPORT")
         self.assertEqual(phase_c_label("NO", "NO_GT_OVERLAP"), "TRUE_NEGATIVE_CONTROL")
         self.assertEqual(phase_c_label("NO", "STRONG_GT_ALIGNED"), "NO_ON_STRONG_GT_ALIGNED")
+
+    def test_candidate_label_definitions(self):
+        label = phase_c_label_candidates_script.candidate_label
+        self.assertEqual(label("YES", "STRONG_GT_ALIGNED"), "TRUE_SUPPORT")
+        self.assertEqual(label("YES", "WEAK_GT_ALIGNED"), "WEAK_TRUE_SUPPORT")
+        self.assertEqual(label("YES", "NO_GT_OVERLAP"), "SPURIOUS_SUPPORT")
+        self.assertEqual(label("NO", "STRONG_GT_ALIGNED"), "NO_STRONG_GT")
+        self.assertEqual(label("NO", "WEAK_GT_ALIGNED"), "NO_WEAK_GT")
+        self.assertEqual(label("NO", "NO_GT_OVERLAP"), "TRUE_NEGATIVE_CONTROL")
+        self.assertEqual(label("INVALID", "NO_GT_OVERLAP"), "INVALID_MODEL_OUTPUT")
+
+    def test_spurious_requires_yes_and_zero_visible_gt(self):
+        rows = [
+            {
+                "candidate_label": "SPURIOUS_SUPPORT",
+                "gt_alignment_class": "NO_GT_OVERLAP",
+                "n_gt_visible_in_window": 0,
+                "evidence_density": 0.0,
+                "gt_evidence_recall": 0.0,
+                "qa_id": "q",
+                "window_id": "w",
+            }
+        ]
+        self.assertEqual(
+            phase_c_label_candidates_script.assert_candidate_validity(rows)["spurious_support_gt_violations"],
+            0,
+        )
 
 
 if __name__ == "__main__":
