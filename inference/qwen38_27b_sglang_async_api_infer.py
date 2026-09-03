@@ -48,6 +48,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "results" / "qwen38_27b_sglang_trainval_50_per_qa_type_seed42"
 
 
+def describe_exception(exc: BaseException) -> str:
+    details = [repr(exc)]
+    status_code = getattr(exc, "status_code", None)
+    if status_code is not None:
+        details.append(f"status_code={status_code}")
+    body = getattr(exc, "body", None)
+    if body is not None:
+        details.append(f"body={body}")
+    response = getattr(exc, "response", None)
+    response_text = getattr(response, "text", None)
+    if response_text:
+        details.append(f"response_text={response_text}")
+    return " | ".join(details)
+
+
 def build_messages(
     sample: Dict[str, Any],
     frame_data_urls: List[str],
@@ -146,12 +161,15 @@ async def call_sglang(
                 "SGLang request failed on attempt %d/%d: %s",
                 attempt,
                 args.max_attempts,
-                str(exc),
+                describe_exception(exc),
             )
             if attempt < args.max_attempts:
                 await asyncio.sleep(args.retry_base_seconds * (2 ** (attempt - 1)))
 
-    raise RuntimeError(f"SGLang request failed after {args.max_attempts} attempts: {last_error}")
+    raise RuntimeError(
+        "SGLang request failed after "
+        f"{args.max_attempts} attempts: {describe_exception(last_error)}"
+    )
 
 
 def select_samples(args: argparse.Namespace) -> List[Dict[str, Any]]:
@@ -195,7 +213,7 @@ def prepare_sample(
     sample: Dict[str, Any],
     examples: Dict[str, Dict[str, str]],
     args: argparse.Namespace,
-) -> Tuple[Dict[str, Any], List[Dict[str, Any]], int, float, str]:
+) -> Tuple[Dict[str, Any], List[str], int, float, str]:
     start = time.time()
     missing = find_missing_frame_paths(sample)
     if missing:
@@ -207,14 +225,16 @@ def prepare_sample(
     )
     maybe_save_rc_debug_frame(sample, pil_frames, args.debug_rc_dir)
     num_frames = len(frame_data_urls)
-    messages = build_messages(
-        sample=sample,
-        frame_data_urls=frame_data_urls,
-        examples=examples,
-        media_schema=args.media_schema,
-    )
     question = get_question(sample)
-    return sample, messages, num_frames, time.time() - start, question
+    return sample, frame_data_urls, num_frames, time.time() - start, question
+
+
+def get_media_schemas_to_try(args: argparse.Namespace) -> List[str]:
+    if args.media_schema == "auto":
+        return ["qwen_video", "image_sequence"]
+    if args.media_schema == "qwen_video" and not args.no_schema_fallback:
+        return ["qwen_video", "image_sequence"]
+    return [args.media_schema]
 
 
 async def process_one(
@@ -238,18 +258,48 @@ async def process_one(
         sample_start = time.time()
 
         try:
-            prepared_sample, messages, num_frames, prep_elapsed, question = await asyncio.to_thread(
+            prepared_sample, frame_data_urls, num_frames, prep_elapsed, question = await asyncio.to_thread(
                 prepare_sample,
                 sample,
                 examples,
                 args,
             )
-            answer, api_elapsed, usage, finish_reason = await call_sglang(
-                client=client,
-                model=args.model,
-                messages=messages,
-                args=args,
-            )
+            answer = ""
+            api_elapsed = 0.0
+            usage: Dict[str, Any] = {}
+            finish_reason = ""
+            used_media_schema = ""
+            schema_errors: List[str] = []
+
+            for media_schema in get_media_schemas_to_try(args):
+                messages = build_messages(
+                    sample=sample,
+                    frame_data_urls=frame_data_urls,
+                    examples=examples,
+                    media_schema=media_schema,
+                )
+                try:
+                    answer, api_elapsed, usage, finish_reason = await call_sglang(
+                        client=client,
+                        model=args.model,
+                        messages=messages,
+                        args=args,
+                    )
+                    used_media_schema = media_schema
+                    break
+                except Exception as schema_exc:
+                    schema_errors.append(f"{media_schema}: {describe_exception(schema_exc)}")
+                    if media_schema == "qwen_video" and "image_sequence" in get_media_schemas_to_try(args):
+                        logger.warning(
+                            "media_schema=qwen_video failed for idx=%d; trying image_sequence",
+                            idx,
+                        )
+                        continue
+                    raise
+
+            if not used_media_schema:
+                raise RuntimeError("; ".join(schema_errors))
+
             total_elapsed = time.time() - sample_start
 
             results[key] = {
@@ -263,7 +313,8 @@ async def process_one(
                 "inference_info": {
                     "model": args.model,
                     "backend": "SGLang OpenAI-compatible API",
-                    "media_schema": args.media_schema,
+                    "media_schema": used_media_schema,
+                    "requested_media_schema": args.media_schema,
                     "protocol": "MedGRPO official one-shot format protocol",
                     "thinking": False,
                     "temperature": args.temperature,
@@ -311,7 +362,7 @@ async def process_one(
                 "id": sample.get("id"),
                 "qa_type": qa_type,
                 "metadata": metadata,
-                "error": repr(exc),
+                "error": describe_exception(exc),
                 "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             }
             async with io_lock:
@@ -359,12 +410,18 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--media_schema",
-        choices=["qwen_video", "image_sequence"],
-        default="qwen_video",
+        choices=["auto", "qwen_video", "image_sequence"],
+        default="image_sequence",
         help=(
             "qwen_video matches the repo's Qwen API video frame-list schema. "
-            "image_sequence uses standard OpenAI image_url parts as a fallback."
+            "image_sequence uses standard OpenAI image_url parts. "
+            "auto tries qwen_video first, then image_sequence."
         ),
+    )
+    parser.add_argument(
+        "--no_schema_fallback",
+        action="store_true",
+        help="Do not retry qwen_video requests as image_sequence after schema errors.",
     )
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--max_attempts", type=int, default=3)
