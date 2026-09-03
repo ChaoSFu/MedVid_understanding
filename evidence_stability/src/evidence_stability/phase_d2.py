@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import random
 from collections import Counter, defaultdict
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -98,6 +99,146 @@ PROCESSOR_METADATA_ALLOWED_FIELDS = {
     "input_keys",
     "image_sizes",
 }
+
+DEFAULT_LOGICAL_FRAME_ROOT_PREFIXES = (
+    "/root/data",
+    "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata",
+    "/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
+)
+
+
+def normalize_source_prefixes(source_prefixes: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    prefixes = list(DEFAULT_LOGICAL_FRAME_ROOT_PREFIXES)
+    if isinstance(source_prefixes, str):
+        prefixes.extend(part.strip() for part in source_prefixes.split(",") if part.strip())
+    elif source_prefixes:
+        prefixes.extend(str(part).strip() for part in source_prefixes if str(part).strip())
+    out = []
+    seen = set()
+    for prefix in prefixes:
+        normalized = str(Path(prefix).expanduser()).rstrip("/")
+        if normalized and normalized not in seen:
+            out.append(normalized)
+            seen.add(normalized)
+    out.sort(key=len, reverse=True)
+    return out
+
+
+def normalize_logical_relative_frame_path(path: str | PurePosixPath) -> str:
+    text = str(path).replace("\\", "/")
+    pure = PurePosixPath(text)
+    if pure.is_absolute():
+        raise ValueError(f"Logical relative frame path must not be absolute: {path}")
+    parts = pure.parts
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"Unsafe logical relative frame path: {path}")
+    return pure.as_posix()
+
+
+def logical_relative_frame_path(
+    frozen_path: str,
+    runtime_frame_root: str | None = None,
+    source_prefixes: str | list[str] | tuple[str, ...] | None = None,
+) -> str:
+    text = str(frozen_path).replace("\\", "/")
+    if not PurePosixPath(text).is_absolute():
+        return normalize_logical_relative_frame_path(text)
+
+    prefixes = normalize_source_prefixes(source_prefixes)
+    if runtime_frame_root:
+        prefixes = normalize_source_prefixes(prefixes + [runtime_frame_root])
+    for prefix in prefixes:
+        normalized = prefix.rstrip("/")
+        if text == normalized:
+            raise ValueError(f"Frame path resolves to root without dataset-relative suffix: {frozen_path}")
+        if text.startswith(normalized + "/"):
+            return normalize_logical_relative_frame_path(text[len(normalized) + 1 :])
+    raise ValueError(f"PATH_OUTSIDE_KNOWN_FRAME_ROOTS: {frozen_path}")
+
+
+def runtime_frame_path(
+    frozen_path: str,
+    runtime_frame_root: str | None,
+    source_prefixes: str | list[str] | tuple[str, ...] | None = None,
+) -> str:
+    if not runtime_frame_root:
+        return frozen_path
+    rel = logical_relative_frame_path(frozen_path, runtime_frame_root, source_prefixes)
+    root = Path(runtime_frame_root).expanduser()
+    candidate = root / Path(rel)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"Runtime frame path escapes frame root: {frozen_path}") from exc
+    return str(candidate)
+
+
+def remap_projection_frame_paths(
+    projection: dict[str, Any],
+    runtime_frame_root: str | None,
+    source_prefixes: str | list[str] | tuple[str, ...] | None = None,
+) -> dict[str, Any]:
+    resolved = dict(projection)
+    frozen_paths = list(projection["ordered_frame_paths"])
+    if runtime_frame_root:
+        logical_paths = [
+            logical_relative_frame_path(path, runtime_frame_root, source_prefixes)
+            for path in frozen_paths
+        ]
+        runtime_paths = [
+            runtime_frame_path(path, runtime_frame_root, source_prefixes)
+            for path in frozen_paths
+        ]
+    else:
+        logical_paths = []
+        for path in frozen_paths:
+            try:
+                logical_paths.append(logical_relative_frame_path(path, None, source_prefixes))
+            except ValueError:
+                logical_paths.append(str(path))
+        runtime_paths = frozen_paths
+    if len(runtime_paths) != len(frozen_paths) or len(logical_paths) != len(frozen_paths):
+        raise RuntimeError(f"Frame remap changed frame count for {projection['intervention_id']}")
+    resolved["frozen_ordered_frame_paths"] = frozen_paths
+    resolved["logical_relative_frame_paths"] = logical_paths
+    resolved["ordered_frame_paths"] = runtime_paths
+    resolved["n_unique_frames"] = len(set(logical_paths))
+    return resolved
+
+
+def projection_path_audit(projections: list[dict[str, Any]], preview_count: int = 12) -> dict[str, Any]:
+    missing = []
+    previews = []
+    for projection in projections:
+        runtime_paths = list(projection["ordered_frame_paths"])
+        logical_paths = list(projection.get("logical_relative_frame_paths", runtime_paths))
+        frozen_paths = list(projection.get("frozen_ordered_frame_paths", runtime_paths))
+        if not (len(runtime_paths) == len(logical_paths) == len(frozen_paths) == int(projection["n_frames"])):
+            raise RuntimeError(f"Frame path mapping length mismatch for {projection['intervention_id']}")
+        for path in runtime_paths:
+            if not Path(path).exists():
+                missing.append({"intervention_id": projection["intervention_id"], "runtime_frame_path": path})
+        if len(previews) < preview_count:
+            previews.append(
+                {
+                    "intervention_id": projection["intervention_id"],
+                    "n_frames": projection["n_frames"],
+                    "frozen_first_frame": frozen_paths[0] if frozen_paths else None,
+                    "logical_first_frame": logical_paths[0] if logical_paths else None,
+                    "runtime_first_frame": runtime_paths[0] if runtime_paths else None,
+                    "frozen_last_frame": frozen_paths[-1] if frozen_paths else None,
+                    "logical_last_frame": logical_paths[-1] if logical_paths else None,
+                    "runtime_last_frame": runtime_paths[-1] if runtime_paths else None,
+                }
+            )
+    return {
+        "n_interventions": len(projections),
+        "n_total_frame_references": sum(int(p["n_frames"]) for p in projections),
+        "n_missing_frame_references": len(missing),
+        "n_interventions_with_missing_frames": len({item["intervention_id"] for item in missing}),
+        "missing_frame_examples": missing[:20],
+        "runtime_path_previews": previews,
+    }
 
 
 def is_generation_valid_intervention(row: dict[str, Any]) -> bool:
@@ -292,7 +433,7 @@ def smoke_selection_artifact(selected: list[dict[str, Any]], seed: int) -> dict[
 
 def audit_cache_collisions(rows: list[dict[str, Any]], cache_keys: dict[str, str]) -> dict[str, Any]:
     sequence_by_id = {
-        row["intervention_id"]: tuple(row["ordered_frame_paths"])
+        row["intervention_id"]: tuple(row.get("logical_relative_frame_paths", row["ordered_frame_paths"]))
         for row in rows
     }
     reverse: dict[str, list[str]] = defaultdict(list)

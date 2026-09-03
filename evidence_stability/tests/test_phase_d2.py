@@ -12,7 +12,11 @@ from evidence_stability.phase_d2 import (
     assert_raw_result_gt_free,
     deterministic_smoke_select,
     is_forbidden_field_name,
+    logical_relative_frame_path,
     project_intervention_for_model,
+    projection_path_audit,
+    remap_projection_frame_paths,
+    runtime_frame_path,
     sanitize_processor_metadata,
     select_generation_valid_interventions,
     smoke_selection_artifact,
@@ -168,6 +172,89 @@ class PhaseD2Tests(unittest.TestCase):
         self.assertEqual(remapped["n_frames"], 4)
         self.assertEqual(remapped["n_unique_frames"], 3)
 
+    def test_old_hdd3_path_remaps_to_runtime_hdd_root(self):
+        frozen = "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/a.jpg"
+        runtime_root = "/mnt/hdd/huihui/hh_datas/MedVidU/valdata"
+        self.assertEqual(logical_relative_frame_path(frozen, runtime_root), "AVOS/a.jpg")
+        self.assertEqual(
+            runtime_frame_path(frozen, runtime_root),
+            "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/AVOS/a.jpg",
+        )
+
+    def test_cholec_camma_path_remaps_by_dataset_relative_suffix(self):
+        frozen = "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/CholecT50/CAMMA_data/video/000001.jpg"
+        runtime_root = "/mnt/hdd/huihui/hh_datas/MedVidU/valdata"
+        self.assertEqual(
+            runtime_frame_path(frozen, runtime_root),
+            "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/CholecT50/CAMMA_data/video/000001.jpg",
+        )
+
+    def test_runtime_frame_remap_preserves_order_duplicates_and_logical_identity(self):
+        projection = project_intervention_for_model(make_row(1, n_frames=4))
+        projection["ordered_frame_paths"] = [
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0001.jpg",
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0002.jpg",
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0002.jpg",
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0003.jpg",
+        ]
+        projection["n_frames"] = 4
+        remapped = remap_projection_frame_paths(
+            projection,
+            "/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
+        )
+        self.assertEqual(
+            remapped["logical_relative_frame_paths"],
+            ["AVOS/v/0001.jpg", "AVOS/v/0002.jpg", "AVOS/v/0002.jpg", "AVOS/v/0003.jpg"],
+        )
+        self.assertEqual(remapped["frozen_ordered_frame_paths"], projection["ordered_frame_paths"])
+        self.assertEqual(
+            remapped["ordered_frame_paths"],
+            [
+                "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/AVOS/v/0001.jpg",
+                "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/AVOS/v/0002.jpg",
+                "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/AVOS/v/0002.jpg",
+                "/mnt/hdd/huihui/hh_datas/MedVidU/valdata/AVOS/v/0003.jpg",
+            ],
+        )
+        self.assertEqual(remapped["n_unique_frames"], 3)
+
+    def test_runtime_frame_remap_rejects_path_traversal(self):
+        with self.assertRaises(ValueError):
+            logical_relative_frame_path("../AVOS/a.jpg", "/mnt/hdd/huihui/hh_datas/MedVidU/valdata")
+        with self.assertRaises(ValueError):
+            logical_relative_frame_path(
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/../a.jpg",
+                "/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
+            )
+
+    def test_projection_path_audit_reports_missing_runtime_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            projection = project_intervention_for_model(make_row(1, n_frames=1))
+            projection["ordered_frame_paths"] = [
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/missing.jpg",
+            ]
+            projection["n_frames"] = 1
+            remapped = remap_projection_frame_paths(projection, tmp)
+            audit = projection_path_audit([remapped])
+            self.assertEqual(audit["n_missing_frame_references"], 1)
+            self.assertEqual(audit["n_interventions_with_missing_frames"], 1)
+            self.assertEqual(audit["runtime_path_previews"][0]["logical_first_frame"], "AVOS/missing.jpg")
+
+    def test_projection_path_audit_accepts_existing_runtime_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp)
+            frame = runtime_root / "AVOS" / "present.jpg"
+            frame.parent.mkdir(parents=True)
+            frame.write_text("not an actual image", encoding="utf-8")
+            projection = project_intervention_for_model(make_row(1, n_frames=1))
+            projection["ordered_frame_paths"] = [
+                "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/present.jpg",
+            ]
+            projection["n_frames"] = 1
+            remapped = remap_projection_frame_paths(projection, str(runtime_root))
+            audit = projection_path_audit([remapped])
+            self.assertEqual(audit["n_missing_frame_references"], 0)
+
     def test_smoke_selection_has_no_origin_or_strict_valid_artifact(self):
         rows = [
             make_row(1, label="TRUE_SUPPORT", target_field="action", intervention_type="RESAMPLE_50", n_frames=8),
@@ -236,6 +323,29 @@ class PhaseD2Tests(unittest.TestCase):
             {"max_new_tokens": 8},
         )
         self.assertNotEqual(key_a, key_d)
+
+    def test_intervention_cache_key_uses_logical_frame_paths_across_machine_roots(self):
+        projection = project_intervention_for_model(make_row(1, intervention_type="SHIFT_LEFT_2", n_frames=2))
+        projection["ordered_frame_paths"] = [
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0001.jpg",
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/v/0002.jpg",
+        ]
+        projection["n_frames"] = 2
+        on_old_root = remap_projection_frame_paths(
+            projection,
+            "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata",
+        )
+        on_new_root = remap_projection_frame_paths(
+            projection,
+            "/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
+        )
+        model_hash = "modelhash"
+        decoding_config = {"max_new_tokens": 8, "do_sample": False}
+        keys_a, _ = phase_d2_script.cache_key_audit([on_old_root], model_hash, decoding_config)
+        keys_b, _ = phase_d2_script.cache_key_audit([on_new_root], model_hash, decoding_config)
+        self.assertNotEqual(on_old_root["ordered_frame_paths"], on_new_root["ordered_frame_paths"])
+        self.assertEqual(on_old_root["logical_relative_frame_paths"], on_new_root["logical_relative_frame_paths"])
+        self.assertEqual(keys_a[projection["intervention_id"]], keys_b[projection["intervention_id"]])
 
     def test_raw_result_schema_gt_free(self):
         record = {
@@ -327,7 +437,6 @@ class PhaseD2Tests(unittest.TestCase):
         new_fp = dict(old_fp)
         new_fp["model_identity_hash"] = "new-hash"
         new_fp["device"] = "cuda:0"
-        new_fp["torch_version"] = "2.6.1+cu124"
         with tempfile.TemporaryDirectory() as tmp:
             summary = Path(tmp) / "summary.json"
             summary.write_text(
@@ -346,6 +455,58 @@ class PhaseD2Tests(unittest.TestCase):
             self.assertFalse(checks["model_identity_hash_matches"])
             self.assertTrue(checks["core_model_fingerprint_matches"])
             phase_d2_script.assert_phase_c_consistency(checks)
+
+    def test_phase_c_consistency_rejects_scientific_environment_difference(self):
+        args = argparse.Namespace(
+            skip_phase_c_consistency=False,
+            phase_c_probe_summary="",
+            phase_c_probe_results="",
+            prompt_version=PROMPT_VERSION,
+        )
+        old_fp = {
+            "model_identity_hash": "old-hash",
+            "model_path": "/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct",
+            "config_sha256": "config",
+            "generation_config_sha256": "gen",
+            "architectures": ["Qwen3VLForConditionalGeneration"],
+            "model_type": "qwen3_vl",
+            "processor_class": "Qwen3VLProcessor",
+            "model_class": "Qwen3VLForConditionalGeneration",
+            "dtype": "bfloat16",
+            "do_sample": False,
+            "max_new_tokens": 8,
+            "enable_thinking": False,
+            "processor_min_pixels": None,
+            "processor_max_pixels": None,
+            "transformers_version": "5.16.1",
+            "torch_version": "2.6.0+cu124",
+        }
+        new_fp = dict(old_fp)
+        new_fp["model_identity_hash"] = "new-hash"
+        new_fp["transformers_version"] = "4.57.1"
+        new_fp["torch_version"] = "2.9.1+cu128"
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.json"
+            summary.write_text(
+                '{"prompt_version":"evidence_presence_v1","model_fingerprint":'
+                + phase_d2_script.json.dumps(old_fp)
+                + ',"decoding_config":{"do_sample":false,"max_new_tokens":8,"enable_thinking":false}}',
+                encoding="utf-8",
+            )
+            args.phase_c_probe_summary = str(summary)
+            checks = phase_d2_script.phase_c_consistency_check(
+                args,
+                new_fp,
+                {"do_sample": False, "max_new_tokens": 8, "enable_thinking": False},
+                [project_intervention_for_model(make_row(1))],
+            )
+            self.assertTrue(checks["core_model_fingerprint_matches"])
+            self.assertFalse(checks["scientific_environment_matches"])
+            self.assertTrue(checks["model_fingerprint_differences"]["transformers_version"]["scientific_environment_field"])
+            self.assertTrue(checks["model_fingerprint_differences"]["torch_version"]["scientific_environment_field"])
+            with self.assertRaises(RuntimeError):
+                phase_d2_script.assert_phase_c_consistency(checks)
+            phase_d2_script.assert_phase_c_consistency(checks, allow_scientific_environment_mismatch=True)
 
     def test_frozen_qwen_model_path_allows_relocated_model_when_loaded_path_matches_arg(self):
         args = argparse.Namespace(

@@ -25,6 +25,8 @@ from evidence_stability.phase_d2 import (  # noqa: E402
     frame_count_processor_audit,
     memory_leak_flag,
     project_intervention_for_model,
+    projection_path_audit,
+    remap_projection_frame_paths,
     sanitize_processor_metadata,
     select_generation_valid_interventions,
     smoke_selection_artifact,
@@ -50,6 +52,10 @@ CORE_PHASE_C_FINGERPRINT_FIELDS = (
     "enable_thinking",
     "processor_min_pixels",
     "processor_max_pixels",
+)
+SCIENTIFIC_ENVIRONMENT_FIELDS = (
+    "transformers_version",
+    "torch_version",
 )
 
 
@@ -104,33 +110,12 @@ def image_sizes(paths: list[str]) -> list[list[int]]:
     return sizes
 
 
-def resolve_frame_path(path: str, frame_root: str | None, source_frame_prefix: str = "/root/data") -> str:
-    if not frame_root:
-        return path
-    normalized_prefix = source_frame_prefix.rstrip("/")
-    if path == normalized_prefix:
-        return frame_root.rstrip("/")
-    if path.startswith(normalized_prefix + "/"):
-        suffix = path[len(normalized_prefix) :].lstrip("/")
-        return str(Path(frame_root) / suffix)
-    return path
-
-
 def resolve_projection_frame_paths(
     projection: dict[str, Any],
     frame_root: str | None,
     source_frame_prefix: str,
 ) -> dict[str, Any]:
-    resolved = dict(projection)
-    ordered = [
-        resolve_frame_path(path, frame_root, source_frame_prefix)
-        for path in projection["ordered_frame_paths"]
-    ]
-    resolved["ordered_frame_paths"] = ordered
-    resolved["n_unique_frames"] = len(set(ordered))
-    if resolved["n_frames"] != len(ordered):
-        raise RuntimeError(f"Frame remap changed frame count for {projection['intervention_id']}")
-    return resolved
+    return remap_projection_frame_paths(projection, frame_root, source_frame_prefix)
 
 
 def prompt_for_projection(projection: dict[str, Any]) -> tuple[str, str]:
@@ -218,6 +203,7 @@ def phase_c_consistency_check(
         "prompt_version_matches": None,
         "model_identity_hash_matches": None,
         "core_model_fingerprint_matches": None,
+        "scientific_environment_matches": None,
         "model_fingerprint_differences": {},
         "decoding_config_matches": None,
         "per_window_prompt_hash_matches": None,
@@ -245,7 +231,23 @@ def phase_c_consistency_check(
                 "phase_c": old_value,
                 "phase_d2": new_value,
             }
-    runtime_fields = sorted((set(phase_c_fp) | set(model_fingerprint)) - set(CORE_PHASE_C_FINGERPRINT_FIELDS))
+    env_matches = []
+    for field in SCIENTIFIC_ENVIRONMENT_FIELDS:
+        old_value = phase_c_fp.get(field)
+        new_value = model_fingerprint.get(field)
+        same = old_value == new_value
+        env_matches.append(same)
+        if not same:
+            differences[field] = {
+                "phase_c": old_value,
+                "phase_d2": new_value,
+                "scientific_environment_field": True,
+            }
+    runtime_fields = sorted(
+        (set(phase_c_fp) | set(model_fingerprint))
+        - set(CORE_PHASE_C_FINGERPRINT_FIELDS)
+        - set(SCIENTIFIC_ENVIRONMENT_FIELDS)
+    )
     for field in runtime_fields:
         old_value = phase_c_fp.get(field)
         new_value = model_fingerprint.get(field)
@@ -256,6 +258,7 @@ def phase_c_consistency_check(
                 "runtime_or_hash_field": True,
             }
     checks["core_model_fingerprint_matches"] = all(core_matches)
+    checks["scientific_environment_matches"] = all(env_matches)
     checks["model_fingerprint_differences"] = differences
     checks["decoding_config_matches"] = summary.get("decoding_config") == decoding_config
 
@@ -273,10 +276,12 @@ def phase_c_consistency_check(
     return checks
 
 
-def assert_phase_c_consistency(checks: dict[str, Any]) -> None:
+def assert_phase_c_consistency(checks: dict[str, Any], allow_scientific_environment_mismatch: bool = False) -> None:
     if checks.get("skipped"):
         return
     required = ["prompt_version_matches", "core_model_fingerprint_matches", "decoding_config_matches"]
+    if not allow_scientific_environment_mismatch:
+        required.append("scientific_environment_matches")
     failed = [name for name in required if checks.get(name) is not True]
     if checks.get("per_window_prompt_hash_matches") is False:
         failed.append("per_window_prompt_hash_matches")
@@ -319,7 +324,7 @@ def cache_key_audit(
             projection["qa_id"],
             projection["window_id"],
             projection["intervention_id"],
-            projection["ordered_frame_paths"],
+            projection.get("logical_relative_frame_paths", projection["ordered_frame_paths"]),
             projection["n_frames"],
             decoding_config,
         )
@@ -329,7 +334,7 @@ def cache_key_audit(
             projection["qa_id"],
             projection["window_id"],
             projection["intervention_id"],
-            projection["ordered_frame_paths"],
+            projection.get("logical_relative_frame_paths", projection["ordered_frame_paths"]),
             projection["n_frames"],
             decoding_config,
         )
@@ -414,6 +419,7 @@ def write_summary_md(path: str | Path, summary: dict[str, Any]) -> None:
         f"- frozen Qwen config checks: {summary.get('frozen_qwen_config_checks')}",
         f"- Phase C consistency: {summary.get('phase_c_consistency')}",
         f"- processor frame-count audit: {summary.get('processor_frame_count_audit')}",
+        f"- path audit: {summary.get('path_audit')}",
         f"- unexpected temporal resampling: {summary.get('unexpected_temporal_resampling')}",
         f"- cache audit: {summary.get('cache_audit')}",
         f"- possible memory leak: {summary.get('possible_memory_leak')}",
@@ -442,6 +448,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--run_all_generation_valid", action="store_true")
     p.add_argument("--skip_phase_c_consistency", action="store_true")
     p.add_argument("--dry_run", action="store_true")
+    p.add_argument("--preflight_only", action="store_true")
+    p.add_argument("--allow_scientific_environment_mismatch", action="store_true")
     p.add_argument("--prompt_version", default=PROMPT_VERSION)
     p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default=FROZEN_QWEN_BACKEND)
     p.add_argument("--model_name", default="dummy-video-vlm")
@@ -452,7 +460,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--processor_min_pixels", type=int, default=None)
     p.add_argument("--processor_max_pixels", type=int, default=None)
     p.add_argument("--frame_root", default=None)
-    p.add_argument("--source_frame_prefix", default="/root/data")
+    p.add_argument(
+        "--source_frame_prefix",
+        default="/root/data,/mnt/hdd3/huihui/hh_datas/MedVidU/valdata,/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
+        help="Comma-separated known logical roots from Phase C/D artifacts.",
+    )
     p.add_argument("--base_url", default=None)
     p.add_argument("--api_key", default=None)
     p.add_argument("--temperature", type=float, default=0.0)
@@ -520,6 +532,7 @@ def main() -> None:
         assert_no_forbidden_model_fields(projection, "model-side intervention projection")
         if projection["n_frames"] not in EXPECTED_FRAME_COUNTS:
             raise RuntimeError(f"Unexpected frame count in {projection['intervention_id']}: {projection['n_frames']}")
+    path_audit = projection_path_audit(projections)
 
     model = build_model(args)
     model_fingerprint = model.fingerprint()
@@ -534,7 +547,63 @@ def main() -> None:
             raise RuntimeError(f"Frozen decoding config check failed: {decoding_config}")
 
     consistency = phase_c_consistency_check(args, model_fingerprint, decoding_config, projections)
-    assert_phase_c_consistency(consistency)
+    try:
+        assert_phase_c_consistency(
+            consistency,
+            allow_scientific_environment_mismatch=args.allow_scientific_environment_mismatch,
+        )
+    except RuntimeError:
+        preflight_summary = {
+            "report_title": "Phase D.2 Preflight Stop Summary",
+            "smoke_mode": not args.run_all_generation_valid,
+            "full_run_executed": False,
+            "interventions_input": args.interventions,
+            "n_total_interventions": len(raw_rows),
+            "n_generation_valid": n_generation_valid,
+            "n_selected_interventions": len(projections),
+            "frame_root": args.frame_root,
+            "source_frame_prefix": args.source_frame_prefix,
+            "path_audit": path_audit,
+            "model_backend": args.model_backend,
+            "model_path": args.model_path,
+            "model_fingerprint": model_fingerprint,
+            "decoding_config": decoding_config,
+            "frozen_qwen_config_checks": frozen_checks,
+            "phase_c_consistency": consistency,
+            "real_model_inference_executed": False,
+            "stop_reason": "Phase C/D.2 consistency check failed before model inference.",
+        }
+        write_json(summary_output, preflight_summary)
+        write_summary_md(summary_md_output, preflight_summary)
+        if args.preflight_only:
+            print(json.dumps(preflight_summary, ensure_ascii=False, indent=2))
+            return
+        raise
+    if args.preflight_only:
+        summary = {
+            "report_title": "Phase D.2 Preflight Summary",
+            "smoke_mode": not args.run_all_generation_valid,
+            "full_run_executed": False,
+            "interventions_input": args.interventions,
+            "n_total_interventions": len(raw_rows),
+            "n_generation_valid": n_generation_valid,
+            "n_selected_interventions": len(projections),
+            "frame_root": args.frame_root,
+            "source_frame_prefix": args.source_frame_prefix,
+            "path_audit": path_audit,
+            "model_backend": args.model_backend,
+            "model_path": args.model_path,
+            "model_fingerprint": model_fingerprint,
+            "decoding_config": decoding_config,
+            "frozen_qwen_config_checks": frozen_checks,
+            "phase_c_consistency": consistency,
+            "real_model_inference_executed": False,
+            "stop_note": "Preflight only: no Qwen inference was executed.",
+        }
+        write_json(summary_output, summary)
+        write_summary_md(summary_md_output, summary)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return
     cache_keys, cache_audit = cache_key_audit(projections, model_hash, decoding_config)
     completed = load_completed_cache_keys(probe_results)
     completed_cache_at_start = len(completed)
@@ -703,6 +772,7 @@ def main() -> None:
         "model_path": args.model_path,
         "frame_root": args.frame_root,
         "source_frame_prefix": args.source_frame_prefix,
+        "path_audit": path_audit,
         "model_fingerprint": model_fingerprint,
         "model_identity_hash": model_hash,
         "prompt_version": args.prompt_version,
