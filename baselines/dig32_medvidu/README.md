@@ -17,6 +17,54 @@ If the official query identifier is unavailable, the smoke report stops with `QU
 
 ## Run Stage A
 
+The official DIG launch scripts use vLLM. On CUDA 12.4, this baseline also
+supports an OpenAI-compatible SGLang serving adaptation. It keeps the official
+DIG prompts, model IDs, CAFS, reward semantics, and refinement untouched, but
+records `sglang` in the selector manifest and provenance.
+
+Set the local checkpoint paths. The query model must be the exact fixed
+checkpoint; do not replace it with a smaller or quantized model.
+
+```bash
+QUERY_MODEL=/path/to/Qwen3-Next-80B-A3B-Instruct
+REWARD_MODEL=/path/to/Qwen3-VL-8B-Instruct
+```
+
+Start the SGLang query server. Set `--tp-size` to the number of GPUs assigned
+to this server, and reserve different GPUs for the reward service.
+
+```bash
+python -m sglang.launch_server \
+  --model-path "$QUERY_MODEL" \
+  --served-model-name Qwen/Qwen3-Next-80B-A3B-Instruct \
+  --host 127.0.0.1 --port 30000 --api-key token-abc123 \
+  --tp-size 8 --mem-fraction-static 0.85
+```
+
+Start the fixed reward LMM in a second terminal:
+
+```bash
+python -m sglang.launch_server \
+  --model-path "$REWARD_MODEL" \
+  --served-model-name Qwen/Qwen3-VL-8B-Instruct \
+  --host 127.0.0.1 --port 30001 --api-key token-abc123 \
+  --tp-size 1 --mem-fraction-static 0.80
+```
+
+Run the selector with the SGLang endpoint and record the serving adaptation:
+
+```bash
+python -m baselines.dig32_medvidu.run_selector \
+  --manifest outputs/baselines/dig32_medvidu/selector/gt_free_manifest.smoke.jsonl \
+  --dig-repo-dir third_party/DIG \
+  --query-base-url http://127.0.0.1:30000/v1 \
+  --reward-base-url http://127.0.0.1:30001/v1 \
+  --query-serving-backend sglang \
+  --reward-serving-backend sglang
+```
+
+### Official vLLM Alternative
+
 Start the official DIG query LLM first:
 
 ```bash

@@ -66,8 +66,10 @@ class SelectorConfig:
     requested_k: int = REQUESTED_K
     video_refinement_wlen: int = VIDEO_REFINEMENT_WLEN
     query_identifier_model: str = QUERY_IDENTIFIER_MODEL
+    query_serving_backend: str = "vllm"
     reward_lmm: str = REWARD_LMM
     reward_lmm_path: str = REWARD_LMM_PATH
+    reward_serving_backend: str = "vllm"
     cafs_model: str = CAFS_MODEL
     cafs_sample_per_sec: int = CAFS_SAMPLE_PER_SEC
     cafs_infer_batch_size: int = CAFS_INFER_BATCH_SIZE

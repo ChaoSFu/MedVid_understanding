@@ -2,8 +2,10 @@ selector_version: dig32_fixed_v1
 requested_k: 32
 video_refinement_wlen: 2
 query_identifier_model: Qwen/Qwen3-Next-80B-A3B-Instruct
+query_serving_backend: vllm
 reward_lmm: Qwen3-VL-8B-Instruct
 reward_lmm_path: Qwen/Qwen3-VL-8B-Instruct
+reward_serving_backend: vllm
 cafs_model: facebook/dinov2-base
 cafs_sample_per_sec: 2
 cafs_infer_batch_size: 64

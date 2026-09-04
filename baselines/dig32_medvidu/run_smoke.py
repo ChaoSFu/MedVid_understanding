@@ -49,8 +49,13 @@ def prepare_smoke(args: argparse.Namespace) -> dict[str, Any]:
             "K": cfg.selector.requested_k,
             "wlen": cfg.selector.video_refinement_wlen,
             "query_identifier": cfg.selector.query_identifier_model,
+            "query_serving_backend": args.query_serving_backend,
             "CAFS_model": cfg.selector.cafs_model,
             "reward_LMM": cfg.selector.reward_lmm,
+            "reward_serving_backend": args.reward_serving_backend,
+            "serving_backend_adaptation": bool(
+                args.query_serving_backend != "vllm" or args.reward_serving_backend != "vllm"
+            ),
             "GT_used": False,
             "selector_deterministic": True,
             "query_preflight": query_preflight,
@@ -135,8 +140,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=cfg.smoke_seed)
     parser.add_argument("--per-task", type=int, default=cfg.smoke_per_task)
     parser.add_argument("--query-identifier-model", default=cfg.selector.query_identifier_model)
+    parser.add_argument("--query-serving-backend", choices=["vllm", "sglang"], default=cfg.selector.query_serving_backend)
     parser.add_argument("--query-base-url", default=cfg.query_base_url)
     parser.add_argument("--query-api-key", default=cfg.query_api_key)
+    parser.add_argument("--reward-serving-backend", choices=["vllm", "sglang"], default=cfg.selector.reward_serving_backend)
     parser.add_argument("--run-tests", action="store_true")
     return parser.parse_args()
 

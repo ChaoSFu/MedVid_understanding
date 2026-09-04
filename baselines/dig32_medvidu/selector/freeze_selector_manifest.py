@@ -69,9 +69,11 @@ def selector_cache_key(row: dict[str, Any], dig_commit: str, selector_cfg: dict[
             ),
             "dig_commit": dig_commit,
             "query_identifier_model": selector_cfg["query_identifier_model"],
+            "query_serving_backend": selector_cfg["query_serving_backend"],
             "cafs_model": selector_cfg["cafs_model"],
             "cafs_sample_per_sec": selector_cfg["cafs_sample_per_sec"],
             "reward_lmm": selector_cfg["reward_lmm"],
+            "reward_serving_backend": selector_cfg["reward_serving_backend"],
             "requested_k": selector_cfg["requested_k"],
             "wlen": selector_cfg["video_refinement_wlen"],
             "selector_version": selector_cfg["selector_version"],
@@ -107,6 +109,8 @@ async def run_selector_async(args: argparse.Namespace) -> dict[str, Any]:
     selector_cfg = cfg.selector.to_jsonable()
     selector_cfg["requested_k"] = int(args.k)
     selector_cfg["video_refinement_wlen"] = int(args.wlen)
+    selector_cfg["query_serving_backend"] = args.query_serving_backend
+    selector_cfg["reward_serving_backend"] = args.reward_serving_backend
     write_json(cfg.provenance_dir / "selector_config.json", selector_cfg)
     dig_commit_value = dig_git_commit(args.dig_repo_dir)
     (cfg.provenance_dir / "dig_git_commit.txt").write_text(dig_commit_value + "\n", encoding="utf-8")
@@ -134,7 +138,17 @@ async def run_selector_async(args: argparse.Namespace) -> dict[str, Any]:
         concurrency=args.query_concurrency,
     )
     query_preflight = query_identifier.preflight()
-    write_json(cfg.provenance_dir / "selector_model_fingerprints.json", {"query_identifier": query_preflight})
+    write_json(
+        cfg.provenance_dir / "selector_model_fingerprints.json",
+        {
+            "query_identifier": query_preflight,
+            "query_serving_backend": args.query_serving_backend,
+            "reward_serving_backend": args.reward_serving_backend,
+            "serving_backend_adaptation": bool(
+                args.query_serving_backend != "vllm" or args.reward_serving_backend != "vllm"
+            ),
+        },
+    )
     if query_preflight["status"] != "OK":
         summary = {
             "status": "QUERY_IDENTIFIER_UNAVAILABLE",
@@ -219,6 +233,7 @@ async def run_selector_async(args: argparse.Namespace) -> dict[str, Any]:
                     {
                         "sample_id": row["sample_id"],
                         "reward_lmm": selector_cfg["reward_lmm"],
+                        "reward_serving_backend": selector_cfg["reward_serving_backend"],
                         "r_frame_original_positions": r_positions,
                         "reward_values": reward_values,
                         "cache_key": cache_key,
@@ -312,8 +327,13 @@ def build_selector_summary(
             "k": args.k,
             "wlen": args.wlen,
             "query_identifier": args.query_identifier_model,
+            "query_serving_backend": args.query_serving_backend,
             "cafs_model": args.cafs_model,
             "reward_lmm": args.reward_lmm,
+            "reward_serving_backend": args.reward_serving_backend,
+            "serving_backend_adaptation": bool(
+                args.query_serving_backend != "vllm" or args.reward_serving_backend != "vllm"
+            ),
             "gt_used": False,
             "selector_deterministic": True,
         },
@@ -377,11 +397,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--k", type=int, default=cfg.selector.requested_k)
     parser.add_argument("--wlen", type=int, default=cfg.selector.video_refinement_wlen)
     parser.add_argument("--query-identifier-model", default=cfg.selector.query_identifier_model)
+    parser.add_argument("--query-serving-backend", choices=["vllm", "sglang"], default=cfg.selector.query_serving_backend)
     parser.add_argument("--query-base-url", default=cfg.query_base_url)
     parser.add_argument("--query-api-key", default=cfg.query_api_key)
     parser.add_argument("--query-concurrency", type=int, default=20)
     parser.add_argument("--reward-model-path", default=cfg.selector.reward_lmm_path)
     parser.add_argument("--reward-lmm", default=cfg.selector.reward_lmm)
+    parser.add_argument("--reward-serving-backend", choices=["vllm", "sglang"], default=cfg.selector.reward_serving_backend)
     parser.add_argument("--reward-base-url", default=cfg.reward_base_url)
     parser.add_argument("--reward-api-key", default=cfg.reward_api_key)
     parser.add_argument("--reward-concurrency", type=int, default=64)

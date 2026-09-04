@@ -57,7 +57,9 @@ def selector_cfg() -> dict:
         "requested_k": 32,
         "video_refinement_wlen": 2,
         "query_identifier_model": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+        "query_serving_backend": "vllm",
         "reward_lmm": "Qwen3-VL-8B-Instruct",
+        "reward_serving_backend": "vllm",
         "cafs_model": "facebook/dinov2-base",
         "cafs_sample_per_sec": 2,
         "cafs_infer_batch_size": 64,
@@ -116,6 +118,13 @@ class Dig32MedVidUTests(unittest.TestCase):
         key1 = selector_cache_key(row, "commit-a", selector_cfg())
         key2 = selector_cache_key(row, "commit-b", selector_cfg())
         self.assertNotEqual(key1, key2)
+
+    def test_selector_cache_key_changes_with_serving_backend(self):
+        row = build_gt_free_row(sample(n=40), new_data_root=None)
+        vllm_key = selector_cache_key(row, "commit", selector_cfg())
+        sglang_cfg = {**selector_cfg(), "query_serving_backend": "sglang"}
+        sglang_key = selector_cache_key(row, "commit", sglang_cfg)
+        self.assertNotEqual(vllm_key, sglang_key)
 
     def test_selector_output_deterministic(self):
         row = build_gt_free_row(sample(n=40), new_data_root=None)
