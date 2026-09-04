@@ -6,7 +6,7 @@ import pytest
 
 from baselines.videoitg_qwen35.config import ALL_QA_TYPES, CANDIDATE_LIMIT, TOP_K
 from baselines.videoitg_qwen35.io_utils import append_jsonl, assert_no_gt_leak, load_completed_keys
-from baselines.videoitg_qwen35.manifest import build_gt_free_row
+from baselines.videoitg_qwen35.manifest import build_gt_free_row, remap_nested_paths
 from baselines.videoitg_qwen35.models.qwen35 import qwen_cache_key
 from baselines.videoitg_qwen35.selectors.base import official_uniform_candidate_positions, topk_chronological
 from baselines.videoitg_qwen35.selectors.videoitg import build_selection_result, bypass_selection, validate_selection
@@ -38,7 +38,7 @@ def test_all_qa_types_dispatch():
 
 
 def test_gt_stripping_and_manifest_fields():
-    row = build_gt_free_row(sample())
+    row = build_gt_free_row(sample(), new_data_root=None)
     assert row["question"] == "<video>\nWhere is the action?"
     assert "struc_info" not in row
     assert "conversations" not in row
@@ -46,7 +46,7 @@ def test_gt_stripping_and_manifest_fields():
 
 
 def test_logical_positions_preserve_duplicate_paths():
-    row = build_gt_free_row(sample(n=5))
+    row = build_gt_free_row(sample(n=5), new_data_root=None)
     positions = official_uniform_candidate_positions(row["n_medvidu_frames"], CANDIDATE_LIMIT)
     paths = [row["video"][pos] for pos in positions]
     assert positions == [0, 1, 2, 3, 4]
@@ -82,7 +82,7 @@ def test_score_sort_topk_and_chronological_reorder():
 
 
 def test_build_selection_result_mapping_and_validation():
-    row = build_gt_free_row(sample(n=5))
+    row = build_gt_free_row(sample(n=5), new_data_root=None)
     result = build_selection_result(
         row,
         candidate_positions=[0, 1, 2, 3, 4],
@@ -99,7 +99,7 @@ def test_build_selection_result_mapping_and_validation():
 
 
 def test_timestamp_mapping_for_metadata_fps_fallback():
-    row = build_gt_free_row(sample(qa_type="skill_assessment", n=3, dataset_name="jigsaws"))
+    row = build_gt_free_row(sample(qa_type="skill_assessment", n=3, dataset_name="jigsaws"), new_data_root=None)
     assert row["time_mapping_method"] == "metadata_fps_source_frame_rate"
     assert [obs["local_time"] for obs in row["frame_observations"]] == [0.0, 1.0, 2.0]
 
@@ -111,7 +111,7 @@ def test_selector_jsonl_restart(tmp_path: Path):
 
 
 def test_qwen_cache_key_changes_with_positions():
-    row = build_gt_free_row(sample(n=5))
+    row = build_gt_free_row(sample(n=5), new_data_root=None)
     selection = bypass_selection(row, "m", "c").to_dict()
     fp = {"model": "qwen"}
     decode = {"do_sample": False}
@@ -126,7 +126,7 @@ def test_rc_selector_bypass():
     s = sample(qa_type="region_caption_gpt", n=3, dataset_name="EgoSurgery")
     s["is_RC"] = True
     s["RC_info"] = {"start_frame": "/frames/0001.jpg", "start_frame_bbox": [1, 2, 3, 4]}
-    row = build_gt_free_row(s)
+    row = build_gt_free_row(s, new_data_root=None)
     result = bypass_selection(row, "m", "c").to_dict()
     assert row["selector_applicable"] is False
     assert result["selector_applicable"] is False
@@ -144,3 +144,32 @@ def test_empty_model_response_parser_failure_not_exception():
 def test_gt_leak_detection():
     with pytest.raises(AssertionError):
         assert_no_gt_leak({"safe": {"gt_answer": "nope"}})
+
+
+def test_manifest_path_remap_video_and_rc_info():
+    s = sample(qa_type="region_caption_gpt", n=2, dataset_name="EgoSurgery")
+    s["video"] = [
+        "/root/data/CoPESD/high_light_images/000937/1116.jpg",
+        "/root/data/AVOS/frames_15fps/rzKGRcXNXm4/4162.jpg",
+    ]
+    s["RC_info"] = {
+        "start_frame": "/root/data/AVOS/frames_15fps/rzKGRcXNXm4/4162.jpg",
+        "start_frame_bbox": [1, 2, 3, 4],
+    }
+    row = build_gt_free_row(
+        s,
+        old_data_root="/root/data",
+        new_data_root="/mnt/hdd3/huihui/hh_datas/MedVidU/valdata",
+    )
+    assert row["video"][0] == "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/CoPESD/high_light_images/000937/1116.jpg"
+    assert row["video"][1] == "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/rzKGRcXNXm4/4162.jpg"
+    assert row["RC_info"]["start_frame"] == "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata/AVOS/frames_15fps/rzKGRcXNXm4/4162.jpg"
+
+
+def test_remap_nested_paths_leaves_non_matching_values():
+    obj = {"a": "/root/data/x.jpg", "b": "/other/y.jpg", "c": ["/root/data/z.jpg", 3]}
+    assert remap_nested_paths(obj, "/root/data", "/new/root") == {
+        "a": "/new/root/x.jpg",
+        "b": "/other/y.jpg",
+        "c": ["/new/root/z.jpg", 3],
+    }

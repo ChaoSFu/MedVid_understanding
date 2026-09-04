@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import os
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_PATH = REPO_ROOT / "data_json" / "init_datas" / "medvidu_eccv2026_trainval.json"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "baselines" / "videoitg_qwen35"
 DEFAULT_EVALUATOR = REPO_ROOT / "MedVidBench-Leaderboard" / "evaluation" / "evaluate_predictions.py"
+DEFAULT_OLD_DATA_ROOT = "/root/data"
+DEFAULT_NEW_DATA_ROOT = os.environ.get("MEDVIDU_DATA_ROOT", "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata")
 
 VIDEOITG_REPO = "https://github.com/NVlabs/VideoITG"
 VIDEOITG_COMMIT = "50a60a822c0e362bfd8747c45ba34e66e9c9d650"
@@ -130,6 +133,8 @@ class RunConfig:
     data_path: Path = DEFAULT_DATA_PATH
     output_root: Path = DEFAULT_OUTPUT_ROOT
     evaluator: Path = DEFAULT_EVALUATOR
+    old_data_root: str = DEFAULT_OLD_DATA_ROOT
+    new_data_root: str | None = DEFAULT_NEW_DATA_ROOT
     videoitg_repo: str = VIDEOITG_REPO
     videoitg_commit: str = VIDEOITG_COMMIT
     selector_model: str = VIDEOITG_CHECKPOINT

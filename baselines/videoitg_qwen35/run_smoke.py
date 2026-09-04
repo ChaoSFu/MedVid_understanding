@@ -13,6 +13,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Prepare fixed GT-blind smoke inputs for VideoITG-32 + Qwen3.5-4B.")
     p.add_argument("--data-path", type=Path, default=cfg.data_path)
     p.add_argument("--output-root", type=Path, default=cfg.output_root)
+    p.add_argument("--old-data-root", default=cfg.old_data_root)
+    p.add_argument("--new-data-root", default=cfg.new_data_root)
     p.add_argument("--seed", type=int, default=cfg.smoke_seed)
     p.add_argument("--per-task", type=int, default=cfg.smoke_per_task)
     return p.parse_args()
@@ -20,11 +22,23 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    cfg = RunConfig(data_path=args.data_path, output_root=args.output_root, smoke_seed=args.seed, smoke_per_task=args.per_task)
+    cfg = RunConfig(
+        data_path=args.data_path,
+        output_root=args.output_root,
+        old_data_root=args.old_data_root,
+        new_data_root=args.new_data_root,
+        smoke_seed=args.seed,
+        smoke_per_task=args.per_task,
+    )
     cfg.make_dirs()
     manifest_path = cfg.manifest_dir / "medvidu_videoitg_manifest_gt_free.jsonl"
     smoke_path = cfg.manifest_dir / "medvidu_videoitg_manifest_gt_free.smoke.jsonl"
-    manifest_report = build_manifest(cfg.data_path, manifest_path)
+    manifest_report = build_manifest(
+        cfg.data_path,
+        manifest_path,
+        old_data_root=cfg.old_data_root,
+        new_data_root=cfg.new_data_root,
+    )
     smoke_report = write_smoke_manifest(read_jsonl(manifest_path), smoke_path, per_task=cfg.smoke_per_task, seed=cfg.smoke_seed)
     write_json(cfg.provenance_dir / "run_config.json", cfg.to_jsonable())
     report = {

@@ -24,7 +24,9 @@ Region Caption is marked selector N/A because MedVidU already supplies local reg
 Prepare GT-free manifest and fixed smoke IDs:
 
 ```bash
-python -m baselines.videoitg_qwen35.run_smoke
+python -m baselines.videoitg_qwen35.run_smoke \
+  --old-data-root /root/data \
+  --new-data-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata
 ```
 
 Run Qwen3.5 compatibility preflight in the Qwen environment:
@@ -40,6 +42,11 @@ python -m baselines.videoitg_qwen35.run_selector \
   --manifest outputs/baselines/videoitg_qwen35/manifest/medvidu_videoitg_manifest_gt_free.smoke.jsonl \
   --videoitg-repo-dir /path/to/VideoITG
 ```
+
+If your data root differs, regenerate the manifest with the correct
+`--new-data-root` before running selector or Qwen inference. The remap changes
+only filesystem prefixes; it does not add frames or alter the MedVidU evidence
+budget.
 
 Run deterministic Qwen3.5 inference:
 

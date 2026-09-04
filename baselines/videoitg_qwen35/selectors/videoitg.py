@@ -156,6 +156,9 @@ def selection_cache_key(
         {
             "sample_id": manifest_row["sample_id"],
             "ordered_candidate_logical_positions": candidate_positions,
+            "ordered_candidate_frame_paths_hash": sha256_json(
+                [manifest_row["video"][pos] for pos in candidate_positions]
+            ),
             "question_hash": sha256_json(manifest_row.get("question", "")),
             "selector_model": selector_model,
             "selector_commit": selector_commit,

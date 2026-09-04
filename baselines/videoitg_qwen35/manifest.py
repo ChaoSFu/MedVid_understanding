@@ -9,6 +9,8 @@ from typing import Any
 
 from .config import (
     ALL_QA_TYPES,
+    DEFAULT_NEW_DATA_ROOT,
+    DEFAULT_OLD_DATA_ROOT,
     REGION_CAPTION_QA_TYPES,
     SELECTOR_APPLICABLE_QA_TYPES,
     TASK_NAME_BY_QA_TYPE,
@@ -36,6 +38,33 @@ def extract_question(sample: dict[str, Any]) -> str:
 
 def make_sample_id(sample: dict[str, Any], original_index: int) -> str:
     return f"{original_index:06d}::{sample.get('id', '')}::{sample.get('qa_type', '')}"
+
+
+def remap_path(path: str, old_root: str, new_root: str | None) -> str:
+    if not new_root:
+        return path
+    old = old_root.rstrip("/")
+    new = new_root.rstrip("/")
+    if path == old:
+        return new
+    if path.startswith(old + "/"):
+        return new + path[len(old):]
+    return path
+
+
+def remap_nested_paths(value: Any, old_root: str, new_root: str | None) -> Any:
+    if isinstance(value, str):
+        return remap_path(value, old_root, new_root)
+    if isinstance(value, list):
+        return [remap_nested_paths(item, old_root, new_root) for item in value]
+    if isinstance(value, tuple):
+        return [remap_nested_paths(item, old_root, new_root) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: remap_nested_paths(child, old_root, new_root)
+            for key, child in value.items()
+        }
+    return value
 
 
 def map_temporal_positions(sample: dict[str, Any]) -> MappingResult:
@@ -79,11 +108,17 @@ def _map_by_metadata_fps(sampled_frames: list[int], frame_paths: list[str], fps:
     )
 
 
-def build_gt_free_row(sample: dict[str, Any], original_index: int = 0) -> dict[str, Any]:
+def build_gt_free_row(
+    sample: dict[str, Any],
+    original_index: int = 0,
+    old_data_root: str = DEFAULT_OLD_DATA_ROOT,
+    new_data_root: str | None = DEFAULT_NEW_DATA_ROOT,
+) -> dict[str, Any]:
     qa_type = str(sample.get("qa_type", ""))
     if qa_type not in ALL_QA_TYPES:
         raise KeyError(f"Unsupported qa_type: {qa_type}")
 
+    sample = remap_nested_paths(sample, old_data_root, new_data_root)
     video = list(sample.get("video") or [])
     sampled_frames = [int(x) for x in sample.get("sampled_video_frames") or []]
     if len(video) != len(sampled_frames):
@@ -112,6 +147,10 @@ def build_gt_free_row(sample: dict[str, Any], original_index: int = 0) -> dict[s
         "source_timebase_hz": mapping.source_timebase_hz,
         "clip_duration_source": mapping.clip_duration_source,
         "frame_observations": [obs.to_dict() for obs in mapping.observations],
+        "path_mapping": {
+            "old_data_root": old_data_root,
+            "new_data_root": new_data_root,
+        },
     }
     if qa_type in REGION_CAPTION_QA_TYPES:
         row["selector_applicable"] = False
@@ -123,7 +162,12 @@ def build_gt_free_row(sample: dict[str, Any], original_index: int = 0) -> dict[s
     return row
 
 
-def build_manifest(data_path: Path, output_path: Path) -> dict[str, Any]:
+def build_manifest(
+    data_path: Path,
+    output_path: Path,
+    old_data_root: str = DEFAULT_OLD_DATA_ROOT,
+    new_data_root: str | None = DEFAULT_NEW_DATA_ROOT,
+) -> dict[str, Any]:
     data = read_json(data_path)
     if not isinstance(data, list):
         raise TypeError("MedVidU input JSON must be a list")
@@ -131,7 +175,7 @@ def build_manifest(data_path: Path, output_path: Path) -> dict[str, Any]:
     failures: list[dict[str, Any]] = []
     for i, sample in enumerate(data):
         try:
-            rows.append(build_gt_free_row(sample, i))
+            rows.append(build_gt_free_row(sample, i, old_data_root=old_data_root, new_data_root=new_data_root))
         except Exception as exc:
             failures.append(
                 {
@@ -145,6 +189,10 @@ def build_manifest(data_path: Path, output_path: Path) -> dict[str, Any]:
     report = {
         "data_path": str(data_path),
         "output_path": str(output_path),
+        "path_mapping": {
+            "old_data_root": old_data_root,
+            "new_data_root": new_data_root,
+        },
         "total_input_samples": len(data),
         "manifest_samples": len(rows),
         "failures": failures,
@@ -202,6 +250,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build GT-free MedVidU manifest for VideoITG-32 + Qwen3.5 baseline.")
     p.add_argument("--data-path", type=Path, default=cfg.data_path)
     p.add_argument("--output-root", type=Path, default=cfg.output_root)
+    p.add_argument("--old-data-root", default=cfg.old_data_root)
+    p.add_argument("--new-data-root", default=cfg.new_data_root)
     p.add_argument("--smoke", action="store_true", help="Also write fixed smoke manifest and sample ids.")
     p.add_argument("--smoke-per-task", type=int, default=cfg.smoke_per_task)
     p.add_argument("--seed", type=int, default=cfg.smoke_seed)
@@ -210,10 +260,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    cfg = RunConfig(data_path=args.data_path, output_root=args.output_root)
+    cfg = RunConfig(data_path=args.data_path, output_root=args.output_root, old_data_root=args.old_data_root, new_data_root=args.new_data_root)
     cfg.make_dirs()
     manifest_path = cfg.manifest_dir / "medvidu_videoitg_manifest_gt_free.jsonl"
-    report = build_manifest(args.data_path, manifest_path)
+    report = build_manifest(args.data_path, manifest_path, old_data_root=args.old_data_root, new_data_root=args.new_data_root)
     if args.smoke:
         from .io_utils import read_jsonl
 
