@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evidence_stability.join import join_intervention_results
+from evidence_stability.join import d2_final_prediction_audit, join_intervention_results
 from evidence_stability.stability import (
     candidate_stability_rows,
     include_in_primary_denominator,
@@ -222,6 +222,9 @@ class PhaseDETests(unittest.TestCase):
         joined, summary = join_intervention_results(manifest, probes, expected_generation_valid=5)
         self.assertEqual(summary["n_matched"], 5)
         self.assertEqual({row["intervention_id"] for row in joined}, {row["intervention_id"] for row in manifest})
+        self.assertEqual({row["candidate_id"] for row in joined}, {"q::pos0000-0015"})
+        self.assertEqual({row["candidate_type"] for row in joined}, {"TRUE_SUPPORT"})
+        self.assertEqual({row["intervention_prediction"] for row in joined}, {"YES"})
 
     def test_duplicate_intervention_probe_id_fails(self):
         manifest, probes = make_candidate("q", "q::pos0000-0015", "TRUE_SUPPORT", {t: "YES" for t in TYPES})
@@ -251,6 +254,24 @@ class PhaseDETests(unittest.TestCase):
         context = [row for row in joined if row["intervention_type"] == "CONTEXT_1P5X"][0]
         self.assertEqual(context["parsed_prediction"], "NOT_RUN_GENERATION_INVALID")
 
+    def test_historical_errors_do_not_override_valid_final_results(self):
+        manifest, probes = make_candidate("q", "q::pos0000-0015", "TRUE_SUPPORT", {t: "YES" for t in TYPES})
+        error_rows = [
+            {
+                "intervention_id": probes[0]["intervention_id"],
+                "qa_id": "q",
+                "error_type": "CUDA_OOM_STOP",
+            }
+        ]
+        joined, summary = join_intervention_results(manifest, probes, error_rows=error_rows, expected_generation_valid=5)
+        by_id = {row["intervention_id"]: row for row in joined}
+        self.assertEqual(by_id[probes[0]["intervention_id"]]["intervention_prediction"], "YES")
+        self.assertEqual(summary["historical_error_records"], 1)
+        self.assertEqual(summary["historical_errors_resolved_by_final_result"], 1)
+        self.assertEqual(summary["unresolved_errors"], 0)
+        audit = d2_final_prediction_audit(manifest, probes, error_rows)
+        self.assertEqual(audit["historical_errors_resolved_by_final_result"], 1)
+
     def test_raw_gt_leakage_detection_fails(self):
         manifest, probes = make_candidate("q", "q::pos0000-0015", "TRUE_SUPPORT", {t: "YES" for t in TYPES})
         probes[0]["candidate_label"] = "TRUE_SUPPORT"
@@ -270,6 +291,11 @@ class PhaseDETests(unittest.TestCase):
         self.assertTrue(is_nan(a["S_context"]))
         self.assertEqual(a["S_overall_micro"], 0.75)
         self.assertEqual(a["S_overall_macro"], 0.75)
+        self.assertEqual(a["candidate_id"], "q1::pos0000-0015")
+        self.assertEqual(a["candidate_type"], "TRUE_SUPPORT")
+        self.assertEqual(a["n_valid_shift"], 2)
+        self.assertEqual(a["n_yes_resample"], 1)
+        self.assertEqual(len(a["strict_valid_intervention_ids"]), 4)
 
         b = by_window["q1::pos0016-0031"]
         self.assertEqual(b["original_candidate_label"], "SPURIOUS_SUPPORT")
@@ -316,8 +342,33 @@ class PhaseDETests(unittest.TestCase):
         self.assertEqual(q1["mean_S_true_macro"], 0.75)
         self.assertEqual(q1["mean_S_spurious_macro"], 0.25)
         self.assertEqual(q1["delta_S_macro_mean"], 0.5)
+        self.assertEqual(q1["delta_macro"], 0.5)
+        self.assertEqual(q1["mean_true_macro"], 0.75)
+        self.assertEqual(q1["mean_spurious_macro"], 0.25)
         self.assertEqual(q1["target_field"], "action")
         self.assertEqual(q1["dataset_name"], "AVOS")
+
+    def test_synthetic_protocol_example_matches_expected_scores(self):
+        manifest = []
+        probes = []
+        strict = {"CONTEXT_1P5X": False}
+        predictions = {
+            "SHIFT_LEFT_2": "YES",
+            "SHIFT_RIGHT_2": "NO",
+            "RESAMPLE_75": "YES",
+            "RESAMPLE_50": "YES",
+            "CONTEXT_1P5X": "NO",
+        }
+        rows, pred = make_candidate("q", "q::candidateA", "TRUE_SUPPORT", predictions, strict_valid=strict)
+        manifest += rows
+        probes += pred
+        joined, _ = join_intervention_results(manifest, probes, expected_generation_valid=5)
+        candidate = candidate_stability_rows(joined)[0]
+        self.assertEqual(candidate["S_shift"], 0.5)
+        self.assertEqual(candidate["S_resample"], 1.0)
+        self.assertTrue(is_nan(candidate["S_context"]))
+        self.assertEqual(candidate["S_overall_micro"], 0.75)
+        self.assertEqual(candidate["S_overall_macro"], 0.75)
 
     def test_paired_usability_recomputed_after_model_outputs(self):
         joined, _, _ = synthetic_joined()
@@ -362,6 +413,24 @@ class PhaseDETests(unittest.TestCase):
         self.assertEqual(summary["primary_h2_analysis"]["preferred_summary_score"], "S_overall_macro")
         self.assertFalse(summary["primary_h2_analysis"]["inferential_statistics_run"])
 
+    def test_phase_e_script_rejects_threshold_selection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_argv = phase_e_script.sys.argv
+            try:
+                phase_e_script.sys.argv = [
+                    "08_compute_stability.py",
+                    "--joined_results",
+                    str(Path(tmp) / "missing.jsonl"),
+                    "--output_dir",
+                    str(Path(tmp) / "phase_e"),
+                    "--stable_hallucination_threshold",
+                    "0.8",
+                ]
+                with self.assertRaises(RuntimeError):
+                    phase_e_script.main()
+            finally:
+                phase_e_script.sys.argv = old_argv
+
     def test_join_cli_exits_cleanly_without_full_predictions(self):
         with tempfile.TemporaryDirectory() as tmp:
             old_argv = phase_d3_join_script.sys.argv
@@ -379,7 +448,7 @@ class PhaseDETests(unittest.TestCase):
                     phase_d3_join_script.main()
             finally:
                 phase_d3_join_script.sys.argv = old_argv
-            summary = read_json(Path(tmp) / "out" / "phase_d3_join_summary.json")
+            summary = read_json(Path(tmp) / "out" / "phase_d3_join_audit.json")
             self.assertFalse(summary["full_phase_d2b_predictions_available"])
             self.assertFalse(summary["real_h2_analysis_executed"])
 
@@ -398,7 +467,7 @@ class PhaseDETests(unittest.TestCase):
                     phase_e_script.main()
             finally:
                 phase_e_script.sys.argv = old_argv
-            summary = read_json(Path(tmp) / "phase_e" / "phase_e_summary.json")
+            summary = read_json(Path(tmp) / "phase_e" / "summary" / "phase_e_summary.json")
             self.assertFalse(summary["joined_intervention_results_available"])
             self.assertFalse(summary["real_h2_analysis_executed"])
 
@@ -422,10 +491,24 @@ class PhaseDETests(unittest.TestCase):
             finally:
                 phase_e_script.sys.argv = old_argv
             self.assertTrue((out_dir / "candidate_stability.csv").exists())
+            self.assertTrue((out_dir / "candidate" / "candidate_stability.jsonl").exists())
+            self.assertTrue((out_dir / "candidate" / "candidate_stability_distribution.csv").exists())
+            self.assertTrue((out_dir / "candidate" / "spurious_high_stability.csv").exists())
+            self.assertTrue((out_dir / "candidate" / "true_low_stability.csv").exists())
             self.assertTrue((out_dir / "qa_stability.csv").exists())
+            self.assertTrue((out_dir / "qa" / "h2_primary_action_qa.csv").exists())
+            self.assertTrue((out_dir / "qa" / "h2_all_paired_qa.csv").exists())
+            self.assertTrue((out_dir / "qa" / "h2_phase_only_qa.csv").exists())
+            self.assertTrue((out_dir / "summary" / "yes_stickiness_diagnostic.csv").exists())
+            self.assertTrue((out_dir / "provenance" / "h2_protocol_provenance.json").exists())
             self.assertTrue((out_dir / "intervention_retention_matrix.csv").exists())
-            summary = read_json(out_dir / "phase_e_summary.json")
+            summary = read_json(out_dir / "summary" / "phase_e_summary.json")
             self.assertFalse(summary["real_h2_analysis_executed"])
+            self.assertFalse(summary["threshold_selection_run"])
+            primary = read_json(out_dir / "summary" / "h2_primary_action_summary.json")
+            phase = read_json(out_dir / "summary" / "h2_phase_only_summary.json")
+            self.assertEqual(primary["n_paired_QA"], 1)
+            self.assertEqual(phase["n_paired_QA"], 1)
 
 
 if __name__ == "__main__":

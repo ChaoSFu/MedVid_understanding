@@ -47,7 +47,7 @@ def score(n_yes: int, n_valid: int) -> float:
 
 
 def candidate_key(row: dict[str, Any]) -> tuple[str, str]:
-    return str(row["qa_id"]), str(row["window_id"])
+    return str(row["qa_id"]), str(row.get("candidate_id") or row["window_id"])
 
 
 def include_in_primary_denominator(row: dict[str, Any], validity_mode: str = "strict") -> bool:
@@ -134,6 +134,14 @@ def candidate_stability_rows(
     for key, rows in sorted(by_candidate.items()):
         first = rows[0]
         family = {name: family_stats(rows, name, validity_mode) for name in FAMILY_TYPES}
+        strict_valid_ids_by_family = {
+            name: [
+                row["intervention_id"]
+                for row in rows
+                if row.get("intervention_family") == name and include_in_primary_denominator(row, validity_mode)
+            ]
+            for name in FAMILY_TYPES
+        }
         type_retention = {}
         for intervention_type in INTERVENTION_TYPES:
             matches = [row for row in rows if row.get("intervention_type") == intervention_type]
@@ -153,23 +161,32 @@ def candidate_stability_rows(
         if fragile_true_threshold is not None and label == "TRUE_SUPPORT" and not is_nan(s_macro):
             fragile_true = s_macro <= fragile_true_threshold
         row = {
+            "candidate_id": first.get("candidate_id") or first["window_id"],
             "qa_id": first["qa_id"],
             "clip_id": first["clip_id"],
             "window_id": first["window_id"],
             "dataset_name": first.get("dataset_name"),
             "target_action": first.get("target_action"),
+            "target_action_or_phase": first.get("target_action"),
             "target_field": first.get("target_field"),
+            "candidate_type": label,
             "original_candidate_label": label,
             "gt_duration": first.get("gt_duration_total"),
             "gt_duration_bin": canonical_gt_duration_bin(first),
             "original_evidence_density": first.get("original_evidence_density"),
             "original_gt_evidence_recall": first.get("original_gt_evidence_recall"),
+            "n_valid_shift": family["SHIFT"]["n_valid"],
+            "n_yes_shift": family["SHIFT"]["n_yes"],
             "n_shift_valid": family["SHIFT"]["n_valid"],
             "n_shift_yes": family["SHIFT"]["n_yes"],
             "S_shift": family["SHIFT"]["score"],
+            "n_valid_resample": family["RESAMPLE"]["n_valid"],
+            "n_yes_resample": family["RESAMPLE"]["n_yes"],
             "n_resample_valid": family["RESAMPLE"]["n_valid"],
             "n_resample_yes": family["RESAMPLE"]["n_yes"],
             "S_resample": family["RESAMPLE"]["score"],
+            "n_valid_context": family["CONTEXT"]["n_valid"],
+            "n_yes_context": family["CONTEXT"]["n_yes"],
             "n_context_valid": family["CONTEXT"]["n_valid"],
             "n_context_yes": family["CONTEXT"]["n_yes"],
             "S_context": family["CONTEXT"]["score"],
@@ -179,6 +196,14 @@ def candidate_stability_rows(
             "S_overall_micro": s_micro,
             "S_overall_macro": s_macro,
             "n_missing_binary_outputs": sum(family[name]["n_missing_binary_outputs"] for name in FAMILY_TYPES),
+            "strict_valid_shift_intervention_ids": strict_valid_ids_by_family["SHIFT"],
+            "strict_valid_resample_intervention_ids": strict_valid_ids_by_family["RESAMPLE"],
+            "strict_valid_context_intervention_ids": strict_valid_ids_by_family["CONTEXT"],
+            "strict_valid_intervention_ids": [
+                intervention_id
+                for name in FAMILY_TYPES
+                for intervention_id in strict_valid_ids_by_family[name]
+            ],
             "stable_hallucination_candidate": stable_hallucination,
             "fragile_true_evidence": fragile_true,
         }
@@ -200,22 +225,33 @@ def qa_stability_rows(candidate_rows: list[dict[str, Any]]) -> list[dict[str, An
             "clip_id": first.get("clip_id"),
             "dataset_name": first.get("dataset_name"),
             "target_action": first.get("target_action"),
+            "target_action_or_phase": first.get("target_action"),
             "target_field": first.get("target_field"),
             "n_true_candidates": len(true_rows),
+            "mean_true_macro": clean_mean([row["S_overall_macro"] for row in true_rows]),
             "mean_S_true_macro": clean_mean([row["S_overall_macro"] for row in true_rows]),
             "median_S_true_macro": clean_median([row["S_overall_macro"] for row in true_rows]),
+            "mean_true_micro": clean_mean([row["S_overall_micro"] for row in true_rows]),
             "mean_S_true_micro": clean_mean([row["S_overall_micro"] for row in true_rows]),
             "median_S_true_micro": clean_median([row["S_overall_micro"] for row in true_rows]),
+            "true_shift": clean_mean([row["S_shift"] for row in true_rows]),
             "mean_S_true_shift": clean_mean([row["S_shift"] for row in true_rows]),
+            "true_resample": clean_mean([row["S_resample"] for row in true_rows]),
             "mean_S_true_resample": clean_mean([row["S_resample"] for row in true_rows]),
+            "true_context": clean_mean([row["S_context"] for row in true_rows]),
             "mean_S_true_context": clean_mean([row["S_context"] for row in true_rows]),
             "n_spurious_candidates": len(spurious_rows),
+            "mean_spurious_macro": clean_mean([row["S_overall_macro"] for row in spurious_rows]),
             "mean_S_spurious_macro": clean_mean([row["S_overall_macro"] for row in spurious_rows]),
             "median_S_spurious_macro": clean_median([row["S_overall_macro"] for row in spurious_rows]),
+            "mean_spurious_micro": clean_mean([row["S_overall_micro"] for row in spurious_rows]),
             "mean_S_spurious_micro": clean_mean([row["S_overall_micro"] for row in spurious_rows]),
             "median_S_spurious_micro": clean_median([row["S_overall_micro"] for row in spurious_rows]),
+            "spurious_shift": clean_mean([row["S_shift"] for row in spurious_rows]),
             "mean_S_spurious_shift": clean_mean([row["S_shift"] for row in spurious_rows]),
+            "spurious_resample": clean_mean([row["S_resample"] for row in spurious_rows]),
             "mean_S_spurious_resample": clean_mean([row["S_resample"] for row in spurious_rows]),
+            "spurious_context": clean_mean([row["S_context"] for row in spurious_rows]),
             "mean_S_spurious_context": clean_mean([row["S_context"] for row in spurious_rows]),
         }
         for suffix in ["macro", "micro", "shift", "resample", "context"]:
@@ -224,6 +260,11 @@ def qa_stability_rows(candidate_rows: list[dict[str, Any]]) -> list[dict[str, An
             record[f"delta_S_{suffix}_mean" if suffix in {"macro", "micro"} else f"delta_S_{suffix}"] = (
                 left - right if not is_nan(left) and not is_nan(right) else nan()
             )
+        record["delta_macro"] = record["delta_S_macro_mean"]
+        record["delta_micro"] = record["delta_S_micro_mean"]
+        record["delta_shift"] = record["delta_S_shift"]
+        record["delta_resample"] = record["delta_S_resample"]
+        record["delta_context"] = record["delta_S_context"]
         record["paired_macro_usable"] = any(not is_nan(row["S_overall_macro"]) for row in true_rows) and any(
             not is_nan(row["S_overall_macro"]) for row in spurious_rows
         )
