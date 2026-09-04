@@ -1,0 +1,3 @@
+[submodule "third_party/DIG"]
+	path = third_party/DIG
+	url = https://github.com/Jialuo-Li/DIG
