@@ -42,6 +42,54 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def repair_jsonl(path: Path, backup_suffix: str = ".corrupt.bak") -> dict[str, Any]:
+    valid_lines: list[str] = []
+    bad_lines: list[dict[str, Any]] = []
+    if not path.exists():
+        return {
+            "path": str(path),
+            "exists": False,
+            "valid_lines": 0,
+            "bad_lines": [],
+            "backup_path": None,
+        }
+
+    for line_no, raw_line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        try:
+            row = json.loads(stripped)
+            if not isinstance(row, dict):
+                raise TypeError(f"expected JSON object, got {type(row).__name__}")
+        except Exception as exc:
+            bad_lines.append(
+                {
+                    "line_no": line_no,
+                    "error": repr(exc),
+                    "preview": stripped[:240],
+                }
+            )
+            continue
+        valid_lines.append(json.dumps(row, ensure_ascii=False, sort_keys=True))
+
+    backup_path = path.with_name(path.name + backup_suffix)
+    if bad_lines:
+        path.replace(backup_path)
+        with path.open("w", encoding="utf-8") as f:
+            for line in valid_lines:
+                f.write(line)
+                f.write("\n")
+
+    return {
+        "path": str(path),
+        "exists": True,
+        "valid_lines": len(valid_lines),
+        "bad_lines": bad_lines,
+        "backup_path": str(backup_path) if bad_lines else None,
+    }
+
+
 def append_jsonl(path: Path, row: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:

@@ -103,6 +103,20 @@ $SEL_ROOT/selector/videoitg_scores.jsonl
 $SEL_ROOT/selector/selector_errors.jsonl
 ```
 
+If a `nohup` selector run is interrupted while writing, repair the partial JSONL
+before resuming:
+
+```bash
+python -m baselines.videoitg_qwen35.run_repair_jsonl \
+  $SEL_ROOT/selector/videoitg_top32.jsonl \
+  $SEL_ROOT/selector/videoitg_scores.jsonl \
+  $SEL_ROOT/selector/selector_errors.jsonl \
+  --report $SEL_ROOT/selector/jsonl_repair_report.json
+```
+
+The repair command writes `*.corrupt.bak` backups and keeps only complete JSON
+object lines.
+
 If your data root differs, regenerate the manifest with the correct
 `--new-data-root` before running selector or Qwen inference. The remap changes
 only filesystem prefixes; it does not add frames or alter the MedVidU evidence

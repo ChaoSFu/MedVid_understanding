@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from baselines.videoitg_qwen35.config import ALL_QA_TYPES, CANDIDATE_LIMIT, TOP_K
-from baselines.videoitg_qwen35.io_utils import append_jsonl, assert_no_gt_leak, load_completed_keys
+from baselines.videoitg_qwen35.io_utils import append_jsonl, assert_no_gt_leak, load_completed_keys, repair_jsonl
 from baselines.videoitg_qwen35.manifest import build_gt_free_row, remap_nested_paths
 from baselines.videoitg_qwen35.models.qwen35 import qwen_cache_key
 from baselines.videoitg_qwen35.models.qwen_sglang import build_sglang_messages, sglang_cache_key
@@ -116,6 +116,16 @@ def test_selector_jsonl_restart(tmp_path: Path):
     path = tmp_path / "results.jsonl"
     append_jsonl(path, {"cache_key": "abc", "sample_id": "s"})
     assert load_completed_keys(path) == {"abc"}
+
+
+def test_repair_jsonl_keeps_valid_lines_and_backs_up(tmp_path: Path):
+    path = tmp_path / "broken.jsonl"
+    path.write_text('{"cache_key":"abc"}\nnot-json\n{"cache_key":"def"}\n', encoding="utf-8")
+    report = repair_jsonl(path)
+    assert report["valid_lines"] == 2
+    assert len(report["bad_lines"]) == 1
+    assert Path(report["backup_path"]).exists()
+    assert load_completed_keys(path) == {"abc", "def"}
 
 
 def test_qwen_cache_key_changes_with_positions():
