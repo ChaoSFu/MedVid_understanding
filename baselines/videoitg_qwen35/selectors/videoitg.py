@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -73,10 +74,15 @@ class VideoITGSelector:
         self._load()
         from PIL import Image
 
-        images = [
-            Image.open(path).convert("RGB")
-            for path in ordered_frame_paths
-        ]
+        images = []
+        for path, original_position in zip(ordered_frame_paths, original_positions):
+            try:
+                images.append(Image.open(path).convert("RGB"))
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to read MedVidU frame for VideoITG selector: "
+                    f"original_position={original_position} path={path!r} error={exc!r}"
+                ) from exc
         video_tensor = self.image_processor.preprocess(images, return_tensors="pt")["pixel_values"]
         video_tensor = video_tensor.half().to(self.torch.device(self.device))
         processed_video = [video_tensor]
@@ -297,7 +303,15 @@ def main() -> int:
             append_jsonl(scores_path, result)
             completed.add(str(result["cache_key"]))
         except Exception as exc:
-            append_jsonl(errors_path, {"sample_id": row.get("sample_id"), "stage": "selector", "error": repr(exc)})
+            append_jsonl(
+                errors_path,
+                {
+                    "sample_id": row.get("sample_id"),
+                    "stage": "selector",
+                    "error": repr(exc),
+                    "traceback": traceback.format_exc(),
+                },
+            )
     return 0
 
 
