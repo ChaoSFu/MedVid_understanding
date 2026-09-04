@@ -14,6 +14,7 @@ from baselines.videoitg_qwen35.selectors.videoitg import (
     build_selection_result,
     bypass_selection,
     filter_rows_for_shard,
+    repair_selector_outputs,
     selector_output_paths,
     validate_selection,
     validate_shard_args,
@@ -126,6 +127,18 @@ def test_repair_jsonl_keeps_valid_lines_and_backs_up(tmp_path: Path):
     assert len(report["bad_lines"]) == 1
     assert Path(report["backup_path"]).exists()
     assert load_completed_keys(path) == {"abc", "def"}
+
+
+def test_repair_selector_outputs_reports_only_bad_existing_files(tmp_path: Path):
+    good = tmp_path / "top.jsonl"
+    bad = tmp_path / "scores.jsonl"
+    missing = tmp_path / "errors.jsonl"
+    good.write_text('{"cache_key":"abc"}\n', encoding="utf-8")
+    bad.write_text('{"cache_key":"abc"}\nnot-json\n', encoding="utf-8")
+    reports = repair_selector_outputs(good, bad, missing)
+    assert len(reports) == 1
+    assert reports[0]["path"] == str(bad)
+    assert load_completed_keys(bad) == {"abc"}
 
 
 def test_qwen_cache_key_changes_with_positions():

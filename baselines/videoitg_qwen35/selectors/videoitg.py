@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import CANDIDATE_LIMIT, TOP_K, VIDEOITG_CHECKPOINT, VIDEOITG_COMMIT, RunConfig
-from ..io_utils import append_jsonl, assert_no_gt_leak, environment_snapshot, load_completed_keys, read_jsonl, sha256_json
+from ..io_utils import append_jsonl, assert_no_gt_leak, environment_snapshot, load_completed_keys, read_jsonl, repair_jsonl, sha256_json, write_json
 from .base import SelectionResult, official_uniform_candidate_positions, topk_chronological
 
 
@@ -294,6 +294,15 @@ def selector_output_paths(cfg: RunConfig, num_shards: int, shard_index: int) -> 
     )
 
 
+def repair_selector_outputs(output_path: Path, scores_path: Path, errors_path: Path) -> list[dict[str, Any]]:
+    reports = [
+        repair_jsonl(output_path),
+        repair_jsonl(scores_path),
+        repair_jsonl(errors_path),
+    ]
+    return [report for report in reports if report["exists"] and report["bad_lines"]]
+
+
 def parse_args() -> argparse.Namespace:
     cfg = RunConfig()
     p = argparse.ArgumentParser(description="Run frozen VideoITG selector on a MedVidU frame-list manifest.")
@@ -307,6 +316,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top-k", type=int, default=cfg.top_k)
     p.add_argument("--num-shards", type=int, default=1, help="Total selector shards for multi-GPU parallel runs.")
     p.add_argument("--shard-index", type=int, default=0, help="This process shard index, 0-based.")
+    p.add_argument(
+        "--no-auto-repair-jsonl",
+        action="store_true",
+        help="Disable startup repair of interrupted selector JSONL outputs.",
+    )
     return p.parse_args()
 
 
@@ -328,6 +342,11 @@ def main() -> int:
     )
     rows = filter_rows_for_shard(read_jsonl(args.manifest), args.num_shards, args.shard_index)
     output_path, scores_path, errors_path = selector_output_paths(cfg, args.num_shards, args.shard_index)
+    if not args.no_auto_repair_jsonl:
+        repair_reports = repair_selector_outputs(output_path, scores_path, errors_path)
+        if repair_reports:
+            report_path = cfg.selector_dir / f"selector_startup_repair_shard{args.shard_index:04d}-of{args.num_shards:04d}.json"
+            write_json(report_path, repair_reports)
     completed = load_completed_keys(output_path)
     for row in rows:
         candidate_positions = official_uniform_candidate_positions(int(row["n_medvidu_frames"]), args.candidate_limit) if row.get("selector_applicable") else []
