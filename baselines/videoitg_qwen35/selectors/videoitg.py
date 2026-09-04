@@ -260,6 +260,40 @@ def validate_selection(row: dict[str, Any]) -> None:
     assert_no_gt_leak(row)
 
 
+def validate_shard_args(num_shards: int, shard_index: int) -> None:
+    if num_shards < 1:
+        raise ValueError("--num-shards must be >= 1")
+    if shard_index < 0 or shard_index >= num_shards:
+        raise ValueError("--shard-index must satisfy 0 <= shard_index < num_shards")
+
+
+def filter_rows_for_shard(rows: list[dict[str, Any]], num_shards: int, shard_index: int) -> list[dict[str, Any]]:
+    validate_shard_args(num_shards, shard_index)
+    if num_shards == 1:
+        return rows
+    return [
+        row
+        for row in rows
+        if int(row.get("original_index", 0)) % num_shards == shard_index
+    ]
+
+
+def selector_output_paths(cfg: RunConfig, num_shards: int, shard_index: int) -> tuple[Path, Path, Path]:
+    validate_shard_args(num_shards, shard_index)
+    if num_shards == 1:
+        return (
+            cfg.selector_dir / "videoitg_top32.jsonl",
+            cfg.selector_dir / "videoitg_scores.jsonl",
+            cfg.selector_dir / "selector_errors.jsonl",
+        )
+    suffix = f"shard{shard_index:04d}-of{num_shards:04d}.jsonl"
+    return (
+        cfg.selector_dir / f"videoitg_top32.{suffix}",
+        cfg.selector_dir / f"videoitg_scores.{suffix}",
+        cfg.selector_dir / f"selector_errors.{suffix}",
+    )
+
+
 def parse_args() -> argparse.Namespace:
     cfg = RunConfig()
     p = argparse.ArgumentParser(description="Run frozen VideoITG selector on a MedVidU frame-list manifest.")
@@ -271,11 +305,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--device", default="cuda:0")
     p.add_argument("--candidate-limit", type=int, default=cfg.candidate_limit)
     p.add_argument("--top-k", type=int, default=cfg.top_k)
+    p.add_argument("--num-shards", type=int, default=1, help="Total selector shards for multi-GPU parallel runs.")
+    p.add_argument("--shard-index", type=int, default=0, help="This process shard index, 0-based.")
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    validate_shard_args(args.num_shards, args.shard_index)
     cfg = RunConfig(output_root=args.output_root)
     cfg.make_dirs()
     (cfg.provenance_dir / "videoitg_commit.txt").write_text(args.commit + "\n", encoding="utf-8")
@@ -289,10 +326,8 @@ def main() -> int:
         top_k=args.top_k,
         device=args.device,
     )
-    rows = read_jsonl(args.manifest)
-    output_path = cfg.selector_dir / "videoitg_top32.jsonl"
-    scores_path = cfg.selector_dir / "videoitg_scores.jsonl"
-    errors_path = cfg.selector_dir / "selector_errors.jsonl"
+    rows = filter_rows_for_shard(read_jsonl(args.manifest), args.num_shards, args.shard_index)
+    output_path, scores_path, errors_path = selector_output_paths(cfg, args.num_shards, args.shard_index)
     completed = load_completed_keys(output_path)
     for row in rows:
         candidate_positions = official_uniform_candidate_positions(int(row["n_medvidu_frames"]), args.candidate_limit) if row.get("selector_applicable") else []

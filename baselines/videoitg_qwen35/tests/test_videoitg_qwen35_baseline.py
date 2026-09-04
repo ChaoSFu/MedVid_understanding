@@ -10,7 +10,14 @@ from baselines.videoitg_qwen35.manifest import build_gt_free_row, remap_nested_p
 from baselines.videoitg_qwen35.models.qwen35 import qwen_cache_key
 from baselines.videoitg_qwen35.models.qwen_sglang import build_sglang_messages, sglang_cache_key
 from baselines.videoitg_qwen35.selectors.base import official_uniform_candidate_positions, topk_chronological
-from baselines.videoitg_qwen35.selectors.videoitg import build_selection_result, bypass_selection, validate_selection
+from baselines.videoitg_qwen35.selectors.videoitg import (
+    build_selection_result,
+    bypass_selection,
+    filter_rows_for_shard,
+    selector_output_paths,
+    validate_selection,
+    validate_shard_args,
+)
 from baselines.videoitg_qwen35.tasks import get_adapter
 
 
@@ -200,3 +207,28 @@ def test_sglang_cache_key_changes_with_served_model():
     key1 = sglang_cache_key(row, selection, "qwen-a", "prompt", decode, media)
     key2 = sglang_cache_key(row, selection, "qwen-b", "prompt", decode, media)
     assert key1 != key2
+
+
+def test_selector_shard_filter_uses_original_index():
+    rows = [{"original_index": i, "sample_id": str(i)} for i in range(10)]
+    assert [r["original_index"] for r in filter_rows_for_shard(rows, 3, 0)] == [0, 3, 6, 9]
+    assert [r["original_index"] for r in filter_rows_for_shard(rows, 3, 1)] == [1, 4, 7]
+    assert [r["original_index"] for r in filter_rows_for_shard(rows, 3, 2)] == [2, 5, 8]
+
+
+def test_selector_shard_args_validation():
+    validate_shard_args(1, 0)
+    with pytest.raises(ValueError):
+        validate_shard_args(0, 0)
+    with pytest.raises(ValueError):
+        validate_shard_args(2, 2)
+
+
+def test_selector_shard_output_paths():
+    from baselines.videoitg_qwen35.config import RunConfig
+
+    cfg = RunConfig(output_root=Path("/tmp/out"))
+    top, scores, errors = selector_output_paths(cfg, 4, 2)
+    assert top.name == "videoitg_top32.shard0002-of0004.jsonl"
+    assert scores.name == "videoitg_scores.shard0002-of0004.jsonl"
+    assert errors.name == "selector_errors.shard0002-of0004.jsonl"

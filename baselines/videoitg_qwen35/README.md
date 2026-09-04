@@ -43,6 +43,66 @@ python -m baselines.videoitg_qwen35.run_selector \
   --videoitg-repo-dir /path/to/VideoITG
 ```
 
+For full runs, shard selector across GPUs instead of sending VideoITG through a
+chat-serving engine. Each process writes its own JSONL shard, then merge them:
+
+```bash
+SEL_ROOT=outputs/baselines/videoitg_medvidu_top32
+VIDEOITG_REPO=/path/to/VideoITG
+
+CUDA_VISIBLE_DEVICES=0 nohup python -m baselines.videoitg_qwen35.run_selector \
+  --manifest $SEL_ROOT/manifest/medvidu_videoitg_manifest_gt_free.jsonl \
+  --output-root $SEL_ROOT \
+  --videoitg-repo-dir $VIDEOITG_REPO \
+  --device cuda:0 \
+  --num-shards 4 \
+  --shard-index 0 \
+  > $SEL_ROOT/logs/videoitg_selector_shard0.log 2>&1 &
+
+CUDA_VISIBLE_DEVICES=1 nohup python -m baselines.videoitg_qwen35.run_selector \
+  --manifest $SEL_ROOT/manifest/medvidu_videoitg_manifest_gt_free.jsonl \
+  --output-root $SEL_ROOT \
+  --videoitg-repo-dir $VIDEOITG_REPO \
+  --device cuda:0 \
+  --num-shards 4 \
+  --shard-index 1 \
+  > $SEL_ROOT/logs/videoitg_selector_shard1.log 2>&1 &
+
+CUDA_VISIBLE_DEVICES=2 nohup python -m baselines.videoitg_qwen35.run_selector \
+  --manifest $SEL_ROOT/manifest/medvidu_videoitg_manifest_gt_free.jsonl \
+  --output-root $SEL_ROOT \
+  --videoitg-repo-dir $VIDEOITG_REPO \
+  --device cuda:0 \
+  --num-shards 4 \
+  --shard-index 2 \
+  > $SEL_ROOT/logs/videoitg_selector_shard2.log 2>&1 &
+
+CUDA_VISIBLE_DEVICES=3 nohup python -m baselines.videoitg_qwen35.run_selector \
+  --manifest $SEL_ROOT/manifest/medvidu_videoitg_manifest_gt_free.jsonl \
+  --output-root $SEL_ROOT \
+  --videoitg-repo-dir $VIDEOITG_REPO \
+  --device cuda:0 \
+  --num-shards 4 \
+  --shard-index 3 \
+  > $SEL_ROOT/logs/videoitg_selector_shard3.log 2>&1 &
+```
+
+After every shard finishes:
+
+```bash
+python -m baselines.videoitg_qwen35.run_merge_selector_shards \
+  --output-root $SEL_ROOT \
+  --num-shards 4
+```
+
+The merged files are the standard downstream inputs:
+
+```text
+$SEL_ROOT/selector/videoitg_top32.jsonl
+$SEL_ROOT/selector/videoitg_scores.jsonl
+$SEL_ROOT/selector/selector_errors.jsonl
+```
+
 If your data root differs, regenerate the manifest with the correct
 `--new-data-root` before running selector or Qwen inference. The remap changes
 only filesystem prefixes; it does not add frames or alter the MedVidU evidence
