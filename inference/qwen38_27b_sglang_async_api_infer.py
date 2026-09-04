@@ -49,6 +49,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "results" / "qwen38_27b_sglang_trainval_50_per_qa_type_seed42"
 
 
+class EmptyAnswerError(RuntimeError):
+    pass
+
+
 def describe_exception(exc: BaseException) -> str:
     details = [repr(exc)]
     status_code = getattr(exc, "status_code", None)
@@ -157,14 +161,14 @@ def build_messages(
             "Use the frame order and sampling rate as temporal evidence.\n\n"
             f"{question}"
         )
-        user_content = [{"type": "text", "text": intro}]
-        user_content.extend(
+        user_content = [
             {
                 "type": "image_url",
                 "image_url": {"url": data_url},
             }
             for data_url in frame_data_urls
-        )
+        ]
+        user_content.append({"type": "text", "text": intro})
     else:
         raise ValueError(f"Unknown media_schema: {media_schema}")
 
@@ -225,6 +229,12 @@ async def call_sglang(
                     finish_reason,
                     raw_info["empty_answer_choice"],
                 )
+                if not args.allow_empty_answers:
+                    raise EmptyAnswerError(
+                        "SGLang returned an empty answer: "
+                        f"finish_reason={finish_reason} "
+                        f"choice={raw_info['empty_answer_choice']}"
+                    )
 
             return answer, elapsed, usage, finish_reason, raw_info
 
@@ -510,6 +520,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_attempts", type=int, default=3)
     parser.add_argument("--retry_base_seconds", type=float, default=2.0)
     parser.add_argument("--request_timeout", type=float, default=900.0)
+    parser.add_argument(
+        "--allow_empty_answers",
+        action="store_true",
+        help="Keep empty model outputs as successful predictions instead of retrying/failing them.",
+    )
 
     parser.add_argument("--max_completion_tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.0)
