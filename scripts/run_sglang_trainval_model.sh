@@ -13,6 +13,7 @@ Usage:
 Optional:
   --tp 1
   --concurrency 4
+  --max-request-frames 24
   --max-completion-tokens 1024
   --data-path data_json/init_datas/medvidu_eccv2026_trainval.json
   --old-data-root /root/data
@@ -29,6 +30,7 @@ GPU=""
 PORT=""
 TP="1"
 CONCURRENCY="4"
+MAX_REQUEST_FRAMES=""
 MAX_COMPLETION_TOKENS="1024"
 DATA_PATH="data_json/init_datas/medvidu_eccv2026_trainval.json"
 OLD_DATA_ROOT="/root/data"
@@ -61,6 +63,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --concurrency)
       CONCURRENCY="$2"
+      shift 2
+      ;;
+    --max-request-frames)
+      MAX_REQUEST_FRAMES="$2"
       shift 2
       ;;
     --max-completion-tokens)
@@ -163,6 +169,11 @@ echo "Starting async trainval inference for ${RUN_NAME}"
 echo "  base url: ${BASE_URL}"
 echo "  inference log: ${INFER_LOG}"
 
+REQUEST_FRAME_ARGS=()
+if [[ -n "${MAX_REQUEST_FRAMES}" ]]; then
+  REQUEST_FRAME_ARGS=(--max_request_frames "${MAX_REQUEST_FRAMES}")
+fi
+
 nohup python3 inference/qwen38_27b_sglang_async_api_infer.py \
   --data_path "${DATA_PATH}" \
   --old_data_root "${OLD_DATA_ROOT}" \
@@ -171,6 +182,7 @@ nohup python3 inference/qwen38_27b_sglang_async_api_infer.py \
   --model "${MODEL_PATH}" \
   --qa_types all \
   --concurrency "${CONCURRENCY}" \
+  "${REQUEST_FRAME_ARGS[@]}" \
   --media_schema "${MEDIA_SCHEMA}" \
   --max_completion_tokens "${MAX_COMPLETION_TOKENS}" \
   --output_path "results/${RUN_NAME}/results.json" \

@@ -53,6 +53,10 @@ class EmptyAnswerError(RuntimeError):
     pass
 
 
+class ContextLengthError(RuntimeError):
+    pass
+
+
 def describe_exception(exc: BaseException) -> str:
     details = [repr(exc)]
     status_code = getattr(exc, "status_code", None)
@@ -66,6 +70,15 @@ def describe_exception(exc: BaseException) -> str:
     if response_text:
         details.append(f"response_text={response_text}")
     return " | ".join(details)
+
+
+def is_context_length_error(exc: BaseException) -> bool:
+    text = describe_exception(exc).lower()
+    return (
+        "longer than the model's context length" in text
+        or "exceeds the maximum allowed length" in text
+        or "context length" in text
+    )
 
 
 def to_jsonable(value: Any) -> Any:
@@ -91,6 +104,38 @@ def compact_json(value: Any, max_chars: int = 4000) -> str:
     if len(text) <= max_chars:
         return text
     return text[:max_chars] + "...<truncated>"
+
+
+def uniform_subsample(items: List[str], max_items: int | None) -> Tuple[List[str], Dict[str, Any]]:
+    original_count = len(items)
+    if max_items is None or max_items <= 0 or original_count <= max_items:
+        return items, {
+            "original_num_frames": original_count,
+            "sent_num_frames": original_count,
+            "subsampled": False,
+        }
+
+    if max_items == 1:
+        indices = [original_count // 2]
+    else:
+        indices = [
+            round(i * (original_count - 1) / (max_items - 1))
+            for i in range(max_items)
+        ]
+
+    seen = set()
+    unique_indices = []
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            unique_indices.append(idx)
+
+    return [items[idx] for idx in unique_indices], {
+        "original_num_frames": original_count,
+        "sent_num_frames": len(unique_indices),
+        "subsampled": True,
+        "subsample_indices": unique_indices,
+    }
 
 
 def extract_message_text(message: Any) -> Tuple[str, str]:
@@ -246,6 +291,8 @@ async def call_sglang(
                 args.max_attempts,
                 describe_exception(exc),
             )
+            if is_context_length_error(exc):
+                raise ContextLengthError(describe_exception(exc)) from exc
             if attempt < args.max_attempts:
                 await asyncio.sleep(args.retry_base_seconds * (2 ** (attempt - 1)))
 
@@ -300,7 +347,7 @@ def prepare_sample(
     sample: Dict[str, Any],
     examples: Dict[str, Dict[str, str]],
     args: argparse.Namespace,
-) -> Tuple[Dict[str, Any], List[str], int, float, str]:
+) -> Tuple[Dict[str, Any], List[str], Dict[str, Any], float, str]:
     start = time.time()
     missing = find_missing_frame_paths(sample)
     if missing:
@@ -311,9 +358,20 @@ def prepare_sample(
         max_base64_frames=args.max_base64_frames,
     )
     maybe_save_rc_debug_frame(sample, pil_frames, args.debug_rc_dir)
-    num_frames = len(frame_data_urls)
+    frame_data_urls, frame_info = uniform_subsample(
+        frame_data_urls,
+        args.max_request_frames,
+    )
+    if frame_info["subsampled"]:
+        logger.info(
+            "Subsampled frames idx=%s id=%s from %d to %d for request context budget",
+            sample.get("original_idx"),
+            sample.get("id"),
+            frame_info["original_num_frames"],
+            frame_info["sent_num_frames"],
+        )
     question = get_question(sample)
-    return sample, frame_data_urls, num_frames, time.time() - start, question
+    return sample, frame_data_urls, frame_info, time.time() - start, question
 
 
 def get_media_schemas_to_try(args: argparse.Namespace) -> List[str]:
@@ -345,7 +403,7 @@ async def process_one(
         sample_start = time.time()
 
         try:
-            prepared_sample, frame_data_urls, num_frames, prep_elapsed, question = await asyncio.to_thread(
+            prepared_sample, frame_data_urls, frame_info, prep_elapsed, question = await asyncio.to_thread(
                 prepare_sample,
                 sample,
                 examples,
@@ -412,7 +470,9 @@ async def process_one(
                     "max_completion_tokens": args.max_completion_tokens,
                     "min_pixels_per_frame": MIN_PIXELS_PER_FRAME,
                     "max_pixels_per_frame": MAX_PIXELS_PER_FRAME,
-                    "num_processed_frames": num_frames,
+                    "num_processed_frames": frame_info["sent_num_frames"],
+                    "original_num_processed_frames": frame_info["original_num_frames"],
+                    "frame_sampling": frame_info,
                     "fps": metadata.get("fps"),
                     "preprocess_elapsed_sec": round(prep_elapsed, 3),
                     "api_elapsed_sec": round(api_elapsed, 3),
@@ -439,7 +499,7 @@ async def process_one(
                 idx,
                 qa_type,
                 video_id,
-                num_frames,
+                frame_info["sent_num_frames"],
                 api_elapsed,
                 total_elapsed,
             )
@@ -500,6 +560,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--validate_only", action="store_true")
     parser.add_argument("--max_base64_frames", type=int, default=DEFAULT_MAX_BASE64_FRAMES)
+    parser.add_argument(
+        "--max_request_frames",
+        type=int,
+        default=None,
+        help=(
+            "Uniformly subsample preprocessed frames before sending the request. "
+            "Use this with image_sequence serving when long videos exceed the "
+            "model context length. None keeps all processed frames."
+        ),
+    )
 
     parser.add_argument(
         "--media_schema",
