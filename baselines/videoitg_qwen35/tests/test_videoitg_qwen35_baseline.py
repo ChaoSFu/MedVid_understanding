@@ -8,6 +8,7 @@ from baselines.videoitg_qwen35.config import ALL_QA_TYPES, CANDIDATE_LIMIT, TOP_
 from baselines.videoitg_qwen35.io_utils import append_jsonl, assert_no_gt_leak, load_completed_keys
 from baselines.videoitg_qwen35.manifest import build_gt_free_row, remap_nested_paths
 from baselines.videoitg_qwen35.models.qwen35 import qwen_cache_key
+from baselines.videoitg_qwen35.models.qwen_sglang import build_sglang_messages, sglang_cache_key
 from baselines.videoitg_qwen35.selectors.base import official_uniform_candidate_positions, topk_chronological
 from baselines.videoitg_qwen35.selectors.videoitg import build_selection_result, bypass_selection, validate_selection
 from baselines.videoitg_qwen35.tasks import get_adapter
@@ -173,3 +174,29 @@ def test_remap_nested_paths_leaves_non_matching_values():
         "b": "/other/y.jpg",
         "c": ["/new/root/z.jpg", 3],
     }
+
+
+def test_sglang_messages_are_timestamped_image_sequence():
+    messages = build_sglang_messages(
+        prompt="Question?",
+        frame_data_urls=["data:image/png;base64,aaa", "data:image/png;base64,bbb"],
+        timestamps=[1.25, 2.5],
+        media_schema="image_sequence",
+        min_pixels=None,
+        max_pixels=None,
+    )
+    content = messages[0]["content"]
+    assert content[0] == {"type": "text", "text": "Frame 1: 1.250 seconds"}
+    assert content[1]["type"] == "image_url"
+    assert content[2] == {"type": "text", "text": "Frame 2: 2.500 seconds"}
+    assert content[-1] == {"type": "text", "text": "Question?"}
+
+
+def test_sglang_cache_key_changes_with_served_model():
+    row = build_gt_free_row(sample(n=5), new_data_root=None)
+    selection = bypass_selection(row, "m", "c").to_dict()
+    decode = {"temperature": 0.0}
+    media = {"media_schema": "image_sequence"}
+    key1 = sglang_cache_key(row, selection, "qwen-a", "prompt", decode, media)
+    key2 = sglang_cache_key(row, selection, "qwen-b", "prompt", decode, media)
+    assert key1 != key2

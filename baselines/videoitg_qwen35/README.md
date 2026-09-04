@@ -56,6 +56,22 @@ python -m baselines.videoitg_qwen35.run_inference \
   --selector outputs/baselines/videoitg_qwen35/selector/videoitg_top32.jsonl
 ```
 
+For larger served Qwen models, such as Qwen3.8-27B, prefer the SGLang
+OpenAI-compatible async runner. Start SGLang separately, then run:
+
+```bash
+python -m baselines.videoitg_qwen35.run_inference_sglang \
+  --manifest outputs/baselines/videoitg_qwen35/manifest/medvidu_videoitg_manifest_gt_free.smoke.jsonl \
+  --selector outputs/baselines/videoitg_qwen35/selector/videoitg_top32.jsonl \
+  --model /path/to/local/Qwen3.8-27B \
+  --base-url http://127.0.0.1:30000/v1 \
+  --output-root outputs/baselines/videoitg_qwen38_27b_sglang \
+  --concurrency 4
+```
+
+The SGLang runner sends the exact VideoITG-selected frame list as timestamped
+image inputs. It does not rerun selection, resample frames, or use ground truth.
+
 Evaluate offline:
 
 ```bash
