@@ -278,7 +278,15 @@ def processor_frame_audit(debug_records: list[dict[str, Any]]) -> dict[str, Any]
     by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in debug_records:
         by_type[str(row["intervention_type"])].append(row)
-    base = frame_count_processor_audit(debug_records)
+    flattened_records = []
+    for row in debug_records:
+        metadata = row.get("processor_metadata") or {}
+        flattened = dict(row)
+        flattened["expected_frame_count"] = int(
+            row.get("expected_frame_count") or metadata.get("expected_frame_count") or 16
+        )
+        flattened_records.append(flattened)
+    base = frame_count_processor_audit(flattened_records)
     checks = {}
     for intervention_type in INTERVENTION_TYPES:
         rows = by_type.get(intervention_type, [])
@@ -452,6 +460,7 @@ def main() -> None:
                     {
                         "intervention_id": projection["intervention_id"],
                         "intervention_type": projection["intervention_type"],
+                        "expected_frame_count": projection["n_frames"],
                         "processor_metadata": record["processor_metadata"],
                     }
                 )

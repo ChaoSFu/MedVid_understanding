@@ -1,6 +1,8 @@
 import math
+import importlib.util
 import unittest
 from collections import Counter
+from pathlib import Path
 
 from evidence_stability.cache import make_h3_dynamic_probe_cache_key, stable_hash
 from evidence_stability.dynamic import (
@@ -22,6 +24,13 @@ from evidence_stability.dynamic import (
     reconstruct_h3_candidates,
 )
 from evidence_stability.prompts import PROMPT_VERSION, build_evidence_presence_prompt
+
+
+PROBE_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "11_probe_h3_dynamic_interventions.py"
+PROBE_SPEC = importlib.util.spec_from_file_location("h3_dynamic_probe_script", PROBE_SCRIPT_PATH)
+h3_probe_script = importlib.util.module_from_spec(PROBE_SPEC)
+assert PROBE_SPEC and PROBE_SPEC.loader
+PROBE_SPEC.loader.exec_module(h3_probe_script)
 
 
 def is_nan(value):
@@ -285,6 +294,24 @@ class PhaseFDynamicTests(unittest.TestCase):
                 [],
                 {"i1"},
             )
+
+    def test_processor_frame_audit_accepts_nested_expected_frame_count(self):
+        audit = h3_probe_script.processor_frame_audit(
+            [
+                {
+                    "intervention_id": "i1",
+                    "intervention_type": "FREEZE_MID_V1",
+                    "processor_metadata": {
+                        "expected_frame_count": 16,
+                        "input_frame_count": 16,
+                        "image_grid_thw_rows": 16,
+                    },
+                }
+            ]
+        )
+        self.assertEqual(audit["FREEZE_MID_V1"]["n_checked"], 1)
+        self.assertTrue(audit["FREEZE_MID_V1"]["all_input_frame_count_16"])
+        self.assertEqual(audit["frame_count_processor_audit"], {16: True})
 
     def test_smoke_selection_is_gt_blind_and_dataset_covering(self):
         phase_c, paired = synthetic_frozen_inputs()
