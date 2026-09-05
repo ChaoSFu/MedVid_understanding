@@ -8,7 +8,7 @@ from baselines.videoitg_qwen35.config import ALL_QA_TYPES, CANDIDATE_LIMIT, TOP_
 from baselines.videoitg_qwen35.io_utils import append_jsonl, assert_no_gt_leak, load_completed_keys, repair_jsonl
 from baselines.videoitg_qwen35.manifest import build_gt_free_row, remap_nested_paths
 from baselines.videoitg_qwen35.models.qwen35 import qwen_cache_key
-from baselines.videoitg_qwen35.models.qwen_sglang import build_sglang_messages, sglang_cache_key
+from baselines.videoitg_qwen35.models.qwen_sglang import build_sglang_messages, resize_to_max_pixels, sglang_cache_key
 from baselines.videoitg_qwen35.selectors.base import official_uniform_candidate_positions, topk_chronological
 from baselines.videoitg_qwen35.selectors.videoitg import (
     build_selection_result,
@@ -230,6 +230,29 @@ def test_sglang_cache_key_changes_with_served_model():
     key1 = sglang_cache_key(row, selection, "qwen-a", "prompt", decode, media)
     key2 = sglang_cache_key(row, selection, "qwen-b", "prompt", decode, media)
     assert key1 != key2
+
+
+def test_resize_to_max_pixels_preserves_small_images():
+    class ImageStub:
+        size = (10, 10)
+
+        def resize(self, size):
+            raise AssertionError("small image should not resize")
+
+    assert resize_to_max_pixels(ImageStub(), 100) is not None
+
+
+def test_resize_to_max_pixels_scales_large_images():
+    class ImageStub:
+        size = (400, 100)
+
+        def resize(self, size):
+            out = ImageStub()
+            out.size = size
+            return out
+
+    resized = resize_to_max_pixels(ImageStub(), 10000)
+    assert resized.size == (200, 50)
 
 
 def test_selector_shard_filter_uses_original_index():

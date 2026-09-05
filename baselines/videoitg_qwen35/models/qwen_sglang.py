@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import math
 import os
 import time
 from io import BytesIO
@@ -133,17 +134,33 @@ def build_sglang_messages(
     raise ValueError(f"Unsupported media_schema: {media_schema}")
 
 
-def prepare_frame_data_urls(selection_row: dict[str, Any]) -> tuple[list[str], list[list[int]]]:
+def resize_to_max_pixels(image: Any, max_pixels: int | None) -> Any:
+    if max_pixels is None or max_pixels <= 0:
+        return image
+    width, height = image.size
+    pixels = int(width) * int(height)
+    if pixels <= max_pixels:
+        return image
+    scale = math.sqrt(float(max_pixels) / float(pixels))
+    new_width = max(1, int(round(width * scale)))
+    new_height = max(1, int(round(height * scale)))
+    return image.resize((new_width, new_height))
+
+
+def prepare_frame_data_urls(selection_row: dict[str, Any], resize_max_pixels: int | None = None) -> tuple[list[str], list[list[int]], list[list[int]]]:
     from PIL import Image
 
     urls: list[str] = []
-    sizes: list[list[int]] = []
+    original_sizes: list[list[int]] = []
+    sent_sizes: list[list[int]] = []
     for path in selection_row.get("selected_frame_paths_chronological") or []:
         with Image.open(path) as image:
             image = image.convert("RGB")
-            sizes.append([int(image.size[0]), int(image.size[1])])
+            original_sizes.append([int(image.size[0]), int(image.size[1])])
+            image = resize_to_max_pixels(image, resize_max_pixels)
+            sent_sizes.append([int(image.size[0]), int(image.size[1])])
             urls.append(pil_to_data_url(image))
-    return urls, sizes
+    return urls, original_sizes, sent_sizes
 
 
 async def call_sglang(client: Any, args: argparse.Namespace, messages: list[dict[str, Any]]) -> tuple[str, float, dict[str, Any], str, dict[str, Any]]:
@@ -250,13 +267,18 @@ async def process_one(
                 "media_schema": args.media_schema,
                 "min_pixels": args.min_pixels,
                 "max_pixels": args.max_pixels,
+                "resize_max_pixels": args.resize_max_pixels,
             }
             cache_key = sglang_cache_key(manifest_row, selection_row, args.model, prompt, decode_config, media_config)
             if cache_key in completed:
                 return 0, 0, 1
 
             prep_start = time.time()
-            frame_data_urls, image_sizes = await asyncio.to_thread(prepare_frame_data_urls, selection_row)
+            frame_data_urls, original_image_sizes, sent_image_sizes = await asyncio.to_thread(
+                prepare_frame_data_urls,
+                selection_row,
+                args.resize_max_pixels,
+            )
             messages = build_sglang_messages(
                 prompt=prompt,
                 frame_data_urls=frame_data_urls,
@@ -291,7 +313,8 @@ async def process_one(
                     "media_config": media_config,
                     "decode_config": decode_config,
                     "num_selected_frames": len(frame_data_urls),
-                    "original_image_sizes": image_sizes,
+                    "original_image_sizes": original_image_sizes,
+                    "sent_image_sizes": sent_image_sizes,
                     "preprocess_elapsed_sec": round(prep_elapsed, 3),
                     "api_elapsed_sec": round(api_elapsed, 3),
                     "finish_reason": finish_reason,
@@ -417,6 +440,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--enable-thinking", action="store_true")
     p.add_argument("--min-pixels", type=int, default=None)
     p.add_argument("--max-pixels", type=int, default=None)
+    p.add_argument(
+        "--resize-max-pixels",
+        type=int,
+        default=None,
+        help="Resize each selected frame before base64 encoding so width*height <= this value.",
+    )
     return p.parse_args()
 
 
