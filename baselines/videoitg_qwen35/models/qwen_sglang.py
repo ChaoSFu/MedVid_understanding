@@ -192,6 +192,27 @@ async def call_sglang(client: Any, args: argparse.Namespace, messages: list[dict
     raise RuntimeError(f"SGLang request failed after {args.max_attempts} attempts: {describe_exception(last_error)}")
 
 
+async def check_sglang_server(client: Any, args: argparse.Namespace) -> dict[str, Any]:
+    try:
+        models = await client.models.list()
+    except Exception as exc:
+        raise RuntimeError(
+            "Cannot connect to SGLang OpenAI-compatible server. "
+            f"base_url={args.base_url!r} error={describe_exception(exc)}"
+        ) from exc
+
+    model_ids = []
+    for item in getattr(models, "data", []) or []:
+        model_id = getattr(item, "id", None)
+        if model_id is not None:
+            model_ids.append(str(model_id))
+    return {
+        "base_url": args.base_url,
+        "model_arg": args.model,
+        "served_model_ids": model_ids,
+    }
+
+
 async def process_one(
     manifest_row: dict[str, Any],
     selection_row: dict[str, Any],
@@ -338,6 +359,9 @@ async def run_async(args: argparse.Namespace) -> dict[str, int]:
         timeout=args.request_timeout,
         max_retries=0,
     )
+    if not args.no_server_check:
+        server_report = await check_sglang_server(client, args)
+        write_json(cfg.logs_dir / "qwen_sglang_server_check.json", server_report)
     io_lock = asyncio.Lock()
     semaphore = asyncio.Semaphore(max(args.concurrency, 1))
     tasks = [
@@ -379,6 +403,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model", default=QWEN35_CHECKPOINT)
     p.add_argument("--media-schema", choices=["image_sequence", "qwen_video"], default="image_sequence")
     p.add_argument("--concurrency", type=int, default=4)
+    p.add_argument("--no-server-check", action="store_true", help="Skip startup /v1/models connectivity check.")
     p.add_argument("--request-timeout", type=float, default=900.0)
     p.add_argument("--max-attempts", type=int, default=3)
     p.add_argument("--retry-base-seconds", type=float, default=2.0)
