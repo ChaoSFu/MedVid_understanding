@@ -57,3 +57,33 @@ def make_intervention_probe_cache_key(
             "decoding_config": decoding_config or {},
         }
     )
+
+
+def make_h3_dynamic_probe_cache_key(
+    model_identity_hash: str | None,
+    prompt_hash: str,
+    qa_id: str,
+    candidate_id: str,
+    intervention_id: str,
+    intervention_type: str,
+    ordered_frame_paths: list[str],
+    ordered_frame_hash: str,
+    target_action: str,
+    decoding_config: dict | None = None,
+    intervention_protocol: dict | None = None,
+) -> str:
+    return stable_hash(
+        {
+            "model_identity_hash": model_identity_hash,
+            "prompt_hash": prompt_hash,
+            "qa_id": qa_id,
+            "candidate_id": candidate_id,
+            "intervention_id": intervention_id,
+            "intervention_type": intervention_type,
+            "ordered_frame_paths": list(ordered_frame_paths),
+            "ordered_frame_hash": ordered_frame_hash,
+            "target_action": target_action,
+            "decoding_config": decoding_config or {},
+            "intervention_protocol": intervention_protocol or {},
+        }
+    )
