@@ -88,9 +88,10 @@ class TimeChatLoadResult:
 
 
 class _LoadStateDictCapture:
-    def __init__(self):
+    def __init__(self, checkpoint_inspection: dict[str, Any] | None = None):
         self.matches: list[dict[str, Any]] = []
         self._original = None
+        self.checkpoint_inspection = checkpoint_inspection
 
     def __enter__(self):
         import torch
@@ -108,7 +109,7 @@ class _LoadStateDictCapture:
                     msg = capture._original(module, state_dict, strict=strict)
             keys = list(state_dict.keys()) if hasattr(state_dict, "keys") else []
             if "video_frame_position_embedding.weight" in keys or any(k.startswith("video_Qformer.") for k in keys):
-                payload = audit_load_message(msg)
+                payload = audit_load_message(msg, checkpoint_inspection=capture.checkpoint_inspection)
                 payload["module_class"] = type(module).__name__
                 payload["state_dict_keys"] = len(keys)
                 capture.matches.append(payload)
@@ -178,7 +179,7 @@ class MedVidUTimeChatVTune:
         prompt["grounding"] = OFFICIAL_VTUNE_GROUNDING_PROMPT
 
         model_cls = registry.get_model_class(cfg.model_cfg.arch)
-        with _LoadStateDictCapture() as capture:
+        with _LoadStateDictCapture(checkpoint_inspection=checkpoint_inspection) as capture:
             model = model_cls.from_config(cfg.model_cfg).to(f"cuda:{gpu_id}")
         model.eval()
         if not capture.matches:

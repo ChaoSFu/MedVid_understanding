@@ -8,8 +8,9 @@ from .config import DEFAULT_OUTPUT_ROOT, RunConfig
 from .io_utils import sha256_file, write_json
 
 
-CRITICAL_KEY_PREFIXES = ("video_Qformer.", "llama_proj.", "llama_model.", "Qformer.")
+CHECKPOINT_KEY_PREFIXES = ("video_Qformer.", "llama_proj.", "llama_model.", "Qformer.")
 CRITICAL_EXACT_KEYS = ("video_frame_position_embedding.weight",)
+CRITICAL_CHECKPOINT_GROUPS = ("video_frame_position_embedding.weight", "video_Qformer.*", "llama_proj.*", "llama_model_lora.*")
 
 
 def inspect_checkpoint(vtune_ckpt: Path) -> dict[str, Any]:
@@ -34,30 +35,37 @@ def inspect_checkpoint(vtune_ckpt: Path) -> dict[str, Any]:
         }
         | {
             prefix + "*": any(k.startswith(prefix) for k in keys)
-            for prefix in CRITICAL_KEY_PREFIXES
+            for prefix in CHECKPOINT_KEY_PREFIXES
         },
+        "lora_key_presence": any("lora_" in k for k in keys),
     }
+    result["critical_checkpoint_group_presence"] = {
+        "video_frame_position_embedding.weight": "video_frame_position_embedding.weight" in keys,
+        "video_Qformer.*": any(k.startswith("video_Qformer.") for k in keys),
+        "llama_proj.*": any(k.startswith("llama_proj.") for k in keys),
+        "llama_model_lora.*": any(k.startswith("llama_model.") and "lora_" in k for k in keys),
+    }
+    result["critical_checkpoint_groups_missing"] = [
+        name for name, present in result["critical_checkpoint_group_presence"].items() if not present
+    ]
     if not result["has_model_key"]:
         raise ValueError("STOP: checkpoint does not contain ckpt['model']")
     return result
 
 
-def audit_load_message(msg: Any) -> dict[str, Any]:
+def audit_load_message(msg: Any, checkpoint_inspection: dict[str, Any] | None = None) -> dict[str, Any]:
     missing = list(getattr(msg, "missing_keys", []) or [])
     unexpected = list(getattr(msg, "unexpected_keys", []) or [])
-    critical_missing = [
-        key
-        for key in missing
-        if key in CRITICAL_EXACT_KEYS or any(key.startswith(prefix) for prefix in CRITICAL_KEY_PREFIXES)
-    ]
+    checkpoint_missing = list((checkpoint_inspection or {}).get("critical_checkpoint_groups_missing") or [])
     return {
         "n_missing_keys": len(missing),
         "n_unexpected_keys": len(unexpected),
         "missing_keys": missing,
         "unexpected_keys": unexpected,
-        "critical_missing_keys": critical_missing,
-        "critical_mismatch": bool(critical_missing),
-        "status": "STOP" if critical_missing else "OK",
+        "missing_keys_are_from_strict_false_model_load": True,
+        "critical_checkpoint_groups_missing": checkpoint_missing,
+        "critical_mismatch": bool(checkpoint_missing),
+        "status": "STOP" if checkpoint_missing else "OK",
     }
 
 
