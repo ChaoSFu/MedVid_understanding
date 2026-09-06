@@ -143,8 +143,6 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
             instance_changes.append("generation_config")
         if instance_changes:
             patched_instances[f"{type(module).__module__}.{type(module).__name__}@{id(module)}"] = instance_changes
-        if hasattr(module, "generate"):
-            continue
         cls = type(module)
         if cls in patched_classes:
             continue
@@ -156,13 +154,14 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         if prepare_signature is None or "inputs_embeds" not in prepare_signature.parameters:
             cls.prepare_inputs_for_generation = prepare_inputs_for_generation_allow_inputs_embeds
             added.append("prepare_inputs_for_generation_allow_inputs_embeds")
-        for name, value in GenerationMixin.__dict__.items():
-            if name.startswith("__") or hasattr(cls, name):
-                continue
-            setattr(cls, name, value)
-            added.append(name)
         cls._validate_model_kwargs = validate_model_kwargs_allow_inputs_embeds
         added.append("_validate_model_kwargs_allow_inputs_embeds")
+        if not hasattr(module, "generate"):
+            for name, value in GenerationMixin.__dict__.items():
+                if name.startswith("__") or hasattr(cls, name):
+                    continue
+                setattr(cls, name, value)
+                added.append(name)
         patched_classes[cls] = added
     return {
         "classes": {f"{cls.__module__}.{cls.__name__}": names for cls, names in patched_classes.items()},

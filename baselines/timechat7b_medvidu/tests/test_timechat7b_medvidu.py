@@ -229,6 +229,32 @@ class TimeChatMedVidUTests(unittest.TestCase):
         self.assertIn("InstanceOnlyPrepare", "".join(patched["classes"].keys()))
         self.assertTrue(hasattr(model, "generate"))
 
+    def test_generation_shim_patches_existing_generate_class(self):
+        try:
+            import torch
+        except Exception as exc:
+            self.skipTest(f"torch unavailable: {exc!r}")
+
+        class ExistingGenerateWrapper(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = None
+
+            def prepare_inputs_for_generation(self, input_ids=None, **kwargs):
+                return {"input_ids": input_ids, **kwargs}
+
+            def generate(self, *args, **kwargs):
+                return None
+
+            def forward(self, *args, **kwargs):
+                return None
+
+        model = ExistingGenerateWrapper()
+        patched = patch_generation_mixin_methods(model)
+        key_text = "".join(patched["classes"].keys())
+        self.assertIn("ExistingGenerateWrapper", key_text)
+        self.assertIn("inputs_embeds", str(__import__("inspect").signature(model.prepare_inputs_for_generation)))
+
 
 if __name__ == "__main__":
     unittest.main()
