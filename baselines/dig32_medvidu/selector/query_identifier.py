@@ -98,7 +98,9 @@ class OfficialQueryIdentifier:
     def _server_models_status(self) -> dict[str, Any]:
         url = self.base_url.rstrip("/") + "/models"
         try:
-            with urllib.request.urlopen(url, timeout=2.0) as response:
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            request = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(request, timeout=2.0) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             return {"status": "UNAVAILABLE", "url": url, "error": repr(exc), "available_models": []}
