@@ -37,13 +37,14 @@ def write_timelens_git_provenance(timelens_root: Path, provenance_dir: Path) -> 
     status = git_text(timelens_root, ["status", "--short"])
     diff = git_text(timelens_root, ["diff", "--", *OFFICIAL_FILES])
     has_own_git = (timelens_root / ".git").exists()
+    status_text = status if status else "CLEAN\n"
     text = (
         f"timelens_path: {timelens_root}\n"
         f"git_top_level: {top_level}\n"
         f"has_own_git_dir: {has_own_git}\n"
         f"git_commit: {commit}\n"
         "git_status_short:\n"
-        f"{status if status else 'CLEAN\\n'}"
+        f"{status_text}"
     )
     (provenance_dir / "timelens_git_commit.txt").write_text(text, encoding="utf-8")
     (provenance_dir / "timelens_git_diff.txt").write_text(diff, encoding="utf-8")
