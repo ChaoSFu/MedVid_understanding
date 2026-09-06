@@ -79,17 +79,31 @@ def install_optional_dependency_shims() -> dict[str, str]:
     return patched
 
 
-def patch_generation_mixin_methods(model: Any) -> dict[str, list[str]]:
+def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
     """Restore `.generate()` for old model classes under newer Transformers."""
     try:
+        from transformers import GenerationConfig as TransformersGenerationConfig
         from transformers.generation.utils import GenerationMixin
     except Exception as exc:
         return {"shim_error": [repr(exc)]}
 
     patched_classes: dict[type, list[str]] = {}
+    patched_instances: dict[str, list[str]] = {}
     modules = model.modules() if hasattr(model, "modules") else [model]
     for module in modules:
-        if not hasattr(module, "prepare_inputs_for_generation") or hasattr(module, "generate"):
+        if not hasattr(module, "prepare_inputs_for_generation"):
+            continue
+        instance_changes: list[str] = []
+        if getattr(module, "generation_config", None) is None:
+            model_config = getattr(module, "config", None)
+            try:
+                module.generation_config = TransformersGenerationConfig.from_model_config(model_config) if model_config else TransformersGenerationConfig()
+            except Exception:
+                module.generation_config = TransformersGenerationConfig()
+            instance_changes.append("generation_config")
+        if instance_changes:
+            patched_instances[f"{type(module).__module__}.{type(module).__name__}@{id(module)}"] = instance_changes
+        if hasattr(module, "generate"):
             continue
         cls = type(module)
         if cls in patched_classes:
@@ -101,7 +115,10 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, list[str]]:
             setattr(cls, name, value)
             added.append(name)
         patched_classes[cls] = added
-    return {f"{cls.__module__}.{cls.__name__}": names for cls, names in patched_classes.items()}
+    return {
+        "classes": {f"{cls.__module__}.{cls.__name__}": names for cls, names in patched_classes.items()},
+        "instances": patched_instances,
+    }
 
 
 @dataclass
