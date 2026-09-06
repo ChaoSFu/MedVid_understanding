@@ -202,6 +202,21 @@ def completed_cache_keys(path: str | Path) -> set[str]:
     return {str(row["cache_key"]) for row in read_jsonl(p) if row.get("cache_key")}
 
 
+def assert_no_existing_duplicate_results(path: str | Path) -> None:
+    p = Path(path)
+    if not p.exists():
+        return
+    rows = read_jsonl(p)
+    counts = Counter(str(row.get("intervention_id")) for row in rows)
+    duplicates = [value for value, count in counts.items() if value != "None" and count > 1]
+    if duplicates:
+        raise RuntimeError(
+            "Existing H3 probe result file contains duplicate intervention_id rows. "
+            "Use a clean output directory or deduplicate the result file before resume. "
+            f"examples={duplicates[:5]}"
+        )
+
+
 def project_manifest_row(row: dict[str, Any], frame_root: str | None, source_frame_prefix: str) -> dict[str, Any]:
     assert_model_manifest_gt_free(row)
     projection = remap_projection_frame_paths(row, frame_root, source_frame_prefix)
@@ -367,6 +382,7 @@ def main() -> None:
     Path(probe_results).touch(exist_ok=True)
     Path(errors_path).parent.mkdir(parents=True, exist_ok=True)
     Path(errors_path).touch(exist_ok=True)
+    assert_no_existing_duplicate_results(probe_results)
     setup_logging(args.log_path or str(out_dir / "probe.log"))
 
     rows = read_jsonl(args.manifest)

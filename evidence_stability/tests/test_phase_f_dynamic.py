@@ -1,5 +1,6 @@
 import math
 import importlib.util
+import tempfile
 import unittest
 from collections import Counter
 from pathlib import Path
@@ -312,6 +313,17 @@ class PhaseFDynamicTests(unittest.TestCase):
         self.assertEqual(audit["FREEZE_MID_V1"]["n_checked"], 1)
         self.assertTrue(audit["FREEZE_MID_V1"]["all_input_frame_count_16"])
         self.assertEqual(audit["frame_count_processor_audit"], {16: True})
+
+    def test_probe_resume_fails_early_on_existing_duplicate_results(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "probe_results.jsonl"
+            path.write_text(
+                '{"intervention_id":"i1","cache_key":"a"}\n'
+                '{"intervention_id":"i1","cache_key":"b"}\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(RuntimeError, "duplicate intervention_id"):
+                h3_probe_script.assert_no_existing_duplicate_results(path)
 
     def test_smoke_selection_is_gt_blind_and_dataset_covering(self):
         phase_c, paired = synthetic_frozen_inputs()
