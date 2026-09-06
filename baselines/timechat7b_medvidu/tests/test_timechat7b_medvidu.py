@@ -256,6 +256,28 @@ class TimeChatMedVidUTests(unittest.TestCase):
         self.assertIn("inputs_embeds", str(__import__("inspect").signature(model.prepare_inputs_for_generation)))
         self.assertFalse(model.__class__._is_stateful)
 
+    def test_generation_shim_filters_empty_past_key_values(self):
+        try:
+            import torch
+        except Exception as exc:
+            self.skipTest(f"torch unavailable: {exc!r}")
+
+        class WrapperWithEmptyCache(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = None
+
+            def prepare_inputs_for_generation(self, input_ids=None, past_key_values=None, **kwargs):
+                return {"input_ids": input_ids, "past_key_values": past_key_values, **kwargs}
+
+            def forward(self, *args, **kwargs):
+                return None
+
+        model = WrapperWithEmptyCache()
+        patch_generation_mixin_methods(model)
+        prepared = model.prepare_inputs_for_generation(input_ids=torch.ones((1, 1), dtype=torch.long), past_key_values=((None, None),))
+        self.assertNotIn("past_key_values", prepared)
+
     def test_inference_code_does_not_require_chat_stopping_attribute(self):
         source = Path(__file__).resolve().parents[1] / "model_adapter.py"
         text = source.read_text(encoding="utf-8")

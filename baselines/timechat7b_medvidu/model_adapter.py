@@ -97,6 +97,16 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         filtered.pop("inputs_embeds", None)
         return original_validate(self, filtered)
 
+    def usable_past_key_values(value):
+        if value is None:
+            return None
+        try:
+            first_layer = value[0]
+            first_key = first_layer[0]
+        except Exception:
+            return value
+        return value if hasattr(first_key, "shape") else None
+
     def prepare_inputs_for_generation_allow_inputs_embeds(
         self,
         input_ids=None,
@@ -105,17 +115,25 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         inputs_embeds=None,
         **kwargs,
     ):
+        past_key_values = usable_past_key_values(past_key_values)
         base_model = getattr(self, "model", None) or getattr(self, "base_model", None)
         target = getattr(base_model, "prepare_inputs_for_generation", None)
         if callable(target):
             try:
-                return target(
+                prepared = target(
                     input_ids=input_ids,
                     past_key_values=past_key_values,
                     attention_mask=attention_mask,
                     inputs_embeds=inputs_embeds,
                     **kwargs,
                 )
+                if isinstance(prepared, dict):
+                    prepared_past = usable_past_key_values(prepared.get("past_key_values"))
+                    if prepared_past is None:
+                        prepared.pop("past_key_values", None)
+                    else:
+                        prepared["past_key_values"] = prepared_past
+                return prepared
             except TypeError:
                 pass
         model_inputs = dict(kwargs)
