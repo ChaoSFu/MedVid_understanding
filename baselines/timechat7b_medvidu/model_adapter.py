@@ -79,6 +79,31 @@ def install_optional_dependency_shims() -> dict[str, str]:
     return patched
 
 
+def patch_generation_mixin_methods(model: Any) -> dict[str, list[str]]:
+    """Restore `.generate()` for old model classes under newer Transformers."""
+    try:
+        from transformers.generation.utils import GenerationMixin
+    except Exception as exc:
+        return {"shim_error": [repr(exc)]}
+
+    patched_classes: dict[type, list[str]] = {}
+    modules = model.modules() if hasattr(model, "modules") else [model]
+    for module in modules:
+        if not hasattr(module, "prepare_inputs_for_generation") or hasattr(module, "generate"):
+            continue
+        cls = type(module)
+        if cls in patched_classes:
+            continue
+        added: list[str] = []
+        for name, value in GenerationMixin.__dict__.items():
+            if name.startswith("__") or hasattr(cls, name):
+                continue
+            setattr(cls, name, value)
+            added.append(name)
+        patched_classes[cls] = added
+    return {f"{cls.__module__}.{cls.__name__}": names for cls, names in patched_classes.items()}
+
+
 @dataclass
 class TimeChatLoadResult:
     runner: "MedVidUTimeChatVTune"
@@ -182,11 +207,13 @@ class MedVidUTimeChatVTune:
         with _LoadStateDictCapture(checkpoint_inspection=checkpoint_inspection) as capture:
             model = model_cls.from_config(cfg.model_cfg).to(f"cuda:{gpu_id}")
         model.eval()
+        generation_mixin_shims = patch_generation_mixin_methods(model)
         if not capture.matches:
             raise RuntimeError("STOP: VTune checkpoint load audit was not captured; refusing to continue.")
         checkpoint_load_audit = capture.matches[-1]
         checkpoint_load_audit["transformers_compat_shims"] = compat_shims
         checkpoint_load_audit["optional_dependency_shims"] = optional_shims
+        checkpoint_load_audit["generation_mixin_shims"] = generation_mixin_shims
         if checkpoint_load_audit.get("critical_mismatch"):
             raise RuntimeError("STOP: critical TimeChat checkpoint keys are missing; see checkpoint_load_audit.json")
 
