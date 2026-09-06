@@ -154,6 +154,9 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         if prepare_signature is None or "inputs_embeds" not in prepare_signature.parameters:
             cls.prepare_inputs_for_generation = prepare_inputs_for_generation_allow_inputs_embeds
             added.append("prepare_inputs_for_generation_allow_inputs_embeds")
+        if not hasattr(cls, "_is_stateful"):
+            cls._is_stateful = False
+            added.append("_is_stateful_false")
         cls._validate_model_kwargs = validate_model_kwargs_allow_inputs_embeds
         added.append("_validate_model_kwargs_allow_inputs_embeds")
         if not hasattr(module, "generate"):

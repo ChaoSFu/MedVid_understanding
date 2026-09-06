@@ -254,6 +254,7 @@ class TimeChatMedVidUTests(unittest.TestCase):
         key_text = "".join(patched["classes"].keys())
         self.assertIn("ExistingGenerateWrapper", key_text)
         self.assertIn("inputs_embeds", str(__import__("inspect").signature(model.prepare_inputs_for_generation)))
+        self.assertFalse(model.__class__._is_stateful)
 
 
 if __name__ == "__main__":
