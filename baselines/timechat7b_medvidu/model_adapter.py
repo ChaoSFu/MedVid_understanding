@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from .checkpoint import audit_load_message, inspect_checkpoint, verify_component_paths
@@ -63,6 +63,19 @@ def install_transformers_compat_shims() -> dict[str, str]:
         if not hasattr(modeling_utils, name) and hasattr(pytorch_utils, name):
             setattr(modeling_utils, name, getattr(pytorch_utils, name))
             patched[name] = "transformers.pytorch_utils"
+    return patched
+
+
+def install_optional_dependency_shims() -> dict[str, str]:
+    """Provide no-op modules for optional training/logging deps unused in inference."""
+    patched: dict[str, str] = {}
+    if "wandb" not in sys.modules:
+        wandb = ModuleType("wandb")
+        wandb.init = lambda *args, **kwargs: None
+        wandb.log = lambda *args, **kwargs: None
+        wandb.finish = lambda *args, **kwargs: None
+        sys.modules["wandb"] = wandb
+        patched["wandb"] = "noop_logging_module"
     return patched
 
 
@@ -139,6 +152,7 @@ class MedVidUTimeChatVTune:
             sys.path.insert(0, str(timechat_repo))
 
         compat_shims = install_transformers_compat_shims()
+        optional_shims = install_optional_dependency_shims()
         from timechat.common.config import Config
         from timechat.common.registry import registry
         from timechat.conversation.conversation_video import Chat
@@ -171,6 +185,7 @@ class MedVidUTimeChatVTune:
             raise RuntimeError("STOP: VTune checkpoint load audit was not captured; refusing to continue.")
         checkpoint_load_audit = capture.matches[-1]
         checkpoint_load_audit["transformers_compat_shims"] = compat_shims
+        checkpoint_load_audit["optional_dependency_shims"] = optional_shims
         if checkpoint_load_audit.get("critical_mismatch"):
             raise RuntimeError("STOP: critical TimeChat checkpoint keys are missing; see checkpoint_load_audit.json")
 
