@@ -12,6 +12,7 @@ def build_cache_key(
     prompt: str,
     pixel_config: dict[str, Any],
     decoding_config: dict[str, Any],
+    timestamp_adapter: str = TIMESTAMP_ADAPTER_VERSION,
 ) -> str:
     frame_identity = [
         {
@@ -32,7 +33,7 @@ def build_cache_key(
         "prompt_version": PROMPT_VERSION,
         "pixel_config": pixel_config,
         "timestamp_adapter_version": TIMESTAMP_ADAPTER_VERSION,
+        "timestamp_adapter": timestamp_adapter,
         "decoding_config": decoding_config,
     }
     return sha256_json(payload)
-

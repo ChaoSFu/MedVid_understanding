@@ -10,6 +10,7 @@ from .config import (
     TOTAL_TOKENS,
 )
 from .dataset import build_official_prompt, build_qwen3_frame_list_messages
+from .dataset import build_textual_timestamp_image_sequence_messages as _build_textual_timestamp_image_sequence_messages
 from .io_utils import assert_no_gt_leak, sha256_json
 
 
@@ -83,18 +84,7 @@ def build_strict_single_fps_messages(row: dict[str, Any]) -> list[dict[str, Any]
 
 
 def build_textual_timestamp_image_sequence_messages(row: dict[str, Any]) -> list[dict[str, Any]]:
-    content: list[dict[str, Any]] = []
-    observations = list(row.get("frame_observations") or [])
-    video = list(row.get("video") or [])
-    if len(observations) != len(video):
-        raise ValueError("frame_observations must align one-to-one with video")
-    for obs, frame_path in zip(observations, video):
-        frame_no = int(obs["frame_position"]) + 1
-        local_time = float(obs["local_time"])
-        content.append({"type": "text", "text": f"Frame {frame_no} timestamp: {local_time:.6f} seconds"})
-        content.append({"type": "image", "image": frame_path})
-    content.append({"type": "text", "text": build_official_prompt(row["human_question"])})
-    messages = [{"role": "user", "content": content}]
+    messages = _build_textual_timestamp_image_sequence_messages(row)
     assert_no_gt_leak(
         {
             "adapter": TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER,

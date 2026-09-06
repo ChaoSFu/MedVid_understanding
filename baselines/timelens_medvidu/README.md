@@ -84,10 +84,40 @@ python -m baselines.timelens_medvidu.compare_timestamp_adapters --process-qwen
 
 Use a local checkpoint. The runner refuses to download a missing model path.
 
+Default smoke inference remains `strict_single_fps_subset`, which stops when selected samples cannot be faithfully represented by one frame-list fps:
+
 ```bash
 python -m baselines.timelens_medvidu.run_smoke \
   --model-path /local/path/to/TimeLens-8B \
   --smoke
+```
+
+For the primary MedVidU-faithful adapted baseline, use:
+
+```bash
+python -m baselines.timelens_medvidu.run_smoke \
+  --model-path /mnt/hdd2/huihui/VIdeo_LLM_models/TimeLens-8B \
+  --new-data-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata \
+  --timestamp-adapter textual_timestamp_image_sequence \
+  --smoke
+```
+
+This writes:
+
+```bash
+outputs/baselines/timelens8b_medvidu_tal/predictions/timelens8b_tal_smoke_predictions_textual_timestamp_image_sequence.jsonl
+```
+
+Scientific name:
+
+```text
+TimeLens-8B with MedVidU textual timestamp image-sequence adapter
+```
+
+Required statement:
+
+```text
+This adapter preserves the MedVidU-provided visual evidence and GT-free local frame timestamps
 ```
 
 Run the same command a second time for the exact cache restart test. The expected restart audit is:

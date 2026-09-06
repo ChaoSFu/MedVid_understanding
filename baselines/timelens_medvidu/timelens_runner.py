@@ -25,6 +25,7 @@ from .io_utils import append_jsonl, assert_no_gt_leak, completed_cache, read_jso
 from .manifest import build_manifest, write_smoke_manifest
 from .parser import parse_timelens_answer
 from .provenance import write_environment_and_model, write_official_behavior, write_timelens_git_provenance
+from .timestamp_adapters import STRICT_SINGLE_FPS_ADAPTER, TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER
 
 
 def load_model_and_processor(model_path: Path) -> tuple[Any, Any]:
@@ -52,6 +53,7 @@ def run_inference(
     prediction_path: Path,
     error_path: Path,
     model_fingerprint: dict[str, Any],
+    timestamp_adapter: str = STRICT_SINGLE_FPS_ADAPTER,
 ) -> dict[str, Any]:
     import torch
 
@@ -72,7 +74,13 @@ def run_inference(
     cached = completed_cache(prediction_path)
     completed_cache_at_start = len(cached)
     model, processor = load_model_and_processor(model_path)
-    dataset = MedVidUTALTimeLensDataset(rows, processor, min_tokens=MIN_TOKENS, total_tokens=TOTAL_TOKENS)
+    dataset = MedVidUTALTimeLensDataset(
+        rows,
+        processor,
+        min_tokens=MIN_TOKENS,
+        total_tokens=TOTAL_TOKENS,
+        timestamp_adapter=timestamp_adapter,
+    )
     new_inference_count = 0
     skipped_cached_count = 0
     errors = 0
@@ -80,7 +88,7 @@ def run_inference(
     for idx in range(len(dataset)):
         row = rows[idx]
         prompt = build_official_prompt(row["human_question"])
-        cache_key = build_cache_key(row, model_fingerprint, prompt, pixel_payload, decoding_payload)
+        cache_key = build_cache_key(row, model_fingerprint, prompt, pixel_payload, decoding_payload, timestamp_adapter=timestamp_adapter)
         if cache_key in cached:
             skipped_cached_count += 1
             continue
@@ -124,6 +132,17 @@ def run_inference(
                 "parse_status": parse_status,
                 "prompt_version": PROMPT_VERSION,
                 "timestamp_adapter_version": TIMESTAMP_ADAPTER_VERSION,
+                "timestamp_adapter": timestamp_adapter,
+                "scientific_description": (
+                    "TimeLens-8B with MedVidU textual timestamp image-sequence adapter"
+                    if timestamp_adapter == TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER
+                    else "TimeLens-8B strict single-fps compatible subset"
+                ),
+                "adapter_statement": (
+                    "This adapter preserves the MedVidU-provided visual evidence and GT-free local frame timestamps"
+                    if timestamp_adapter == TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER
+                    else "This adapter uses official TimeLens-8B/Qwen3 frame-list video input on single-fps-compatible samples only"
+                ),
                 "cache_key": cache_key,
                 "inference_error": None,
             }
@@ -134,14 +153,15 @@ def run_inference(
         except RuntimeError as exc:
             if "out of memory" in str(exc).lower():
                 errors += 1
-                append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "error": repr(exc), "error_type": "OOM"})
+                append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "timestamp_adapter": timestamp_adapter, "error": repr(exc), "error_type": "OOM"})
                 raise
             errors += 1
-            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "error": repr(exc), "error_type": "RuntimeError"})
+            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "timestamp_adapter": timestamp_adapter, "error": repr(exc), "error_type": "RuntimeError"})
         except Exception as exc:
             errors += 1
-            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "error": repr(exc), "error_type": type(exc).__name__})
+            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "timestamp_adapter": timestamp_adapter, "error": repr(exc), "error_type": type(exc).__name__})
     return {
+        "timestamp_adapter": timestamp_adapter,
         "completed_cache_at_start": completed_cache_at_start,
         "new_inference_count": new_inference_count,
         "skipped_cached_count": skipped_cached_count,
@@ -161,7 +181,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--timestamp-adapter",
+        choices=(STRICT_SINGLE_FPS_ADAPTER, TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER),
+        default=STRICT_SINGLE_FPS_ADAPTER,
+        help="Timestamp adapter to use. Default remains the strict official TimeLens-compatible subset.",
+    )
     return parser.parse_args()
+
+
+def prediction_path_for(output_root: Path, smoke: bool, timestamp_adapter: str) -> Path:
+    pred_dir = output_root / "predictions"
+    if smoke:
+        if timestamp_adapter == STRICT_SINGLE_FPS_ADAPTER:
+            return pred_dir / "timelens8b_tal_smoke_predictions.jsonl"
+        return pred_dir / f"timelens8b_tal_smoke_predictions_{timestamp_adapter}.jsonl"
+    if timestamp_adapter == STRICT_SINGLE_FPS_ADAPTER:
+        return pred_dir / "timelens8b_tal_predictions.jsonl"
+    return pred_dir / f"timelens8b_tal_predictions_{timestamp_adapter}.jsonl"
 
 
 def main() -> int:
@@ -183,13 +220,13 @@ def main() -> int:
         smoke_path = cfg.manifest_dir / "medvidu_tal_timelens_manifest_gt_free.smoke.jsonl"
         write_smoke_manifest(rows, smoke_path, size=cfg.smoke_size, seed=cfg.smoke_seed)
         rows = read_jsonl(smoke_path)
-        pred_path = cfg.prediction_dir / "timelens8b_tal_smoke_predictions.jsonl"
+        pred_path = prediction_path_for(cfg.output_root, smoke=True, timestamp_adapter=args.timestamp_adapter)
     else:
-        pred_path = cfg.prediction_dir / "timelens8b_tal_predictions.jsonl"
+        pred_path = prediction_path_for(cfg.output_root, smoke=False, timestamp_adapter=args.timestamp_adapter)
     if args.limit is not None:
         rows = rows[: args.limit]
     incompatible = [row["sample_id"] for row in rows if not row["timestamp_spacing_audit"]["qwen_frame_list_single_fps_compatible"]]
-    if incompatible:
+    if args.timestamp_adapter == STRICT_SINGLE_FPS_ADAPTER and incompatible:
         write_json(
             cfg.audit_dir / "timestamp_metadata_audit.json",
             {
@@ -200,7 +237,14 @@ def main() -> int:
             },
         )
         raise SystemExit(f"STOP: {len(incompatible)} selected samples are not single-fps compatible; see audit/timestamp_metadata_audit.json")
-    summary = run_inference(rows, args.model_path, pred_path, cfg.prediction_dir / "timelens8b_tal_errors.jsonl", model_fp)
+    summary = run_inference(
+        rows,
+        args.model_path,
+        pred_path,
+        cfg.prediction_dir / "timelens8b_tal_errors.jsonl",
+        model_fp,
+        timestamp_adapter=args.timestamp_adapter,
+    )
     write_json(cfg.audit_dir / "cache_restart_audit.json", summary)
     print(summary)
     return 0

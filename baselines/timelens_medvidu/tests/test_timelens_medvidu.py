@@ -9,6 +9,7 @@ from baselines.timelens_medvidu.audit_artifacts import frame_path_audit, gt_leak
 from baselines.timelens_medvidu.cache import build_cache_key
 from baselines.timelens_medvidu.config import GROUNDER_PROMPT, MIN_TOKENS, PROMPT_VERSION, TOTAL_TOKENS
 from baselines.timelens_medvidu.dataset import MedVidUTALTimeLensDataset, build_official_prompt, build_qwen3_frame_list_messages
+from baselines.timelens_medvidu.dataset import build_messages_for_adapter
 from baselines.timelens_medvidu.evaluate_medvidu_tal import evaluate_predictions
 from baselines.timelens_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, read_json, write_json, write_jsonl
 from baselines.timelens_medvidu.manifest import build_gt_free_row, build_manifest, choose_smoke_rows, extract_question, remap_path
@@ -20,6 +21,7 @@ from baselines.timelens_medvidu.timestamp_adapters import (
     build_strict_single_fps_messages,
     build_textual_timestamp_image_sequence_messages,
 )
+from baselines.timelens_medvidu.timelens_runner import prediction_path_for
 from baselines.timelens_medvidu.temporal_mapper import TemporalMapper, audit_uniform_spacing
 
 
@@ -238,6 +240,36 @@ class TimeLensMedVidUTests(unittest.TestCase):
         self.assertTrue(textual["official_prompt_included_verbatim"])
         self.assertFalse(textual["official_prompt_exact_match"])
         self.assertFalse(textual["additional_temporal_resampling_any"] if "additional_temporal_resampling_any" in textual else textual["additional_temporal_resampling"])
+
+    def test_dataset_message_dispatch_keeps_strict_default_and_textual_override(self):
+        row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
+        row["timestamp_spacing_audit"] = audit_uniform_spacing([0.0, 1.0, 1.0]).to_dict()
+        with self.assertRaises(ValueError):
+            build_messages_for_adapter(row, MIN_TOKENS, TOTAL_TOKENS, STRICT_SINGLE_FPS_ADAPTER)
+        textual = build_messages_for_adapter(row, MIN_TOKENS, TOTAL_TOKENS, TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER)
+        self.assertEqual(textual[0]["content"][0]["type"], "text")
+        self.assertEqual(textual[0]["content"][1]["type"], "image")
+
+    def test_textual_prediction_path_is_separate_from_strict_cache(self):
+        root = Path("/tmp/out")
+        self.assertEqual(
+            prediction_path_for(root, smoke=True, timestamp_adapter=STRICT_SINGLE_FPS_ADAPTER),
+            root / "predictions" / "timelens8b_tal_smoke_predictions.jsonl",
+        )
+        self.assertEqual(
+            prediction_path_for(root, smoke=True, timestamp_adapter=TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER),
+            root / "predictions" / "timelens8b_tal_smoke_predictions_textual_timestamp_image_sequence.jsonl",
+        )
+
+    def test_cache_key_changes_with_timestamp_adapter(self):
+        row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
+        fp = {"model_path": "/m", "config": "h"}
+        prompt = build_official_prompt(row["human_question"])
+        pixel = {"min_tokens": 64, "total_tokens": 14336}
+        decoding = {"do_sample": False}
+        strict = build_cache_key(row, fp, prompt, pixel, decoding, timestamp_adapter=STRICT_SINGLE_FPS_ADAPTER)
+        textual = build_cache_key(row, fp, prompt, pixel, decoding, timestamp_adapter=TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER)
+        self.assertNotEqual(strict, textual)
 
 
 if __name__ == "__main__":
