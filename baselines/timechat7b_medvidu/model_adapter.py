@@ -316,15 +316,51 @@ class MedVidUTimeChatVTune:
         return chat_state
 
     def inference(self, chat_state: Any, video_features: list[Any], generation: GenerationConfig) -> str:
-        llm_message = self.chat.answer(
-            conv=chat_state,
-            img_list=video_features,
+        import torch
+
+        chat_state.append_message(chat_state.roles[1], None)
+        embs = self.chat.get_context_emb(chat_state, video_features)
+        current_max_len = embs.shape[1] + generation.max_new_tokens
+        if current_max_len - generation.max_length > 0:
+            begin_idx = max(0, current_max_len - generation.max_length)
+            embs = embs[:, begin_idx:]
+
+        tokenizer = self.model.llama_tokenizer
+        pad_token_id = tokenizer.pad_token_id
+        if pad_token_id is None:
+            pad_token_id = tokenizer.eos_token_id
+        if pad_token_id is None:
+            pad_token_id = 0
+        dummy_input_ids = torch.full(
+            (embs.shape[0], embs.shape[1]),
+            int(pad_token_id),
+            dtype=torch.long,
+            device=embs.device,
+        )
+        attention_mask = torch.ones(dummy_input_ids.shape, dtype=torch.long, device=embs.device)
+
+        outputs = self.model.llama_model.generate(
+            input_ids=dummy_input_ids,
+            inputs_embeds=embs,
+            attention_mask=attention_mask,
+            max_new_tokens=generation.max_new_tokens,
+            stopping_criteria=self.chat.stopping_criteria,
             num_beams=generation.num_beams,
             do_sample=generation.do_sample,
             temperature=generation.temperature,
-            max_new_tokens=generation.max_new_tokens,
             max_length=generation.max_length,
-        )[0]
+            pad_token_id=pad_token_id,
+        )
+        output_token = outputs[0]
+        if output_token.shape[0] > embs.shape[1]:
+            output_token = output_token[embs.shape[1] :]
+        if output_token.shape[0] > 0 and output_token[0].item() in {0, 1}:
+            output_token = output_token[1:]
+        if output_token.shape[0] > 0 and output_token[0].item() == int(pad_token_id):
+            output_token = output_token[1:]
+        llm_message = tokenizer.decode(output_token, add_special_tokens=False)
+        llm_message = llm_message.split("###")[0]
+        llm_message = llm_message.split("Assistant:")[-1].strip()
         chat_state.messages[-1][-1] = llm_message
         return str(llm_message)
 

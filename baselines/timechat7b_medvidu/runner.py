@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from pathlib import Path
+import traceback
 from typing import Any
 
 from .cache import build_cache_key
@@ -176,12 +177,12 @@ def run_rows(
         except RuntimeError as exc:
             summary["errors"] += 1
             error_type = "OOM" if "out of memory" in str(exc).lower() else "RuntimeError"
-            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "stage": stage, "error_type": error_type, "error": repr(exc)})
+            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "stage": stage, "error_type": error_type, "error": repr(exc), "traceback": traceback.format_exc()})
             if error_type == "OOM":
                 raise
         except Exception as exc:
             summary["errors"] += 1
-            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "stage": stage, "error_type": type(exc).__name__, "error": repr(exc)})
+            append_jsonl(error_path, {"sample_id": row["sample_id"], "cache_key": cache_key, "stage": stage, "error_type": type(exc).__name__, "error": repr(exc), "traceback": traceback.format_exc()})
     if processor_audit_rows:
         write_json(cfg.audit_dir / "processor_frame_audit.json", processor_audit_rows)
     write_json(cfg.audit_dir / f"{stage}_run_summary.json", summary)
