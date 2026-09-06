@@ -50,6 +50,22 @@ def _set_cfg_value(cfg: Any, key: str, value: str) -> None:
         setattr(cfg, key, value)
 
 
+def install_transformers_compat_shims() -> dict[str, str]:
+    """Patch old TimeChat/LAVIS import locations for newer Transformers builds."""
+    patched: dict[str, str] = {}
+    try:
+        import transformers.modeling_utils as modeling_utils
+        import transformers.pytorch_utils as pytorch_utils
+    except Exception as exc:
+        return {"shim_error": repr(exc)}
+
+    for name in ("apply_chunking_to_forward", "find_pruneable_heads_and_indices", "prune_linear_layer"):
+        if not hasattr(modeling_utils, name) and hasattr(pytorch_utils, name):
+            setattr(modeling_utils, name, getattr(pytorch_utils, name))
+            patched[name] = "transformers.pytorch_utils"
+    return patched
+
+
 @dataclass
 class TimeChatLoadResult:
     runner: "MedVidUTimeChatVTune"
@@ -122,6 +138,7 @@ class MedVidUTimeChatVTune:
         if str(timechat_repo) not in sys.path:
             sys.path.insert(0, str(timechat_repo))
 
+        compat_shims = install_transformers_compat_shims()
         from timechat.common.config import Config
         from timechat.common.registry import registry
         from timechat.conversation.conversation_video import Chat
@@ -153,6 +170,7 @@ class MedVidUTimeChatVTune:
         if not capture.matches:
             raise RuntimeError("STOP: VTune checkpoint load audit was not captured; refusing to continue.")
         checkpoint_load_audit = capture.matches[-1]
+        checkpoint_load_audit["transformers_compat_shims"] = compat_shims
         if checkpoint_load_audit.get("critical_mismatch"):
             raise RuntimeError("STOP: critical TimeChat checkpoint keys are missing; see checkpoint_load_audit.json")
 
