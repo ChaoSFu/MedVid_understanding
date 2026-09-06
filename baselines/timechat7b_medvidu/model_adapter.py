@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from pathlib import Path
 import sys
 from types import ModuleType, SimpleNamespace
@@ -96,6 +97,38 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         filtered.pop("inputs_embeds", None)
         return original_validate(self, filtered)
 
+    def prepare_inputs_for_generation_allow_inputs_embeds(
+        self,
+        input_ids=None,
+        past_key_values=None,
+        attention_mask=None,
+        inputs_embeds=None,
+        **kwargs,
+    ):
+        base_model = getattr(self, "model", None) or getattr(self, "base_model", None)
+        target = getattr(base_model, "prepare_inputs_for_generation", None)
+        if callable(target):
+            try:
+                return target(
+                    input_ids=input_ids,
+                    past_key_values=past_key_values,
+                    attention_mask=attention_mask,
+                    inputs_embeds=inputs_embeds,
+                    **kwargs,
+                )
+            except TypeError:
+                pass
+        model_inputs = dict(kwargs)
+        if inputs_embeds is not None and past_key_values is None:
+            model_inputs["inputs_embeds"] = inputs_embeds
+        else:
+            model_inputs["input_ids"] = input_ids
+        if past_key_values is not None:
+            model_inputs["past_key_values"] = past_key_values
+        if attention_mask is not None:
+            model_inputs["attention_mask"] = attention_mask
+        return model_inputs
+
     modules = model.modules() if hasattr(model, "modules") else [model]
     for module in modules:
         if not hasattr(module, "prepare_inputs_for_generation"):
@@ -116,6 +149,13 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
         if cls in patched_classes:
             continue
         added: list[str] = []
+        try:
+            prepare_signature = inspect.signature(cls.prepare_inputs_for_generation)
+        except (TypeError, ValueError):
+            prepare_signature = None
+        if prepare_signature is None or "inputs_embeds" not in prepare_signature.parameters:
+            cls.prepare_inputs_for_generation = prepare_inputs_for_generation_allow_inputs_embeds
+            added.append("prepare_inputs_for_generation_allow_inputs_embeds")
         for name, value in GenerationMixin.__dict__.items():
             if name.startswith("__") or hasattr(cls, name):
                 continue
