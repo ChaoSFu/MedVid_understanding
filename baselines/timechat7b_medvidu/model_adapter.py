@@ -317,6 +317,7 @@ class MedVidUTimeChatVTune:
 
     def inference(self, chat_state: Any, video_features: list[Any], generation: GenerationConfig) -> str:
         import torch
+        from transformers import StoppingCriteria, StoppingCriteriaList
 
         chat_state.append_message(chat_state.roles[1], None)
         embs = self.chat.get_context_emb(chat_state, video_features)
@@ -338,13 +339,29 @@ class MedVidUTimeChatVTune:
             device=embs.device,
         )
         attention_mask = torch.ones(dummy_input_ids.shape, dtype=torch.long, device=embs.device)
+        stopping_criteria = getattr(self.chat, "stopping_criteria", None)
+        if stopping_criteria is None:
+            stop_words_ids = [torch.tensor([2], device=embs.device)]
+
+            class StoppingCriteriaSub(StoppingCriteria):
+                def __init__(self, stops):
+                    super().__init__()
+                    self.stops = stops
+
+                def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor):
+                    for stop in self.stops:
+                        if torch.all((stop == input_ids[0][-len(stop) :])).item():
+                            return True
+                    return False
+
+            stopping_criteria = StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids)])
 
         outputs = self.model.llama_model.generate(
             input_ids=dummy_input_ids,
             inputs_embeds=embs,
             attention_mask=attention_mask,
             max_new_tokens=generation.max_new_tokens,
-            stopping_criteria=self.chat.stopping_criteria,
+            stopping_criteria=stopping_criteria,
             num_beams=generation.num_beams,
             do_sample=generation.do_sample,
             temperature=generation.temperature,

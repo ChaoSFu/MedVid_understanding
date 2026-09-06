@@ -256,6 +256,12 @@ class TimeChatMedVidUTests(unittest.TestCase):
         self.assertIn("inputs_embeds", str(__import__("inspect").signature(model.prepare_inputs_for_generation)))
         self.assertFalse(model.__class__._is_stateful)
 
+    def test_inference_code_does_not_require_chat_stopping_attribute(self):
+        source = Path(__file__).resolve().parents[1] / "model_adapter.py"
+        text = source.read_text(encoding="utf-8")
+        self.assertIn('getattr(self.chat, "stopping_criteria", None)', text)
+        self.assertNotIn("self.chat.stopping_criteria,", text)
+
 
 if __name__ == "__main__":
     unittest.main()
