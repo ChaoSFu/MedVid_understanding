@@ -1,0 +1,282 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+from typing import Any
+
+from .checkpoint import audit_load_message, inspect_checkpoint, verify_component_paths
+from .config import (
+    BASELINE_NAME,
+    GenerationConfig,
+    OFFICIAL_SYSTEM_PROMPT,
+    OFFICIAL_VTUNE_GROUNDING_PROMPT,
+    PROMPT_VERSION,
+    TIMESTAMP_ADAPTER_VERSION,
+)
+from .frame_loader import build_video_features_from_frames
+from .io_utils import sha256_file
+from .parser import parse_timechat_answer
+
+
+def static_model_fingerprint(vtune_ckpt: Path, vit_model: Path, q_former_model: Path, llama_model: Path) -> dict[str, Any]:
+    return {
+        "model": BASELINE_NAME,
+        "vtune_ckpt": str(vtune_ckpt),
+        "vtune_sha256": sha256_file(vtune_ckpt),
+        "vit_model": str(vit_model),
+        "vit_sha256": sha256_file(vit_model) if vit_model.is_file() else None,
+        "q_former_model": str(q_former_model),
+        "q_former_sha256": sha256_file(q_former_model) if q_former_model.is_file() else None,
+        "llama_model": str(llama_model),
+        "max_frame_pos": 96,
+        "window_size": 32,
+        "stride": 32,
+        "qformer_text_input": True,
+        "lora": True,
+        "lora_inference_mode": True,
+        "prompt_version": PROMPT_VERSION,
+        "timestamp_adapter_version": TIMESTAMP_ADAPTER_VERSION,
+    }
+
+
+def _set_cfg_value(cfg: Any, key: str, value: str) -> None:
+    if hasattr(cfg, key):
+        setattr(cfg, key, value)
+    elif hasattr(cfg, "__setitem__"):
+        cfg[key] = value
+    else:
+        setattr(cfg, key, value)
+
+
+@dataclass
+class TimeChatLoadResult:
+    runner: "MedVidUTimeChatVTune"
+    checkpoint_inspection: dict[str, Any]
+    checkpoint_load_audit: dict[str, Any]
+    model_fingerprint: dict[str, Any]
+
+
+class _LoadStateDictCapture:
+    def __init__(self):
+        self.matches: list[dict[str, Any]] = []
+        self._original = None
+
+    def __enter__(self):
+        import torch
+
+        self._original = torch.nn.Module.load_state_dict
+        capture = self
+
+        def wrapped(module, state_dict, strict=True, assign=False):
+            if assign is False:
+                msg = capture._original(module, state_dict, strict=strict)
+            else:
+                try:
+                    msg = capture._original(module, state_dict, strict=strict, assign=assign)
+                except TypeError:
+                    msg = capture._original(module, state_dict, strict=strict)
+            keys = list(state_dict.keys()) if hasattr(state_dict, "keys") else []
+            if "video_frame_position_embedding.weight" in keys or any(k.startswith("video_Qformer.") for k in keys):
+                payload = audit_load_message(msg)
+                payload["module_class"] = type(module).__name__
+                payload["state_dict_keys"] = len(keys)
+                capture.matches.append(payload)
+            return msg
+
+        torch.nn.Module.load_state_dict = wrapped
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        import torch
+
+        if self._original is not None:
+            torch.nn.Module.load_state_dict = self._original
+
+
+class MedVidUTimeChatVTune:
+    def __init__(self, timechat_repo: Path, model: Any, vis_processor: Any, chat: Any, args: Any, model_config: Any):
+        self.timechat_repo = timechat_repo
+        self.model = model
+        self.vis_processor = vis_processor
+        self.chat = chat
+        self.args = args
+        self.model_config = model_config
+        self.debug = bool(getattr(args, "debug", False))
+        self.n_frames = 96
+        self.CoT = False
+
+    @classmethod
+    def load(
+        cls,
+        timechat_repo: Path,
+        vtune_ckpt: Path,
+        vit_model: Path,
+        q_former_model: Path,
+        llama_model: Path,
+        gpu_id: int = 0,
+    ) -> TimeChatLoadResult:
+        verify_component_paths(vtune_ckpt, vit_model, q_former_model, llama_model)
+        checkpoint_inspection = inspect_checkpoint(vtune_ckpt)
+        if str(timechat_repo) not in sys.path:
+            sys.path.insert(0, str(timechat_repo))
+
+        from timechat.common.config import Config
+        from timechat.common.registry import registry
+        from timechat.conversation.conversation_video import Chat
+        from utils.prompts import prompt
+
+        args = SimpleNamespace(
+            cfg_path=str(timechat_repo / "timechat" / "eval_configs" / "timechat.yaml"),
+            gpu_id=gpu_id,
+            options=None,
+            dset_name="medvidu",
+            task="grounding",
+            fine_tuned=True,
+            debug=False,
+            CoT=False,
+        )
+        cfg = Config(args)
+        _set_cfg_value(cfg.model_cfg, "ckpt", str(vtune_ckpt))
+        _set_cfg_value(cfg.model_cfg, "activitynet_ckpt", str(vtune_ckpt))
+        _set_cfg_value(cfg.model_cfg, "vit_model", str(vit_model))
+        _set_cfg_value(cfg.model_cfg, "q_former_model", str(q_former_model))
+        _set_cfg_value(cfg.model_cfg, "llama_model", str(llama_model))
+        _set_cfg_value(cfg.model_cfg, "device_8bit", gpu_id)
+        prompt["grounding"] = OFFICIAL_VTUNE_GROUNDING_PROMPT
+
+        model_cls = registry.get_model_class(cfg.model_cfg.arch)
+        with _LoadStateDictCapture() as capture:
+            model = model_cls.from_config(cfg.model_cfg).to(f"cuda:{gpu_id}")
+        model.eval()
+        if not capture.matches:
+            raise RuntimeError("STOP: VTune checkpoint load audit was not captured; refusing to continue.")
+        checkpoint_load_audit = capture.matches[-1]
+        if checkpoint_load_audit.get("critical_mismatch"):
+            raise RuntimeError("STOP: critical TimeChat checkpoint keys are missing; see checkpoint_load_audit.json")
+
+        vis_processor_cfg = cfg.datasets_cfg.webvid.vis_processor.train
+        vis_processor = registry.get_processor_class(vis_processor_cfg.name).from_config(vis_processor_cfg)
+        chat = Chat(model, vis_processor, device=f"cuda:{gpu_id}")
+        runner = cls(timechat_repo=timechat_repo, model=model, vis_processor=vis_processor, chat=chat, args=args, model_config=cfg.model_cfg)
+        fingerprint = runner.model_fingerprint(vtune_ckpt, vit_model, q_former_model, llama_model)
+        return TimeChatLoadResult(runner, checkpoint_inspection, checkpoint_load_audit, fingerprint)
+
+    def model_fingerprint(self, vtune_ckpt: Path, vit_model: Path, q_former_model: Path, llama_model: Path) -> dict[str, Any]:
+        static = static_model_fingerprint(vtune_ckpt, vit_model, q_former_model, llama_model)
+        cfg = self.model_config
+        payload = {
+            **static,
+            "max_frame_pos": int(cfg.get("max_frame_pos", 96)),
+            "window_size": int(cfg.get("window_size", 32)),
+            "stride": int(cfg.get("stride", 32)),
+            "qformer_text_input": bool(cfg.get("qformer_text_input", True)),
+            "lora": bool(cfg.get("lora", True)),
+            "lora_inference_mode": bool(cfg.get("lora_inference_mode", True)),
+        }
+        return payload
+
+    def initialize_chat(self, task: str, msg: str, add_detail: str | None = None):
+        from timechat.conversation.conversation_video import conv_llava_llama_2
+
+        chat_state = conv_llava_llama_2.copy()
+        chat_state.system = OFFICIAL_SYSTEM_PROMPT
+        if add_detail:
+            chat_state.system += " " + add_detail
+        return chat_state
+
+    def inference(self, chat_state: Any, video_features: list[Any], generation: GenerationConfig) -> str:
+        llm_message = self.chat.answer(
+            conv=chat_state,
+            img_list=video_features,
+            num_beams=generation.num_beams,
+            do_sample=generation.do_sample,
+            temperature=generation.temperature,
+            max_new_tokens=generation.max_new_tokens,
+            max_length=generation.max_length,
+        )[0]
+        chat_state.messages[-1][-1] = llm_message
+        return str(llm_message)
+
+    def extract_time(self, paragraph: str):
+        import re
+
+        paragraph = (paragraph or "").lower()
+        sentences = re.split(r"[!?\n]", paragraph)
+        keywords = ["starts", "ends", "happens in", "start time", "end time", "start", "end", "happen"]
+        candidates = [sentence for sentence in sentences if any(keyword in sentence for keyword in keywords)]
+        timestamps = []
+        for time_pattern in [r"(\d+\.*\d*)\s*-\s*(\d+\.*\d*)"]:
+            time_matches = re.findall(time_pattern, paragraph)
+            if time_matches:
+                timestamps = [[float(start), float(end)] for start, end in time_matches]
+        if len(timestamps) == 0:
+            times = []
+            time_regex = re.compile(r"\b(\d+\.\d+\b|\b\d+)\b")
+            for sentence in candidates:
+                time = re.findall(time_regex, sentence)
+                if time:
+                    times.append(float(time[0]))
+            times = times[: len(times) // 2 * 2]
+            timestamps = [(times[i], times[i + 1]) for i in range(0, len(times), 2)]
+        if len(timestamps) == 0:
+            times = []
+            time_regex = re.compile(r"\b((\d{1,2}:\d{2}:\d{2}))\b")
+            for sentence in candidates:
+                time = re.findall(time_regex, sentence)
+                if not time:
+                    continue
+                t = time[0][0]
+                h, m, s = map(int, t.split(":"))
+                times.append(h * 3600 + m * 60 + s)
+            times = times[: len(times) // 2 * 2]
+            timestamps = [(times[i], times[i + 1]) for i in range(0, len(times), 2)]
+        results = [[min(start, end), max(start, end)] for start, end in timestamps]
+        return results[0] if results else [0, 0]
+
+    def extract_time2(self, paragraph: str):
+        import re
+
+        pattern = r"(?:(?:from\s+|in\s+|between\s+|at\s+|—|to\s+|and\s+|–)\s*)?(\d+(?:\.\d+)?)\s*(?:to|and|–|—)\s*(?:(?:from\s+|in\s+|between\s+|at\s+|—|to\s+|and\s+|–)\s*)?(\d+(?:\.\d+)?)?\s*seconds?"
+        match = re.search(pattern, paragraph or "")
+        if match:
+            start_timestamp = float(match.group(1))
+            end_timestamp = float(match.group(2)) if match.group(2) is not None else None
+            return [0, start_timestamp] if end_timestamp is None else [start_timestamp, end_timestamp]
+        matches = re.findall(r"\d+\.\d+|\d+", paragraph or "")
+        float_numbers = [float(match) for match in matches]
+        if len(float_numbers) == 0:
+            return [0, 0]
+        if len(float_numbers) == 1:
+            return [0, float_numbers[0]]
+        return float_numbers[:2]
+
+    def run_one(self, row: dict[str, Any], generation: GenerationConfig) -> dict[str, Any]:
+        frame_paths = list(row["ordered_frame_paths"])
+        local_timestamps = [float(t) for t in row["local_timestamps"]]
+        video_features, msg, selected = build_video_features_from_frames(
+            self.model,
+            self.vis_processor,
+            frame_paths,
+            local_timestamps,
+            device=f"cuda:{self.args.gpu_id}",
+        )
+        question = OFFICIAL_VTUNE_GROUNDING_PROMPT.format(event=row["human_question"])
+        chat_state = self.initialize_chat("grounding", msg)
+        chat_state.append_message(chat_state.roles[0], " " + msg)
+        self.chat.ask(question, chat_state)
+        answer = self.inference(chat_state, video_features, generation)
+        parsed = parse_timechat_answer(self, answer)
+        return {
+            **parsed,
+            "question_sent_to_model": question,
+            "timechat_msg": msg,
+            "n_selected_frames": selected["selection_audit"]["n_selected_frames"],
+            "selected_logical_indices": selected["selection_audit"]["selected_logical_indices"],
+            "selected_local_timestamps": selected["selected_local_timestamps"],
+            "selected_rounded_timestamps": selected["selected_rounded_timestamps"],
+            "timestamp_texts": selected["timestamp_texts"],
+            "video_tensor_shape": selected.get("video_tensor_shape"),
+            "video_embedding_shape": selected.get("video_embedding_shape"),
+        }
