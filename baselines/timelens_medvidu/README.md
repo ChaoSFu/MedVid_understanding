@@ -64,9 +64,21 @@ Outputs include:
 ```bash
 python -m baselines.timelens_medvidu.audit_artifacts
 python -m baselines.timelens_medvidu.audit_timestamp_metadata
+python -m baselines.timelens_medvidu.compare_timestamp_adapters
 ```
 
 `audit_timestamp_metadata` checks whether Qwen3-VL frame-list metadata can faithfully represent MedVidU clip-local timestamps using the GT-free `effective_fps`. If timestamps are non-uniform or duplicate logical timestamps make a single fps representation inaccurate, the run stops.
+
+`compare_timestamp_adapters` compares two GT-free timestamp adapters on the 20-sample smoke manifest:
+
+- `strict_single_fps_subset`: official TimeLens-8B/Qwen3 frame-list video input with `fps=effective_fps`, restricted to samples whose local timestamps are exactly representable by one fps. This is the most faithful to official TimeLens-8B behavior, but only a diagnostic subset when MedVidU timestamps are non-uniform or duplicated.
+- `textual_timestamp_image_sequence`: preserves every MedVidU logical frame as an image and writes the GT-free `local_time` before each frame, followed by the unchanged official TimeLens grounding prompt. This is more faithful to MedVidU timing and coverage, but should be named as an adapted TimeLens variant, not an official TimeLens-8B run.
+
+To also call `qwen_vl_utils.process_vision_info` inside the active environment:
+
+```bash
+python -m baselines.timelens_medvidu.compare_timestamp_adapters --process-qwen
+```
 
 ## Smoke Inference
 
@@ -101,4 +113,3 @@ python -m baselines.timelens_medvidu.run_full \
 ```
 
 Do not run full TAL until the 20-sample smoke, timestamp compatibility preflight, and exact cache restart test pass.
-

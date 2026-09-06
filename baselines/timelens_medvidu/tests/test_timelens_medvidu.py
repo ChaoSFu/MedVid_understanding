@@ -13,6 +13,13 @@ from baselines.timelens_medvidu.evaluate_medvidu_tal import evaluate_predictions
 from baselines.timelens_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, read_json, write_json, write_jsonl
 from baselines.timelens_medvidu.manifest import build_gt_free_row, build_manifest, choose_smoke_rows, extract_question, remap_path
 from baselines.timelens_medvidu.parser import parse_timelens_answer
+from baselines.timelens_medvidu.timestamp_adapters import (
+    STRICT_SINGLE_FPS_ADAPTER,
+    TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER,
+    audit_adapter_for_row,
+    build_strict_single_fps_messages,
+    build_textual_timestamp_image_sequence_messages,
+)
 from baselines.timelens_medvidu.temporal_mapper import TemporalMapper, audit_uniform_spacing
 
 
@@ -193,7 +200,45 @@ class TimeLensMedVidUTests(unittest.TestCase):
             self.assertTrue(frame_path_audit([row])["all_frame_paths_exist"])
             self.assertEqual(gt_leakage_audit([row])["leak_count"], 0)
 
+    def test_strict_single_fps_adapter_accepts_only_compatible_rows(self):
+        row = build_gt_free_row(sample(n=3, dataset_name="EgoSurgery"), 0, new_data_root=None)
+        row["sampled_video_frames"] = [10, 11, 12]
+        row["frame_observations"][0]["local_time"] = 0.0
+        row["frame_observations"][1]["local_time"] = 1.0
+        row["frame_observations"][2]["local_time"] = 2.0
+        row["timestamp_spacing_audit"] = audit_uniform_spacing([0.0, 1.0, 2.0]).to_dict()
+        row["effective_fps"] = 1.0
+        messages = build_strict_single_fps_messages(row)
+        self.assertEqual(messages[0]["content"][0]["type"], "video")
+        self.assertEqual(messages[0]["content"][0]["fps"], 1.0)
+
+        row["timestamp_spacing_audit"] = audit_uniform_spacing([0.0, 1.0, 1.0]).to_dict()
+        with self.assertRaises(ValueError):
+            build_strict_single_fps_messages(row)
+
+    def test_textual_timestamp_image_sequence_uses_original_local_times(self):
+        row = build_gt_free_row(sample(n=3, dataset_name="NurViD"), 0, new_data_root=None)
+        row["frame_observations"][1]["local_time"] = 1.25
+        row["frame_observations"][2]["local_time"] = 1.25
+        messages = build_textual_timestamp_image_sequence_messages(row)
+        content = messages[0]["content"]
+        self.assertEqual(content[0], {"type": "text", "text": "Frame 1 timestamp: 0.000000 seconds"})
+        self.assertEqual(content[1], {"type": "image", "image": row["video"][0]})
+        self.assertEqual(content[2], {"type": "text", "text": "Frame 2 timestamp: 1.250000 seconds"})
+        self.assertEqual(content[4], {"type": "text", "text": "Frame 3 timestamp: 1.250000 seconds"})
+        self.assertEqual(content[-1]["text"], GROUNDER_PROMPT.format(row["human_question"]))
+
+    def test_adapter_preflight_records_scientific_distinction(self):
+        row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
+        row["timestamp_spacing_audit"] = audit_uniform_spacing([0.0, 1.0, 1.0]).to_dict()
+        strict = audit_adapter_for_row(row, STRICT_SINGLE_FPS_ADAPTER, process_qwen=False).to_dict()
+        textual = audit_adapter_for_row(row, TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER, process_qwen=False).to_dict()
+        self.assertFalse(strict["applicable"])
+        self.assertTrue(textual["applicable"])
+        self.assertTrue(textual["official_prompt_included_verbatim"])
+        self.assertFalse(textual["official_prompt_exact_match"])
+        self.assertFalse(textual["additional_temporal_resampling_any"] if "additional_temporal_resampling_any" in textual else textual["additional_temporal_resampling"])
+
 
 if __name__ == "__main__":
     unittest.main()
-
