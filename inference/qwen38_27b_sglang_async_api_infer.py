@@ -178,6 +178,7 @@ def build_messages(
     frame_data_urls: List[str],
     examples: Dict[str, Dict[str, str]],
     media_schema: str,
+    image_sequence_text_position: str,
 ) -> List[Dict[str, Any]]:
     qa_type = sample["qa_type"]
     question = get_question(sample)
@@ -206,19 +207,39 @@ def build_messages(
             "Use the frame order and sampling rate as temporal evidence.\n\n"
             f"{question}"
         )
-        user_content = [
+        image_parts = [
             {
                 "type": "image_url",
                 "image_url": {"url": data_url},
             }
             for data_url in frame_data_urls
         ]
-        user_content.append({"type": "text", "text": intro})
+        text_part = {"type": "text", "text": intro}
+        if image_sequence_text_position == "before":
+            user_content = [text_part, *image_parts]
+        elif image_sequence_text_position == "after":
+            user_content = [*image_parts, text_part]
+        else:
+            raise ValueError(
+                "image_sequence_text_position must be 'before' or 'after', "
+                f"got {image_sequence_text_position!r}"
+            )
     else:
         raise ValueError(f"Unknown media_schema: {media_schema}")
 
     messages.append({"role": "user", "content": user_content})
     return messages
+
+
+def build_extra_body(args: argparse.Namespace) -> Dict[str, Any]:
+    extra_body: Dict[str, Any] = {
+        "repetition_penalty": args.repetition_penalty,
+    }
+    if args.top_k is not None and args.top_k > 0:
+        extra_body["top_k"] = args.top_k
+    if not args.omit_chat_template_kwargs:
+        extra_body["chat_template_kwargs"] = {"enable_thinking": False}
+    return extra_body
 
 
 async def call_sglang(
@@ -239,11 +260,7 @@ async def call_sglang(
                 top_p=args.top_p,
                 max_tokens=args.max_completion_tokens,
                 stream=False,
-                extra_body={
-                    "chat_template_kwargs": {"enable_thinking": False},
-                    "top_k": args.top_k,
-                    "repetition_penalty": args.repetition_penalty,
-                },
+                extra_body=build_extra_body(args),
             )
             elapsed = time.time() - start
 
@@ -423,6 +440,7 @@ async def process_one(
                     frame_data_urls=frame_data_urls,
                     examples=examples,
                     media_schema=media_schema,
+                    image_sequence_text_position=args.image_sequence_text_position,
                 )
                 try:
                     answer, api_elapsed, usage, finish_reason, raw_response_info = await call_sglang(
@@ -467,6 +485,8 @@ async def process_one(
                     "top_p": args.top_p,
                     "top_k": args.top_k,
                     "repetition_penalty": args.repetition_penalty,
+                    "omit_chat_template_kwargs": args.omit_chat_template_kwargs,
+                    "image_sequence_text_position": args.image_sequence_text_position,
                     "max_completion_tokens": args.max_completion_tokens,
                     "min_pixels_per_frame": MIN_PIXELS_PER_FRAME,
                     "max_pixels_per_frame": MAX_PIXELS_PER_FRAME,
@@ -594,6 +614,17 @@ def parse_args() -> argparse.Namespace:
         "--allow_empty_answers",
         action="store_true",
         help="Keep empty model outputs as successful predictions instead of retrying/failing them.",
+    )
+    parser.add_argument(
+        "--omit_chat_template_kwargs",
+        action="store_true",
+        help="Do not send chat_template_kwargs such as enable_thinking=False.",
+    )
+    parser.add_argument(
+        "--image_sequence_text_position",
+        choices=["before", "after"],
+        default="after",
+        help="Place the text prompt before or after image_url parts for image_sequence requests.",
     )
 
     parser.add_argument("--max_completion_tokens", type=int, default=512)
