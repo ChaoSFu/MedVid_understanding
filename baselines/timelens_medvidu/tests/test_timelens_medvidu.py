@@ -7,9 +7,9 @@ import unittest
 
 from baselines.timelens_medvidu.audit_artifacts import frame_path_audit, gt_leakage_audit
 from baselines.timelens_medvidu.cache import build_cache_key
-from baselines.timelens_medvidu.config import GROUNDER_PROMPT, MIN_TOKENS, PROMPT_VERSION, TOTAL_TOKENS
+from baselines.timelens_medvidu.config import GROUNDER_PROMPT, MIN_TOKENS, PROMPT_VERSION, QWEN3_DOWNSAMPLE_RATE, TOTAL_TOKENS
 from baselines.timelens_medvidu.dataset import MedVidUTALTimeLensDataset, build_official_prompt, build_qwen3_frame_list_messages
-from baselines.timelens_medvidu.dataset import build_messages_for_adapter
+from baselines.timelens_medvidu.dataset import build_messages_for_adapter, textual_timestamp_image_max_pixels
 from baselines.timelens_medvidu.evaluate_medvidu_tal import evaluate_predictions
 from baselines.timelens_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, read_json, write_json, write_jsonl
 from baselines.timelens_medvidu.manifest import build_gt_free_row, build_manifest, choose_smoke_rows, extract_question, remap_path
@@ -225,10 +225,18 @@ class TimeLensMedVidUTests(unittest.TestCase):
         messages = build_textual_timestamp_image_sequence_messages(row)
         content = messages[0]["content"]
         self.assertEqual(content[0], {"type": "text", "text": "Frame 1 timestamp: 0.000000 seconds"})
-        self.assertEqual(content[1], {"type": "image", "image": row["video"][0]})
+        self.assertEqual(content[1]["type"], "image")
+        self.assertEqual(content[1]["image"], row["video"][0])
+        self.assertEqual(content[1]["max_pixels"], textual_timestamp_image_max_pixels(3, TOTAL_TOKENS))
         self.assertEqual(content[2], {"type": "text", "text": "Frame 2 timestamp: 1.250000 seconds"})
         self.assertEqual(content[4], {"type": "text", "text": "Frame 3 timestamp: 1.250000 seconds"})
         self.assertEqual(content[-1]["text"], GROUNDER_PROMPT.format(row["human_question"]))
+
+    def test_textual_timestamp_image_sequence_distributes_visual_budget(self):
+        n_frames = 180
+        expected_total_pixels = TOTAL_TOKENS * QWEN3_DOWNSAMPLE_RATE * QWEN3_DOWNSAMPLE_RATE
+        self.assertEqual(textual_timestamp_image_max_pixels(n_frames, TOTAL_TOKENS), expected_total_pixels // n_frames)
+        self.assertLessEqual(textual_timestamp_image_max_pixels(n_frames, TOTAL_TOKENS) * n_frames, expected_total_pixels)
 
     def test_adapter_preflight_records_scientific_distinction(self):
         row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
@@ -239,6 +247,8 @@ class TimeLensMedVidUTests(unittest.TestCase):
         self.assertTrue(textual["applicable"])
         self.assertTrue(textual["official_prompt_included_verbatim"])
         self.assertFalse(textual["official_prompt_exact_match"])
+        self.assertEqual(textual["per_image_max_pixels"], textual_timestamp_image_max_pixels(3, TOTAL_TOKENS))
+        self.assertEqual(textual["total_visual_pixels_budget"], TOTAL_TOKENS * QWEN3_DOWNSAMPLE_RATE * QWEN3_DOWNSAMPLE_RATE)
         self.assertFalse(textual["additional_temporal_resampling_any"] if "additional_temporal_resampling_any" in textual else textual["additional_temporal_resampling"])
 
     def test_dataset_message_dispatch_keeps_strict_default_and_textual_override(self):
@@ -249,6 +259,7 @@ class TimeLensMedVidUTests(unittest.TestCase):
         textual = build_messages_for_adapter(row, MIN_TOKENS, TOTAL_TOKENS, TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER)
         self.assertEqual(textual[0]["content"][0]["type"], "text")
         self.assertEqual(textual[0]["content"][1]["type"], "image")
+        self.assertIn("max_pixels", textual[0]["content"][1])
 
     def test_textual_prediction_path_is_separate_from_strict_cache(self):
         root = Path("/tmp/out")

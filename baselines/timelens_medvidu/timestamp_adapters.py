@@ -9,7 +9,7 @@ from .config import (
     QWEN3_DOWNSAMPLE_RATE,
     TOTAL_TOKENS,
 )
-from .dataset import build_official_prompt, build_qwen3_frame_list_messages
+from .dataset import build_official_prompt, build_qwen3_frame_list_messages, textual_timestamp_image_max_pixels
 from .dataset import build_textual_timestamp_image_sequence_messages as _build_textual_timestamp_image_sequence_messages
 from .io_utils import assert_no_gt_leak, sha256_json
 
@@ -36,6 +36,8 @@ class AdapterAudit:
     preserves_duplicate_logical_frames: bool
     additional_temporal_resampling: bool
     qwen_content_types: list[str]
+    per_image_max_pixels: int | None = None
+    total_visual_pixels_budget: int | None = None
     qwen_processing_status: str | None = None
     qwen_processing_error: str | None = None
     qwen_video_tensor_count: int | None = None
@@ -61,6 +63,8 @@ class AdapterAudit:
             "preserves_duplicate_logical_frames": self.preserves_duplicate_logical_frames,
             "additional_temporal_resampling": self.additional_temporal_resampling,
             "qwen_content_types": self.qwen_content_types,
+            "per_image_max_pixels": self.per_image_max_pixels,
+            "total_visual_pixels_budget": self.total_visual_pixels_budget,
             "qwen_processing_status": self.qwen_processing_status,
             "qwen_processing_error": self.qwen_processing_error,
             "qwen_video_tensor_count": self.qwen_video_tensor_count,
@@ -84,7 +88,7 @@ def build_strict_single_fps_messages(row: dict[str, Any]) -> list[dict[str, Any]
 
 
 def build_textual_timestamp_image_sequence_messages(row: dict[str, Any]) -> list[dict[str, Any]]:
-    messages = _build_textual_timestamp_image_sequence_messages(row)
+    messages = _build_textual_timestamp_image_sequence_messages(row, TOTAL_TOKENS)
     assert_no_gt_leak(
         {
             "adapter": TEXTUAL_TIMESTAMP_IMAGE_SEQUENCE_ADAPTER,
@@ -131,6 +135,8 @@ def audit_adapter_for_row(row: dict[str, Any], adapter: str, process_qwen: bool)
     official_prompt = build_official_prompt(row["human_question"])
     duplicate_present = duplicate_logical_frames_present(row)
     try:
+        per_image_max_pixels = None
+        total_visual_pixels_budget = None
         if adapter == STRICT_SINGLE_FPS_ADAPTER:
             messages = build_strict_single_fps_messages(row)
             applicable = True
@@ -145,6 +151,8 @@ def audit_adapter_for_row(row: dict[str, Any], adapter: str, process_qwen: bool)
             reason = "Uses explicit GT-free local_time text before each image; not official TimeLens-8B Qwen3 video timestamp encoding."
             official_exact = False
             official_included = True
+            per_image_max_pixels = textual_timestamp_image_max_pixels(len(row.get("video") or []), TOTAL_TOKENS)
+            total_visual_pixels_budget = TOTAL_TOKENS * QWEN3_DOWNSAMPLE_RATE * QWEN3_DOWNSAMPLE_RATE
         else:
             raise ValueError(f"unknown adapter: {adapter}")
     except Exception as exc:
@@ -165,6 +173,8 @@ def audit_adapter_for_row(row: dict[str, Any], adapter: str, process_qwen: bool)
             preserves_duplicate_logical_frames=duplicate_present,
             additional_temporal_resampling=False,
             qwen_content_types=[],
+            per_image_max_pixels=None,
+            total_visual_pixels_budget=None,
         )
 
     qwen_payload: dict[str, Any] = {}
@@ -198,6 +208,8 @@ def audit_adapter_for_row(row: dict[str, Any], adapter: str, process_qwen: bool)
         preserves_duplicate_logical_frames=duplicate_present,
         additional_temporal_resampling=False,
         qwen_content_types=content_types(messages),
+        per_image_max_pixels=per_image_max_pixels,
+        total_visual_pixels_budget=total_visual_pixels_budget,
         qwen_processing_status=qwen_payload.get("qwen_processing_status"),
         qwen_processing_error=qwen_payload.get("qwen_processing_error"),
         qwen_video_tensor_count=qwen_payload.get("qwen_video_tensor_count"),

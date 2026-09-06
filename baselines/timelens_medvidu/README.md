@@ -72,7 +72,7 @@ python -m baselines.timelens_medvidu.compare_timestamp_adapters
 `compare_timestamp_adapters` compares two GT-free timestamp adapters on the 20-sample smoke manifest:
 
 - `strict_single_fps_subset`: official TimeLens-8B/Qwen3 frame-list video input with `fps=effective_fps`, restricted to samples whose local timestamps are exactly representable by one fps. This is the most faithful to official TimeLens-8B behavior, but only a diagnostic subset when MedVidU timestamps are non-uniform or duplicated.
-- `textual_timestamp_image_sequence`: preserves every MedVidU logical frame as an image and writes the GT-free `local_time` before each frame, followed by the unchanged official TimeLens grounding prompt. This is more faithful to MedVidU timing and coverage, but should be named as an adapted TimeLens variant, not an official TimeLens-8B run.
+- `textual_timestamp_image_sequence`: preserves every MedVidU logical frame as an image and writes the GT-free `local_time` before each frame, followed by the unchanged official TimeLens grounding prompt. It distributes the official visual pixel budget across all images via per-image `max_pixels`, so it keeps frame coverage without the unbounded image-token expansion that can cause CUDA OOM. This is more faithful to MedVidU timing and coverage, but should be named as an adapted TimeLens variant, not an official TimeLens-8B run.
 
 To also call `qwen_vl_utils.process_vision_info` inside the active environment:
 
@@ -119,6 +119,14 @@ Required statement:
 ```text
 This adapter preserves the MedVidU-provided visual evidence and GT-free local frame timestamps
 ```
+
+The textual adapter keeps all sampled frames and timestamps. To avoid turning hundreds of frames into hundreds of high-resolution images, each image message includes:
+
+```text
+max_pixels = floor(TOTAL_TOKENS * 32 * 32 / n_frames)
+```
+
+For the default `TOTAL_TOKENS=14336`, a 180-frame sample receives about `81555` pixels per frame while staying within the same global visual budget used by the TimeLens/Qwen video input.
 
 Run the same command a second time for the exact cache restart test. The expected restart audit is:
 

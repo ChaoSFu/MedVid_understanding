@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import GROUNDER_PROMPT, QWEN3_DOWNSAMPLE_RATE, QWEN3_IMAGE_PATCH_SIZE, TIMESTAMP_ADAPTER_VERSION
+from .config import (
+    GROUNDER_PROMPT,
+    QWEN3_DOWNSAMPLE_RATE,
+    QWEN3_IMAGE_PATCH_SIZE,
+    TIMESTAMP_ADAPTER_VERSION,
+)
 
 
 class MedVidUTALTimeLensDataset:
@@ -74,17 +79,25 @@ def build_qwen3_frame_list_messages(row: dict[str, Any], min_tokens: int, total_
     ]
 
 
-def build_textual_timestamp_image_sequence_messages(row: dict[str, Any]) -> list[dict[str, Any]]:
+def textual_timestamp_image_max_pixels(n_frames: int, total_tokens: int) -> int:
+    if n_frames <= 0:
+        raise ValueError("textual timestamp adapter requires at least one frame")
+    total_pixels = total_tokens * QWEN3_DOWNSAMPLE_RATE * QWEN3_DOWNSAMPLE_RATE
+    return max(QWEN3_DOWNSAMPLE_RATE * QWEN3_DOWNSAMPLE_RATE, total_pixels // n_frames)
+
+
+def build_textual_timestamp_image_sequence_messages(row: dict[str, Any], total_tokens: int) -> list[dict[str, Any]]:
     content: list[dict[str, Any]] = []
     observations = list(row.get("frame_observations") or [])
     video = list(row.get("video") or [])
     if len(observations) != len(video):
         raise ValueError("frame_observations must align one-to-one with video")
+    per_image_max_pixels = textual_timestamp_image_max_pixels(len(video), total_tokens)
     for obs, frame_path in zip(observations, video):
         frame_no = int(obs["frame_position"]) + 1
         local_time = float(obs["local_time"])
         content.append({"type": "text", "text": f"Frame {frame_no} timestamp: {local_time:.6f} seconds"})
-        content.append({"type": "image", "image": frame_path})
+        content.append({"type": "image", "image": frame_path, "max_pixels": per_image_max_pixels})
     content.append({"type": "text", "text": build_official_prompt(row["human_question"])})
     return [{"role": "user", "content": content}]
 
@@ -96,7 +109,7 @@ def build_messages_for_adapter(row: dict[str, Any], min_tokens: int, total_token
             raise ValueError(f"sample {row.get('sample_id')} is not single-fps compatible")
         return build_qwen3_frame_list_messages(row, min_tokens, total_tokens)
     if timestamp_adapter == "textual_timestamp_image_sequence":
-        return build_textual_timestamp_image_sequence_messages(row)
+        return build_textual_timestamp_image_sequence_messages(row, total_tokens)
     raise ValueError(f"unknown timestamp adapter: {timestamp_adapter}")
 
 
