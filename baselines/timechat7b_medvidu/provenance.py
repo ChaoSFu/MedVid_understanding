@@ -49,6 +49,7 @@ def write_upstream_git_provenance(timechat_repo: Path, provenance_dir: Path, suf
     top_level = git_text(timechat_repo, ["rev-parse", "--show-toplevel"]).strip()
     commit = git_text(timechat_repo, ["rev-parse", "HEAD"]).strip()
     status = git_text(timechat_repo, ["status", "--short"])
+    status_text = status if status else "CLEAN\n"
     remote = git_text(timechat_repo, ["remote", "-v"])
     diff = git_text(timechat_repo, ["diff", "--", *OFFICIAL_FILES])
     (provenance_dir / "upstream_git_commit.txt").write_text(
@@ -57,7 +58,7 @@ def write_upstream_git_provenance(timechat_repo: Path, provenance_dir: Path, suf
             f"git_top_level: {top_level}\n"
             f"commit_sha: {commit}\n"
             "git_status_short:\n"
-            f"{status if status else 'CLEAN\\n'}"
+            f"{status_text}"
             "git_remote_v:\n"
             f"{remote}"
         ),
