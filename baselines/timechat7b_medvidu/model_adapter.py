@@ -89,6 +89,13 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
 
     patched_classes: dict[type, list[str]] = {}
     patched_instances: dict[str, list[str]] = {}
+    original_validate = GenerationMixin._validate_model_kwargs
+
+    def validate_model_kwargs_allow_inputs_embeds(self, model_kwargs):
+        filtered = dict(model_kwargs)
+        filtered.pop("inputs_embeds", None)
+        return original_validate(self, filtered)
+
     modules = model.modules() if hasattr(model, "modules") else [model]
     for module in modules:
         if not hasattr(module, "prepare_inputs_for_generation"):
@@ -114,6 +121,8 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
                 continue
             setattr(cls, name, value)
             added.append(name)
+        cls._validate_model_kwargs = validate_model_kwargs_allow_inputs_embeds
+        added.append("_validate_model_kwargs_allow_inputs_embeds")
         patched_classes[cls] = added
     return {
         "classes": {f"{cls.__module__}.{cls.__name__}": names for cls, names in patched_classes.items()},
