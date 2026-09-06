@@ -21,6 +21,7 @@ from baselines.timechat7b_medvidu.frame_loader import (
 from baselines.timechat7b_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, write_json, write_jsonl
 from baselines.timechat7b_medvidu.manifest import build_gt_free_row, build_manifest, choose_smoke_rows, extract_human_question
 from baselines.timechat7b_medvidu.model_adapter import MedVidUTimeChatVTune
+from baselines.timechat7b_medvidu.model_adapter import patch_generation_mixin_methods
 from baselines.timechat7b_medvidu.parser import parse_timechat_answer
 
 
@@ -203,6 +204,30 @@ class TimeChatMedVidUTests(unittest.TestCase):
         adapter = MedVidUTimeChatVTune.__new__(MedVidUTimeChatVTune)
         self.assertEqual(adapter.extract_time("The event happens in 2 - 4 seconds."), [2.0, 4.0])
         self.assertEqual(adapter.extract_time2("from 5 to 8 seconds"), [5.0, 8.0])
+
+    def test_generation_shim_handles_instance_only_prepare_method(self):
+        try:
+            import torch
+        except Exception as exc:
+            self.skipTest(f"torch unavailable: {exc!r}")
+
+        class InstanceOnlyPrepare(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = None
+                self.prepare_inputs_for_generation = lambda input_ids=None, inputs_embeds=None, **kwargs: {
+                    "input_ids": input_ids,
+                    "inputs_embeds": inputs_embeds,
+                    **kwargs,
+                }
+
+            def forward(self, *args, **kwargs):
+                return None
+
+        model = InstanceOnlyPrepare()
+        patched = patch_generation_mixin_methods(model)
+        self.assertIn("InstanceOnlyPrepare", "".join(patched["classes"].keys()))
+        self.assertTrue(hasattr(model, "generate"))
 
 
 if __name__ == "__main__":

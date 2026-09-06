@@ -150,8 +150,8 @@ def patch_generation_mixin_methods(model: Any) -> dict[str, Any]:
             continue
         added: list[str] = []
         try:
-            prepare_signature = inspect.signature(cls.prepare_inputs_for_generation)
-        except (TypeError, ValueError):
+            prepare_signature = inspect.signature(module.prepare_inputs_for_generation)
+        except (AttributeError, TypeError, ValueError):
             prepare_signature = None
         if prepare_signature is None or "inputs_embeds" not in prepare_signature.parameters:
             cls.prepare_inputs_for_generation = prepare_inputs_for_generation_allow_inputs_embeds
