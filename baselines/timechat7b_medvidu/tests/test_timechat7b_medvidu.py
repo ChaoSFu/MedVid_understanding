@@ -11,6 +11,7 @@ from baselines.timechat7b_medvidu.evaluate_timechat_medvidu_tal import evaluate_
 from baselines.timechat7b_medvidu.frame_loader import (
     assert_timestamp_msg_consistency,
     build_timechat_msg,
+    build_timechat_visual_message,
     load_frames_as_timechat_tensor,
     official_uniform_indices,
     round_timechat_timestamp,
@@ -94,6 +95,9 @@ class TimeChatMedVidUTests(unittest.TestCase):
         texts = timestamp_texts([0.0, 0.49, 1.04])
         msg = build_timechat_msg(["0.0", "0.5", "1.0"])
         assert_timestamp_msg_consistency(msg, texts)
+        visual_msg = build_timechat_visual_message(msg)
+        self.assertEqual(visual_msg.count("<ImageHere>"), 1)
+        self.assertIn(msg, visual_msg)
 
     def test_select_frame_inputs_preserves_msg_and_indices(self):
         selected = select_frame_inputs(["a", "b", "b"], [0.0, 1.25, 1.25])

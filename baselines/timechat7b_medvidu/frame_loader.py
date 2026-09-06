@@ -68,6 +68,10 @@ def build_timechat_msg(rounded_timestamps: list[str]) -> str:
     return f"The video contains {len(rounded_timestamps)} frames sampled at {', '.join(rounded_timestamps)} seconds. "
 
 
+def build_timechat_visual_message(msg: str) -> str:
+    return f" <Video><ImageHere></Video> {msg}"
+
+
 def assert_timestamp_msg_consistency(msg: str, qformer_timestamp_texts: list[str]) -> None:
     rounded_from_qformer = [text.removeprefix("This frame is sampled at ").removesuffix(" second.") for text in qformer_timestamp_texts]
     expected = build_timechat_msg(rounded_from_qformer)

@@ -15,7 +15,7 @@ from .config import (
     PROMPT_VERSION,
     TIMESTAMP_ADAPTER_VERSION,
 )
-from .frame_loader import build_video_features_from_frames
+from .frame_loader import build_timechat_visual_message, build_video_features_from_frames
 from .io_utils import sha256_file
 from .parser import parse_timechat_answer
 
@@ -298,7 +298,7 @@ class MedVidUTimeChatVTune:
         )
         question = OFFICIAL_VTUNE_GROUNDING_PROMPT.format(event=row["human_question"])
         chat_state = self.initialize_chat("grounding", msg)
-        chat_state.append_message(chat_state.roles[0], " " + msg)
+        chat_state.append_message(chat_state.roles[0], build_timechat_visual_message(msg))
         self.chat.ask(question, chat_state)
         answer = self.inference(chat_state, video_features, generation)
         parsed = parse_timechat_answer(self, answer)
