@@ -16,6 +16,7 @@ from evidence_stability.spatial import (  # noqa: E402
     H4_PROTOCOL_VERSION,
     audit_stg_schema,
     build_spatial_pointer_prompt,
+    h4_protocol_freeze,
     prompt_sha256,
     write_spatial_threshold_review_md,
     write_stg_schema_md,
@@ -67,7 +68,7 @@ def write_run_status_md(path: Path, status: dict) -> None:
         f"- official reported thresholds: {status['stg_schema']['official_stg_metric']['reported_metrics']}",
         f"- canonical positive threshold: {status['stg_schema']['official_stg_metric']['single_canonical_positive_threshold']}",
         "",
-        "H4-v1 is stopped before model preflight/discovery because post-hoc TRUE_SPATIAL_SUPPORT labels require a frozen canonical positive spatial threshold.",
+        "H4-v1 protocol choices are frozen. Continue with 12-QA preflight before any 50-QA discovery run.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -90,6 +91,7 @@ def main() -> None:
     if not isinstance(samples, list):
         raise TypeError("STG data_json must contain a list of samples")
     audit = audit_stg_schema(samples)
+    freeze = h4_protocol_freeze()
     exemplar_question = audit["examples"][0]["question"] if audit["examples"] else ""
     pointer_prompt = build_spatial_pointer_prompt(exemplar_question)
     prompt_fingerprint = {
@@ -108,15 +110,18 @@ def main() -> None:
         "output_dir": str(out_dir),
         "stg_schema": audit,
         "prompt_fingerprint": prompt_fingerprint,
+        "protocol_freeze": freeze,
         "repo": repo,
         "preflight_executed": False,
         "discovery_executed": False,
         "formal_statistics_run": False,
         "independent_confirmation_run": False,
-        "stop_reason": "STOP_NEEDS_SPATIAL_LABEL_THRESHOLD_FREEZE",
-        "required_human_decisions": [
-            "Freeze H4 temporal eligibility rule: H2 frame-overlap rule vs another explicit STG-compatible rule.",
-            "Freeze H4 spatial positive criterion for TRUE_SPATIAL_SUPPORT, because official STG evaluator reports mIoU and iou@0.3/0.5/0.7 without naming one H4 label threshold.",
+        "stop_reason": "READY_FOR_H4_PREFLIGHT",
+        "required_human_decisions": [],
+        "resolved_human_decisions": [
+            "Temporal eligibility uses the H2 strong temporal alignment rule.",
+            "TRUE_SPATIAL_SUPPORT uses official mean IoU >= 0.5.",
+            "SPURIOUS_SPATIAL_SUPPORT uses official mean IoU == 0.",
         ],
     }
 

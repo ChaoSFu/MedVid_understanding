@@ -4,15 +4,61 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from statistics import mean, median
 from typing import Any
 
 from evidence_stability.cache import stable_hash
+from evidence_stability.temporal import (
+    GTSpan,
+    TemporalMapper,
+    build_temporal_cells,
+    compute_alignment_metrics,
+    frame_quality_stats,
+    validate_and_clip_gt_spans,
+    visible_cells_for_spans,
+)
 
 
 H4_PROTOCOL_VERSION = "h4_spatial_v1"
 H4_DISCOVERY_SEED = 42
+H4_PREFLIGHT_QA_COUNT = 12
+H4_DISCOVERY_QA_COUNT = 50
+H4_WINDOW_SIZE = 16
+H4_WINDOW_STRIDE = 8
+H4_TEMPORAL_ELIGIBILITY_RULE = "h2_strong_temporal_alignment"
+H4_TEMPORAL_DENSITY_THRESHOLD = 0.25
+H4_TEMPORAL_RECALL_THRESHOLD = 0.50
+H4_SPATIAL_TRUE_IOU_THRESHOLD = 0.5
+H4_SPURIOUS_IOU_THRESHOLD = 0.0
+H4_SPATIAL_LABEL_PROTOCOL = "true_mean_iou_ge_0.5_spurious_iou_eq_0"
+H4_SUPPORT_PROMPT_VERSION = "h4_evidence_presence_stg_v1"
 SPATIAL_POINTER_PROMPT_VERSION = "spatial_pointer_v1"
+STG_SOURCE_TIMEBASE_HZ = {
+    "CholecTrack20": 25.0,
+    "CoPESD": 1.0,
+    "EgoSurgery": 0.5,
+}
+
+H4_SUPPORT_PROMPT_TEMPLATE = """You are examining a short temporal window from a medical or surgical video.
+
+Target claim or question:
+"{human_question}"
+
+Does this video window contain visual evidence that directly supports the target claim?
+
+Answer only:
+YES
+or
+NO
+
+Judge only what is visually observable in the provided frames.
+
+Do not answer YES merely because a related instrument,
+anatomical structure, scene, or procedure is present.
+
+Answer YES only if the target claim itself is visually supported."""
+
 SPATIAL_POINTER_PROMPT_TEMPLATE = """You are examining a short temporal window from a medical or surgical video.
 
 Target claim or question:
@@ -46,6 +92,33 @@ Requirements:
 
 No explanation.
 No additional text."""
+
+
+def h4_protocol_freeze() -> dict[str, Any]:
+    return {
+        "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": "mechanism_discovery",
+        "training": False,
+        "primary_task": "MedVidU STG",
+        "temporal_eligibility_rule": H4_TEMPORAL_ELIGIBILITY_RULE,
+        "temporal_density_threshold": H4_TEMPORAL_DENSITY_THRESHOLD,
+        "temporal_recall_threshold": H4_TEMPORAL_RECALL_THRESHOLD,
+        "true_spatial_support_rule": "official mean IoU >= 0.5",
+        "spurious_spatial_support_rule": "official mean IoU == 0",
+        "spatial_true_iou_threshold": H4_SPATIAL_TRUE_IOU_THRESHOLD,
+        "spurious_iou_threshold": H4_SPURIOUS_IOU_THRESHOLD,
+        "spatial_label_protocol": H4_SPATIAL_LABEL_PROTOCOL,
+        "support_prompt_version": H4_SUPPORT_PROMPT_VERSION,
+        "spatial_pointer_prompt_version": SPATIAL_POINTER_PROMPT_VERSION,
+        "window_size": H4_WINDOW_SIZE,
+        "window_stride": H4_WINDOW_STRIDE,
+        "drop_last": True,
+        "stg_source_timebase_hz": dict(STG_SOURCE_TIMEBASE_HZ),
+    }
+
+
+def build_h4_support_prompt(human_question: str) -> str:
+    return H4_SUPPORT_PROMPT_TEMPLATE.format(human_question=human_question)
 
 
 def build_spatial_pointer_prompt(human_question: str) -> str:
@@ -127,6 +200,292 @@ def stg_struct(sample: dict[str, Any]) -> dict[str, Any] | None:
     if isinstance(info, dict):
         return info
     return None
+
+
+def stg_dataset_name(sample: dict[str, Any]) -> str:
+    return str(sample.get("dataset_name") or sample.get("data_source") or "Unknown")
+
+
+def stg_gt_spans(sample: dict[str, Any]) -> list[GTSpan]:
+    struct = stg_struct(sample)
+    if not struct:
+        return []
+    if "start" not in struct or "end" not in struct:
+        return []
+    return [GTSpan(float(struct["start"]), float(struct["end"]))]
+
+
+def map_stg_frames(
+    sample: dict[str, Any],
+    frame_paths: list[str],
+    sampled_frames: list[int],
+) -> Any:
+    dataset_name = stg_dataset_name(sample)
+    if dataset_name not in STG_SOURCE_TIMEBASE_HZ:
+        raise ValueError(f"Unsupported STG dataset for H4 temporal mapping: {dataset_name}")
+    return TemporalMapper._map_source_timebase(
+        sampled_frames,
+        frame_paths,
+        source_timebase_hz=STG_SOURCE_TIMEBASE_HZ[dataset_name],
+    )
+
+
+def normalize_stg_sample(
+    sample: dict[str, Any],
+    original_index: int,
+    frame_root: str | None = None,
+    source_frame_prefix: str | list[str] | tuple[str, ...] | None = None,
+    verify_paths: bool = False,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    from evidence_stability.phase_d2 import runtime_frame_path
+
+    clip_id = str(sample.get("id", ""))
+    qa_id = f"{original_index:04d}::{clip_id}"
+    if str(sample.get("qa_type", "")).lower() != "stg":
+        return None, {"qa_id": qa_id, "clip_id": clip_id, "reason": "NOT_STG"}
+
+    question = extract_human_question(sample)
+    struct = stg_struct(sample)
+    metadata = dict(sample.get("metadata") or {})
+    dataset_name = stg_dataset_name(sample)
+    raw_frame_paths = [str(path) for path in sample.get("video") or []]
+    try:
+        frame_paths = [
+            runtime_frame_path(path, frame_root, source_frame_prefix)
+            if frame_root else path
+            for path in raw_frame_paths
+        ]
+    except ValueError as exc:
+        return None, {"qa_id": qa_id, "clip_id": clip_id, "reason": f"FRAME_PATH_REMAP_FAILED: {exc}"}
+
+    failures: list[str] = []
+    if not clip_id:
+        failures.append("MISSING_CLIP_ID")
+    if not question:
+        failures.append("MISSING_QUESTION")
+    if not struct:
+        failures.append("MISSING_STRUC_INFO")
+    if "fps" not in metadata:
+        failures.append("MISSING_METADATA_FPS")
+    if not raw_frame_paths:
+        failures.append("MISSING_VIDEO_FRAMES")
+    sampled_frames: list[int] = []
+    try:
+        sampled_frames = [int(x) for x in sample.get("sampled_video_frames") or []]
+    except Exception:
+        failures.append("MALFORMED_SAMPLED_VIDEO_FRAMES")
+    if not sampled_frames:
+        failures.append("MISSING_SAMPLED_VIDEO_FRAMES")
+    if len(raw_frame_paths) != len(sampled_frames):
+        failures.append("LEN_VIDEO_NE_SAMPLED_FRAMES")
+    if dataset_name not in STG_SOURCE_TIMEBASE_HZ:
+        failures.append("UNSUPPORTED_STG_DATASET_TIMEBASE")
+    bbox_dict = (struct or {}).get("bbox_dict") or {}
+    if not isinstance(bbox_dict, dict) or not bbox_dict:
+        failures.append("MISSING_BBOX_DICT")
+
+    if failures:
+        return None, {
+            "qa_id": qa_id,
+            "clip_id": clip_id,
+            "original_index": original_index,
+            "dataset_name": dataset_name,
+            "reason": ";".join(failures),
+        }
+
+    mapping = map_stg_frames(sample, frame_paths, sampled_frames)
+    raw_spans = stg_gt_spans(sample)
+    validation = validate_and_clip_gt_spans(raw_spans, mapping.clip_duration, float(metadata["fps"]))
+    cells = build_temporal_cells(mapping.observations, mapping.clip_duration)
+    visible_total = visible_cells_for_spans(cells, validation.processed_spans)
+    temporal_status = validation.temporal_status
+    if temporal_status == "OK" and not visible_total:
+        temporal_status = "NO_VISIBLE_GT_FRAME"
+    analysis_eligible = temporal_status == "OK" and bool(visible_total)
+
+    missing_paths: list[str] = []
+    if verify_paths:
+        for frame_path in frame_paths:
+            if not Path(frame_path).exists():
+                missing_paths.append(frame_path)
+                if len(missing_paths) >= 5:
+                    break
+
+    normalized = {
+        "qa_id": qa_id,
+        "clip_id": clip_id,
+        "sample_id": qa_id,
+        "original_index": original_index,
+        "question": question,
+        "human_question": question,
+        "dataset_name": dataset_name,
+        "data_source": sample.get("data_source"),
+        "metadata": metadata,
+        "metadata_fps": float(metadata["fps"]),
+        "fps": float(metadata["fps"]),
+        "frame_paths": frame_paths,
+        "source_frame_paths": raw_frame_paths,
+        "sampled_frame_indices": sampled_frames,
+        "frame_observations": [obs.to_dict() for obs in mapping.observations],
+        "temporal_cells": [cell.to_dict() for cell in cells],
+        "clip_duration": mapping.clip_duration,
+        "time_mapping_method": mapping.time_mapping_method,
+        "source_timebase_hz": mapping.source_timebase_hz,
+        "clip_duration_source": mapping.clip_duration_source,
+        "raw_gt_spans": [span.to_dict() for span in raw_spans],
+        "processed_gt_spans": [span.to_dict() for span in validation.processed_spans],
+        "gt_spans": [span.to_dict() for span in validation.processed_spans],
+        "invalid_gt_spans": list(validation.invalid_gt_spans),
+        "gt_boundary_clipped": validation.gt_boundary_clipped,
+        "temporal_status": temporal_status,
+        "temporal_excluded_reason": validation.excluded_reason,
+        "temporal_tolerance": validation.tolerance,
+        "analysis_eligible": analysis_eligible,
+        "n_gt_visible_total": len(visible_total),
+        "gt_visible_source_frame_indices": sorted(visible_total),
+        "stg_object": str(struct.get("object")),
+        "stg_bbox_dict": bbox_dict,
+        "stg_start": float(struct["start"]),
+        "stg_end": float(struct["end"]),
+        "stg_stride": float(struct.get("stride", 0)),
+        "qa_id_valid": bool(qa_id),
+        "missing_frame_count_preview": len(missing_paths),
+        "first_missing_frame": missing_paths[0] if missing_paths else None,
+        **frame_quality_stats(sampled_frames),
+    }
+    return normalized, None
+
+
+def is_h4_temporally_eligible(metrics: dict[str, Any], sample: dict[str, Any]) -> bool:
+    if not sample.get("analysis_eligible"):
+        return False
+    if int(metrics.get("n_gt_visible_in_window") or 0) <= 0:
+        return False
+    density = metrics.get("evidence_density")
+    recall = metrics.get("gt_evidence_recall")
+    return (
+        density is not None and float(density) >= H4_TEMPORAL_DENSITY_THRESHOLD
+    ) or (
+        recall is not None and float(recall) >= H4_TEMPORAL_RECALL_THRESHOLD
+    )
+
+
+def h4_generate_stg_windows(
+    sample: dict[str, Any],
+    window_size: int = H4_WINDOW_SIZE,
+    stride: int = H4_WINDOW_STRIDE,
+    drop_last: bool = True,
+) -> list[dict[str, Any]]:
+    from evidence_stability.windows import generate_position_windows
+
+    windows = generate_position_windows(sample, window_size=window_size, stride=stride, drop_last=drop_last)
+    for window in windows:
+        window["candidate_id"] = window["window_id"]
+        window["human_question"] = sample["human_question"]
+    return windows
+
+
+def h4_window_temporal_alignment(sample: dict[str, Any], window: dict[str, Any]) -> dict[str, Any]:
+    cells = [
+        cell
+        for cell in sample.get("temporal_cells", [])
+    ]
+    cell_objects = []
+    from evidence_stability.temporal import TemporalCell
+
+    for cell in cells:
+        cell_objects.append(
+            TemporalCell(
+                source_frame_index=int(cell["source_frame_index"]),
+                local_time=float(cell["local_time"]),
+                cell_start=float(cell["cell_start"]),
+                cell_end=float(cell["cell_end"]),
+                frame_positions=tuple(int(x) for x in cell.get("frame_positions", [])),
+            )
+        )
+    spans = [GTSpan(float(span["start"]), float(span["end"])) for span in sample.get("processed_gt_spans", [])]
+    metrics = compute_alignment_metrics(cell_objects, window["frame_indices"], spans).to_dict()
+    metrics["h4_temporally_eligible"] = is_h4_temporally_eligible(metrics, sample)
+    metrics["temporal_eligibility_rule"] = H4_TEMPORAL_ELIGIBILITY_RULE
+    return metrics
+
+
+def h4_model_window_manifest_row(sample: dict[str, Any], window: dict[str, Any]) -> dict[str, Any]:
+    support_prompt = build_h4_support_prompt(sample["human_question"])
+    pointer_prompt = build_spatial_pointer_prompt(sample["human_question"])
+    return {
+        "qa_id": sample["qa_id"],
+        "clip_id": sample["clip_id"],
+        "candidate_id": window["candidate_id"],
+        "window_id": window["window_id"],
+        "dataset": sample["dataset_name"],
+        "dataset_name": sample["dataset_name"],
+        "human_question": sample["human_question"],
+        "frame_ids": list(window["frame_indices"]),
+        "frame_paths": list(window["frame_paths"]),
+        "local_timestamps": list(window["frame_times"]),
+        "n_frames": int(window["n_frames"]),
+        "n_unique_frames": int(window["n_unique_frames"]),
+        "support_prompt_version": H4_SUPPORT_PROMPT_VERSION,
+        "support_prompt_hash": prompt_sha256(support_prompt),
+        "spatial_pointer_prompt_version": SPATIAL_POINTER_PROMPT_VERSION,
+        "spatial_pointer_prompt_hash": prompt_sha256(pointer_prompt),
+    }
+
+
+def h4_gt_leakage_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    forbidden_fields = {
+        "gt",
+        "gt_spans",
+        "raw_gt_spans",
+        "processed_gt_spans",
+        "invalid_gt_spans",
+        "gt_visible_source_frame_indices",
+        "stg_bbox_dict",
+        "spatial_match_score",
+        "candidate_spatial_type",
+        "true_spatial_support",
+        "spurious_spatial_support",
+        "iou",
+        "mean_iou",
+        "h4_temporally_eligible",
+        "evidence_density",
+        "gt_evidence_recall",
+        "n_gt_visible_in_window",
+        "n_gt_visible_total",
+    }
+    forbidden_terms = [
+        "ground_truth",
+        "ground truth",
+        "true_spatial_support",
+        "spurious_spatial_support",
+        "candidate_spatial_type",
+        "spatial_match_score",
+        "mean_iou",
+        "iou",
+        "bbox_dict",
+        "gt_spans",
+    ]
+    field_hits = []
+    term_hits = []
+    for row in rows:
+        fields = set(row)
+        hits = sorted(fields & forbidden_fields)
+        if hits:
+            field_hits.append({"candidate_id": row.get("candidate_id"), "fields": hits})
+        serialized = json.dumps(row, ensure_ascii=False).lower()
+        hits_terms = [term for term in forbidden_terms if term in serialized]
+        if hits_terms:
+            term_hits.append({"candidate_id": row.get("candidate_id"), "terms": hits_terms})
+    return {
+        "gt_information_used_in_model_inference": False,
+        "n_model_manifest_rows": len(rows),
+        "n_rows_with_forbidden_fields": len(field_hits),
+        "n_rows_with_forbidden_terms": len(term_hits),
+        "forbidden_field_examples": field_hits[:20],
+        "forbidden_term_examples": term_hits[:20],
+        "gt_leakage": len(field_hits) + len(term_hits),
+    }
 
 
 def _numeric_summary(values: list[float]) -> dict[str, float | None]:
@@ -291,7 +650,7 @@ def write_temporal_protocol_review_md(path: str) -> None:
         "- It computes per-record mean IoU over these timestamp-aligned boxes.",
         "",
         "## H4 Freeze Point",
-        "For H4 16-frame candidate windows, temporal eligibility is needed to avoid mixing wrong-time and wrong-space errors. The H2 frozen frame-overlap rule is compatible with the H4 window framework, but it is not an official STG temporal match criterion. Freeze whether H4-v1 should use the H2 temporal eligibility rule before post-hoc spatial labeling.",
+        "For H4-v1, temporal eligibility is frozen to the H2 strong temporal alignment rule before preflight/discovery: D_E >= 0.25 or R_E >= 0.50.",
     ]
     from pathlib import Path
 
@@ -308,14 +667,14 @@ def write_spatial_threshold_review_md(path: str, audit: dict[str, Any]) -> None:
         f"- record score: {audit['official_stg_metric']['record_score']}",
         f"- reported thresholds: {audit['official_stg_metric']['reported_metrics']}",
         "",
-        "## Issue",
-        "H4 requires a frozen positive criterion for `TRUE_SPATIAL_SUPPORT` and a zero-overlap criterion for `SPURIOUS_SPATIAL_SUPPORT`. The official evaluator reports multiple thresholded metrics and mIoU, but this repository does not contain an explicit single canonical positive threshold for H4 labels.",
+        "## Freeze",
+        "H4-v1 uses the official mean IoU computation and freezes `TRUE_SPATIAL_SUPPORT` as mean IoU >= 0.5. `SPURIOUS_SPATIAL_SUPPORT` is frozen as mean IoU == 0.",
         "",
-        "## Required Human Freeze",
-        "Choose and freeze one positive criterion before H4 post-hoc labels are computed, for example `mean IoU >= 0.5` if that is scientifically intended. Until this is frozen, H4 must not generate TRUE_SPATIAL_SUPPORT / SPURIOUS_SPATIAL_SUPPORT labels or discovery conclusions.",
+        "## Note",
+        "The official evaluator still reports several thresholds and does not designate a single canonical H4 label threshold. The H4-v1 threshold above is a pre-inference protocol choice, not a post-hoc result-dependent choice.",
         "",
         "## Current Status",
-        "STOP_NEEDS_SPATIAL_LABEL_THRESHOLD_FREEZE.",
+        "READY_FOR_H4_PREFLIGHT.",
     ]
     from pathlib import Path
 

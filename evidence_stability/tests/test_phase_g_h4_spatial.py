@@ -9,6 +9,11 @@ from evidence_stability.spatial import (
     bbox_area_fraction,
     box_iou,
     build_spatial_pointer_prompt,
+    h4_gt_leakage_audit,
+    h4_model_window_manifest_row,
+    h4_generate_stg_windows,
+    h4_window_temporal_alignment,
+    normalize_stg_sample,
     normalized_to_pixel_bbox,
     parse_normalized_bbox_json,
 )
@@ -110,7 +115,28 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertTrue((out / "audit" / "temporal_eligibility_protocol_review.md").exists())
             self.assertTrue((out / "audit" / "spatial_label_threshold_review.md").exists())
             status = (out / "summary" / "h4_protocol_audit_status.md").read_text(encoding="utf-8")
-            self.assertIn("STOP_NEEDS_SPATIAL_LABEL_THRESHOLD_FREEZE", status)
+            self.assertIn("READY_FOR_H4_PREFLIGHT", status)
+
+    def test_h4_preflight_model_manifest_is_gt_free(self):
+        normalized, error = normalize_stg_sample(stg_sample(), original_index=7, verify_paths=False)
+        self.assertIsNone(error)
+        assert normalized is not None
+        windows = h4_generate_stg_windows(normalized, window_size=2, stride=2, drop_last=True)
+        self.assertTrue(windows)
+        model_row = h4_model_window_manifest_row(normalized, windows[0])
+        leakage = h4_gt_leakage_audit([model_row])
+        self.assertEqual(leakage["gt_leakage"], 0)
+        self.assertNotIn("stg_bbox_dict", model_row)
+        self.assertNotIn("processed_gt_spans", model_row)
+
+    def test_h4_temporal_alignment_uses_h2_rule(self):
+        normalized, error = normalize_stg_sample(stg_sample(), original_index=8, verify_paths=False)
+        self.assertIsNone(error)
+        assert normalized is not None
+        windows = h4_generate_stg_windows(normalized, window_size=2, stride=2, drop_last=True)
+        aligned = h4_window_temporal_alignment(normalized, windows[0])
+        self.assertIn("h4_temporally_eligible", aligned)
+        self.assertEqual(aligned["temporal_eligibility_rule"], "h2_strong_temporal_alignment")
 
 
 if __name__ == "__main__":
