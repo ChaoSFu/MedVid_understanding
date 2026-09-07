@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import importlib.util
 from pathlib import Path
 import sys
 from typing import Any
@@ -100,7 +101,6 @@ class EVQABackend:
         assert self.model is not None and self.processor is not None and self.sam2_transform is not None and self.device is not None
         import torch
         from PIL import Image
-        from unipixel.dataset.utils import process_vision_info
 
         frame_paths = row["ordered_frame_paths"]
         selected_paths = row["model_sampling"]["selected_frame_paths"]
@@ -117,10 +117,12 @@ class EVQABackend:
         ]
         messages = [{"role": "user", "content": content}]
         text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
+        process_vision_info = _load_process_vision_info()
         images_proc, videos_proc, kwargs = process_vision_info(messages, return_video_kwargs=True)
         data = self.processor(text=[text], images=images_proc, videos=videos_proc, return_tensors="pt", **kwargs)
-        data["frames"] = [self.sam2_transform(frames).to(self.model.sam2.dtype)]
-        data["frame_size"] = [frames.shape[1:3]]
+        if _needs_sam2_frames(row["task"]):
+            data["frames"] = [self.sam2_transform(frames).to(self.model.sam2.dtype)]
+            data["frame_size"] = [frames.shape[1:3]]
         if row["task"] == "rc":
             data.update(_build_ref_box_kwargs(row, self.model.config.sam2_image_size, len(selected_paths)))
         batch = data.to(self.device)
@@ -173,11 +175,25 @@ def _strip_video_token(text: str) -> str:
     return text.replace("<video>\n", "").replace("<video>", "").strip()
 
 
+def _needs_sam2_frames(task: str) -> bool:
+    return task == "stg"
+
+
 def _pil_to_tensor(image: Any) -> Any:
     import numpy as np
     import torch
 
-    return torch.from_numpy(np.asarray(image))
+    return torch.from_numpy(np.asarray(image).copy())
+
+
+def _load_process_vision_info() -> Any:
+    module_path = EVQA_TRAIN_ROOT / "unipixel" / "dataset" / "utils.py"
+    spec = importlib.util.spec_from_file_location("evqa_unipixel_dataset_utils_direct", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load EVQA vision utils from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.process_vision_info
 
 
 def _move_nested(value: Any, device: Any) -> Any:
@@ -211,8 +227,8 @@ def _build_ref_box_kwargs(row: dict[str, Any], sam2_image_size: int, n_selected_
     x1, y1, x2, y2 = bbox
     coords = torch.tensor([[[x1 * scale_x, y1 * scale_y], [x2 * scale_x, y2 * scale_y]]], dtype=torch.float32)
     labels = torch.tensor([[2, 3]], dtype=torch.int)
-    frames = [torch.LongTensor([min(prompt_frame, max(0, n_selected_frames - 1))])]
-    return {"point_coords": [coords], "point_labels": [labels], "point_frames": frames}
+    frame_tensor = torch.LongTensor([min(prompt_frame, max(0, n_selected_frames - 1))])
+    return {"point_coords": [[coords]], "point_labels": [[labels]], "point_frames": [[frame_tensor]]}
 
 
 def _image_size(path: str) -> tuple[int, int]:

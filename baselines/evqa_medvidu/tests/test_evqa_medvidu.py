@@ -7,6 +7,7 @@ import unittest
 import numpy as np
 
 from baselines.evqa_medvidu.cache import build_cache_key
+from baselines.evqa_medvidu.backend import _build_ref_box_kwargs, _needs_sam2_frames
 from baselines.evqa_medvidu.config import RunConfig
 from baselines.evqa_medvidu.evaluation.join import gt_index, join_audit, prediction_index
 from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_times, select_model_frames
@@ -140,6 +141,35 @@ class EVQAMedVidUTests(unittest.TestCase):
         pred = adapter.to_medvidu_prediction(row, parsed)
         self.assertFalse(pred["parse_valid"])
         self.assertEqual(pred["parse_status"], "PARSE_INVALID")
+
+    def test_rc_ref_box_kwargs_match_official_batch_nesting(self):
+        try:
+            from PIL import Image
+        except Exception as exc:
+            self.skipTest(f"PIL unavailable: {exc!r}")
+
+        with tempfile.TemporaryDirectory() as td:
+            paths = []
+            for i in range(3):
+                path = Path(td) / f"{i}.jpg"
+                Image.new("RGB", (100, 50), color=(i, i, i)).save(path)
+                paths.append(str(path))
+            s = rc_sample()
+            s["video"] = paths
+            s["sampled_video_frames"] = [10, 11, 12]
+            s["RC_info"]["start_frame"] = paths[1]
+            row = build_gt_free_row(s, 1, new_data_root=None)
+            kwargs = _build_ref_box_kwargs(row, sam2_image_size=768, n_selected_frames=3)
+            self.assertEqual(len(kwargs["point_coords"]), 1)
+            self.assertEqual(len(kwargs["point_coords"][0]), 1)
+            self.assertEqual(tuple(kwargs["point_coords"][0][0].shape), (1, 2, 2))
+            self.assertEqual(tuple(kwargs["point_labels"][0][0].shape), (1, 2))
+            self.assertEqual(tuple(kwargs["point_frames"][0][0].shape), (1,))
+
+    def test_cvs_generation_omits_sam2_frames(self):
+        self.assertTrue(_needs_sam2_frames("stg"))
+        self.assertFalse(_needs_sam2_frames("rc"))
+        self.assertFalse(_needs_sam2_frames("cvs"))
 
     def test_manifest_inventory_and_smoke_gt_blind(self):
         with tempfile.TemporaryDirectory() as td:
