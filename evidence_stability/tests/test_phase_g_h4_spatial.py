@@ -266,6 +266,65 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
             self.assertEqual(summary["pixel_audit"]["n_failures"], 0)
 
+    def test_h4_spatial_intervention_probe_cli_dry_run(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "17_probe_h4_spatial_interventions.py"
+        spec = spec_from_file_location("h4_intervention_probe_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "manifest.jsonl"
+            out = root / "out"
+            row = {
+                "intervention_id": "0001::clip::pos0000-0001::KEEP_ROI_V1",
+                "candidate_id": "0001::clip::pos0000-0001",
+                "qa_id": "0001::clip",
+                "clip_id": "clip",
+                "window_id": "0001::clip::pos0000-0001",
+                "dataset_name": "EgoSurgery",
+                "human_question": "Track the tool.",
+                "support_prediction": "YES",
+                "predicted_bbox_norm": [100, 100, 400, 400],
+                "bbox_valid": True,
+                "bbox_area_fraction": 0.09,
+                "control_bbox_norm": [600, 600, 900, 900],
+                "control_valid": True,
+                "intervention_type": "KEEP_ROI_V1",
+                "intervention_family": "H4_SPATIAL_ROI",
+                "intervention_frame_paths": ["a.png", "b.png"],
+                "logical_frame_paths": ["EgoSurgery/a.png", "EgoSurgery/b.png"],
+                "n_frames": 2,
+                "n_unique_frames": 2,
+                "blur_version": "gaussian_blur_sigma_0.05_min_hw_v1",
+                "blur_sigma_rule": "sigma = 0.05 * min(height, width)",
+                "prompt_version": "spatial_pointer_v1",
+                "prompt_hash": "abc",
+            }
+            manifest.write_text(__import__("json").dumps(row) + "\n", encoding="utf-8")
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "17_probe_h4_spatial_interventions.py",
+                    "--intervention_manifest",
+                    str(manifest),
+                    "--output_dir",
+                    str(out),
+                    "--model_backend",
+                    "dummy",
+                    "--dry_run",
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+            summary = __import__("json").loads((out / "summary" / "h4_spatial_intervention_preflight_probe_summary.json").read_text(encoding="utf-8"))
+            self.assertFalse(summary["model_inference_executed"])
+            self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
