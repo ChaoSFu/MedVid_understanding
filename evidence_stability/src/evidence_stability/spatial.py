@@ -174,6 +174,25 @@ def normalized_to_pixel_bbox(box: list[int | float], width: int, height: int) ->
     ]
 
 
+def control_bbox_norm(box: list[int | float]) -> tuple[list[int], bool, float]:
+    x1, y1, x2, y2 = [int(v) for v in box]
+    width = x2 - x1
+    height = y2 - y1
+    if width <= 0 or height <= 0 or width > 1000 or height > 1000:
+        return [x1, y1, x2, y2], False, 1.0
+    candidates = [
+        [0, 0, width, height],
+        [1000 - width, 0, 1000, height],
+        [0, 1000 - height, width, 1000],
+        [1000 - width, 1000 - height, 1000, 1000],
+    ]
+    scored = [(box_iou(box, candidate), idx, candidate) for idx, candidate in enumerate(candidates)]
+    scored.sort(key=lambda item: (item[0], item[1]))
+    best_iou, _, best = scored[0]
+    control_valid = best_iou < 0.95 and best != [x1, y1, x2, y2]
+    return best, control_valid, float(best_iou)
+
+
 def box_iou(a: list[int | float], b: list[int | float]) -> float:
     ax1, ay1, ax2, ay2 = [float(v) for v in a]
     bx1, by1, bx2, by2 = [float(v) for v in b]

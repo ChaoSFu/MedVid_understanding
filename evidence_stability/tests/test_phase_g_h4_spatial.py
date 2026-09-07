@@ -195,6 +195,77 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertFalse(summary["model_inference_executed"])
             self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
 
+    def test_h4_spatial_intervention_generation_cli(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow unavailable")
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "16_generate_h4_spatial_interventions.py"
+        spec = spec_from_file_location("h4_intervention_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame_paths = []
+            for idx in range(2):
+                path = root / f"frame_{idx}.png"
+                image = Image.new("RGB", (64, 48), (20 + idx, 80, 140))
+                for x in range(16, 32):
+                    for y in range(12, 24):
+                        image.putpixel((x, y), (220, 20, 20))
+                image.save(path)
+                frame_paths.append(str(path))
+
+            pointer_path = root / "spatial_pointer_predictions.jsonl"
+            supporting_path = root / "supporting.jsonl"
+            out = root / "out"
+            row = {
+                "qa_id": "0001::clip",
+                "clip_id": "clip",
+                "candidate_id": "0001::clip::pos0000-0001",
+                "window_id": "0001::clip::pos0000-0001",
+                "dataset_name": "EgoSurgery",
+                "human_question": "Track the tool.",
+                "support_prediction": "YES",
+                "bbox_valid": True,
+                "predicted_bbox_norm": [100, 100, 400, 400],
+                "bbox_area_fraction": 0.09,
+                "frame_paths": frame_paths,
+                "logical_frame_paths": ["EgoSurgery/a.png", "EgoSurgery/b.png"],
+                "prompt_version": "spatial_pointer_v1",
+                "prompt_hash": "abc",
+            }
+            pointer_path.write_text(__import__("json").dumps(row) + "\n", encoding="utf-8")
+            supporting_path.write_text(__import__("json").dumps(row) + "\n", encoding="utf-8")
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "16_generate_h4_spatial_interventions.py",
+                    "--spatial_pointer_predictions",
+                    str(pointer_path),
+                    "--supporting_candidates",
+                    str(supporting_path),
+                    "--output_dir",
+                    str(out),
+                    "--visual_limit",
+                    "1",
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+
+            summary = __import__("json").loads((out / "summary" / "h4_spatial_intervention_generation_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["input"]["n_valid_bbox_candidates"], 1)
+            self.assertEqual(summary["generation"]["generation_valid"], 4)
+            self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
+            self.assertEqual(summary["pixel_audit"]["n_failures"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
