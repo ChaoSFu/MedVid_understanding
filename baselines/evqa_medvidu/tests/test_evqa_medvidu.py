@@ -104,6 +104,24 @@ class EVQAMedVidUTests(unittest.TestCase):
             append_jsonl(path, {"cache_key": key1, "error": None})
             self.assertEqual(completed_cache(path), {key1})
 
+    def test_visual_resolution_policy_changes_cache_key(self):
+        row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
+        low = build_cache_key(
+            row,
+            {"model": "m"},
+            "prompt",
+            {"adapter": 1},
+            visual_input_config={"max_pixels_per_frame": 128 * 28 * 28},
+        )
+        high = build_cache_key(
+            row,
+            {"model": "m"},
+            "prompt",
+            {"adapter": 1},
+            visual_input_config={"max_pixels_per_frame": 256 * 28 * 28},
+        )
+        self.assertNotEqual(low, high)
+
     def test_mask_bbox_edge_cases(self):
         self.assertIsNone(tight_bbox(np.zeros((3, 4), dtype=np.uint8)))
         mask = np.zeros((5, 6), dtype=np.uint8)

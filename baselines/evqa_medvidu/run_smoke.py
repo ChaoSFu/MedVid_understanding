@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .backend import EVQABackend
-from .config import DEFAULT_OUTPUT_ROOT, GenerationConfig, RunConfig
+from .config import DEFAULT_OUTPUT_ROOT, OFFICIAL_MAX_PIXELS_PER_FRAME, GenerationConfig, RunConfig
 from .frame_adapter import select_model_frames
 from .io_utils import read_json, read_jsonl, sha256_json, write_json
 from .provenance import model_fingerprint
@@ -46,6 +46,7 @@ def run_task_smoke(cfg: RunConfig, backend: EVQABackend, task: str, max_model_fr
         "cached": 0,
         "errors": [],
         "max_model_frames": max_model_frames,
+        "visual_input_config": backend.visual_input_config,
         "formal_result_allowed": max_model_frames is None,
     }
     for row in rows:
@@ -73,6 +74,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Dry-run only: globally cap sampled model frames to diagnose context/OOM issues. Results are not formal unless this policy is separately frozen.",
     )
+    parser.add_argument(
+        "--max-pixels-per-frame",
+        type=int,
+        default=OFFICIAL_MAX_PIXELS_PER_FRAME,
+        help=(
+            "Maximum pixels for each selected video frame. The E-VQA vision utility applies this value "
+            "to every image in a video list; keeping it fixed prevents long clips from exceeding context."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -90,7 +100,15 @@ def main() -> int:
             raise RuntimeError("STOP: official reproduction has not passed. Do not run MedVidU smoke until upstream E-VQA inference works.")
     fingerprint_path = cfg.provenance_dir / "model_fingerprint.json"
     fingerprint = read_json(fingerprint_path) if fingerprint_path.exists() else model_fingerprint(args.model_path)
-    backend = EVQABackend(args.model_path, cfg.output_root, fingerprint, device=args.device, dtype=args.dtype, generation=GenerationConfig())
+    backend = EVQABackend(
+        args.model_path,
+        cfg.output_root,
+        fingerprint,
+        device=args.device,
+        dtype=args.dtype,
+        generation=GenerationConfig(),
+        max_pixels_per_frame=args.max_pixels_per_frame,
+    )
     tasks = ["stg", "rc", "cvs"] if args.task == "all" else [args.task]
     first = {task: run_task_smoke(cfg, backend, task, max_model_frames=args.max_model_frames) for task in tasks}
     second = {task: run_task_smoke(cfg, backend, task, max_model_frames=args.max_model_frames) for task in tasks}
@@ -99,6 +117,7 @@ def main() -> int:
         "second_run": second,
         "formal_result_allowed": args.max_model_frames is None,
         "dry_run_frame_cap": args.max_model_frames,
+        "visual_input_config": backend.visual_input_config,
         "cache_restart_pass": all(rep["new"] == 0 and rep["cached"] == rep["requested"] for rep in second.values()),
     }
     write_json(cfg.audit_dir / "cache_restart.json", cache_report)

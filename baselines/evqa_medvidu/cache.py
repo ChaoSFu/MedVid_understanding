@@ -6,7 +6,13 @@ from .config import CACHE_VERSION
 from .io_utils import sha256_json
 
 
-def build_cache_key(row: dict[str, Any], model_fingerprint: dict[str, Any], prompt: str, adapter_payload: dict[str, Any]) -> str:
+def build_cache_key(
+    row: dict[str, Any],
+    model_fingerprint: dict[str, Any],
+    prompt: str,
+    adapter_payload: dict[str, Any],
+    visual_input_config: dict[str, Any] | None = None,
+) -> str:
     return sha256_json(
         {
             "cache_version": CACHE_VERSION,
@@ -23,6 +29,6 @@ def build_cache_key(row: dict[str, Any], model_fingerprint: dict[str, Any], prom
             "prompt_hash": sha256_json(prompt),
             "sampling_policy": row["model_sampling"]["policy"],
             "adapter_payload": adapter_payload,
+            "visual_input_config": visual_input_config or {},
         }
     )
-

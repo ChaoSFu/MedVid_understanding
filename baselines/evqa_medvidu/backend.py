@@ -7,7 +7,13 @@ import sys
 from typing import Any
 
 from .cache import build_cache_key
-from .config import EVQA_TRAIN_ROOT, OFFICIAL_MAX_PIXELS_PER_FRAME, OFFICIAL_MIN_PIXELS, GenerationConfig
+from .config import (
+    EVQA_TRAIN_ROOT,
+    OFFICIAL_MAX_PIXELS_PER_FRAME,
+    OFFICIAL_MIN_PIXELS,
+    VISUAL_RESOLUTION_POLICY_VERSION,
+    GenerationConfig,
+)
 from .io_utils import append_jsonl, completed_cache, sha256_json
 from .tasks import get_adapter
 from .tasks.base import SchemaMismatch
@@ -24,6 +30,7 @@ class EVQABackend:
         device: str = "auto",
         dtype: str = "bfloat16",
         generation: GenerationConfig | None = None,
+        max_pixels_per_frame: int = OFFICIAL_MAX_PIXELS_PER_FRAME,
     ) -> None:
         self.model_path = Path(model_path)
         self.output_root = Path(output_root)
@@ -31,6 +38,11 @@ class EVQABackend:
         self.device_arg = device
         self.dtype = dtype
         self.generation = generation or GenerationConfig()
+        if max_pixels_per_frame < OFFICIAL_MIN_PIXELS:
+            raise ValueError(
+                f"max_pixels_per_frame must be at least {OFFICIAL_MIN_PIXELS}, got {max_pixels_per_frame}"
+            )
+        self.max_pixels_per_frame = max_pixels_per_frame
         self.model = None
         self.processor = None
         self.sam2_transform = None
@@ -70,7 +82,13 @@ class EVQABackend:
         adapter = get_adapter(row["task"])
         model_input = adapter.build_model_input(row)
         prompt = self.build_prompt(row)
-        cache_key = build_cache_key(row, self.model_fingerprint, prompt, model_input)
+        cache_key = build_cache_key(
+            row,
+            self.model_fingerprint,
+            prompt,
+            model_input,
+            visual_input_config=self.visual_input_config,
+        )
         raw_path = self.output_root / "predictions" / "raw" / f"{row['task']}.jsonl"
         medvidu_path = self.output_root / "predictions" / "medvidu" / f"{row['task']}.jsonl"
         err_path = self.output_root / "predictions" / "errors" / f"{row['task']}.jsonl"
@@ -111,7 +129,7 @@ class EVQABackend:
                 "type": "video",
                 "video": images,
                 "min_pixels": OFFICIAL_MIN_PIXELS,
-                "max_pixels": OFFICIAL_MAX_PIXELS_PER_FRAME * len(images),
+                "max_pixels": self.max_pixels_per_frame,
             },
             {"type": "text", "text": prompt},
         ]
@@ -168,6 +186,17 @@ class EVQABackend:
             "error": None,
             "manifest_row": row,
             "generation_config": asdict(self.generation),
+            "visual_input_config": self.visual_input_config,
+            "input_token_count": int(data.input_ids.size(1)),
+        }
+
+    @property
+    def visual_input_config(self) -> dict[str, Any]:
+        """Frozen image-list budget; list entries each receive this per-frame cap."""
+        return {
+            "policy_version": VISUAL_RESOLUTION_POLICY_VERSION,
+            "min_pixels_per_frame": OFFICIAL_MIN_PIXELS,
+            "max_pixels_per_frame": self.max_pixels_per_frame,
         }
 
 

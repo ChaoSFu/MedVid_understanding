@@ -23,6 +23,7 @@ OFFICIAL_FPS = 1.0
 OFFICIAL_MAX_FRAMES = 128
 OFFICIAL_MIN_PIXELS = 128 * 28 * 28
 OFFICIAL_MAX_PIXELS_PER_FRAME = 256 * 28 * 28
+VISUAL_RESOLUTION_POLICY_VERSION = "per_frame_max_pixels_v1"
 
 PROMPT_VERSION = "official_st_evidence_wrapper_medvidu_question_verbatim_v1"
 SAMPLING_VERSION = "official_fps_1_clip_local_nearest_medvidu_frame_list_v1"
@@ -156,6 +157,9 @@ class RunConfig:
                 "fake_mp4_used": False,
                 "prompt_version": PROMPT_VERSION,
                 "sampling_version": SAMPLING_VERSION,
+                "visual_resolution_policy_version": VISUAL_RESOLUTION_POLICY_VERSION,
+                "visual_min_pixels": OFFICIAL_MIN_PIXELS,
+                "visual_max_pixels_per_frame": OFFICIAL_MAX_PIXELS_PER_FRAME,
                 "frame_adapter_version": FRAME_ADAPTER_VERSION,
                 "timestamp_adapter_version": TIMESTAMP_ADAPTER_VERSION,
                 "mask_to_bbox_version": MASK_TO_BBOX_VERSION,
