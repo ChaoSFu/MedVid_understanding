@@ -14,6 +14,7 @@ from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_time
 from baselines.evqa_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, write_json
 from baselines.evqa_medvidu.manifest import build_gt_free_row, build_manifests, canonical_task, choose_smoke_rows
 from baselines.evqa_medvidu.raw_output import parse_cvs_components, parse_temporal_segments
+from baselines.evqa_medvidu.run_smoke import cap_model_frames_for_dry_run
 from baselines.evqa_medvidu.spatial.mask_frame_alignment import build_mask_frame_alignment
 from baselines.evqa_medvidu.spatial.mask_to_bbox import tight_bbox
 from baselines.evqa_medvidu.tasks import get_adapter
@@ -84,6 +85,14 @@ class EVQAMedVidUTests(unittest.TestCase):
         result = select_model_frames(["a", "b", "c", "d"], [0.0, 1.0, 2.0, 3.0], 3.0, fps=1.0, max_frames=2)
         self.assertEqual(result.selected_logical_indices, [0, 1])
         self.assertEqual(result.selected_frame_paths, ["a", "b"])
+
+    def test_dry_run_frame_cap_changes_sampling_and_hash(self):
+        row = build_gt_free_row(sample(n=200, dataset_name="SyntheticLongClip"), 0, new_data_root=None)
+        capped = cap_model_frames_for_dry_run(row, 16)
+        self.assertEqual(capped["model_sampling"]["n_selected"], 16)
+        self.assertNotEqual(capped["selected_frame_hash"], row["selected_frame_hash"])
+        self.assertFalse(capped["formal_result_allowed"])
+        self.assertIn("not_formal", capped["model_sampling"]["policy"])
 
     def test_cache_key_deterministic_and_resume_cache(self):
         row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
