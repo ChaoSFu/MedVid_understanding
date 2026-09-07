@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 from typing import Any
 
 from .config import EVQA_ROOT
@@ -65,6 +66,14 @@ def model_fingerprint(model_path: Path) -> dict[str, Any]:
         if path.exists():
             payload[f"{name}_sha256"] = sha256_file(path)
     try:
+        evqa_train_root = EVQA_ROOT / "train"
+        if evqa_train_root.exists() and str(evqa_train_root) not in sys.path:
+            sys.path.insert(0, str(evqa_train_root))
+        try:
+            import unipixel.model  # noqa: F401
+        except Exception as exc:
+            payload["evqa_model_registration_error"] = repr(exc)
+
         from transformers import AutoConfig, AutoProcessor
 
         cfg = AutoConfig.from_pretrained(str(model_path), local_files_only=True, trust_remote_code=True)
@@ -93,4 +102,3 @@ def write_environment_snapshot(path: Path) -> None:
 def ensure_evqa_present(evqa_root: Path = EVQA_ROOT) -> None:
     if not evqa_root.exists():
         raise FileNotFoundError(f"Official EVQA repository is missing: {evqa_root}")
-

@@ -18,6 +18,12 @@ def build_report(cfg: RunConfig, model_path: Path | None, upstream: dict[str, An
         stop_reasons.append("MODEL_PATH_NOT_PROVIDED")
     elif not model_path.exists():
         stop_reasons.append("MODEL_PATH_NOT_FOUND")
+    elif fingerprint.get("config_read_error"):
+        stop_reasons.append("MODEL_CONFIG_READ_FAILED")
+    if not stop_reasons:
+        next_recommendation = "Run run_official_reproduction.py on 2-5 official ST-Evidence samples before any MedVidU smoke run."
+    else:
+        next_recommendation = "Resolve STOP_REASONS, rerun run_preflight.py, then run official reproduction before MedVidU smoke."
     report = {
         "title": "E-VQA to MedVidU Preflight Report",
         "UPSTREAM": {
@@ -74,7 +80,7 @@ def build_report(cfg: RunConfig, model_path: Path | None, upstream: dict[str, An
             str(cfg.prediction_dir),
             str(cfg.evaluation_dir),
         ],
-        "NEXT_RECOMMENDATION": "Provide --model-path pointing to local Salesforce/ST-Evidence-7B and run run_smoke.py; do not start full runs until smoke artifacts are reviewed.",
+        "NEXT_RECOMMENDATION": next_recommendation,
         "STOP_REASONS": stop_reasons,
     }
     return report
