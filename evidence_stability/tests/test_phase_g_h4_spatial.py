@@ -557,6 +557,70 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertEqual(summary["spatial_labels"]["iou_bins_temporally_eligible_joined_candidates"][">=0.5"], 1)
             self.assertEqual(summary["qa_pairing"]["n_primary_paired_qa"], 0)
 
+    def test_h4_v2_spatial_control_analysis_compares_roi_to_control(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "20_analyze_h4_v2_spatial_control.py"
+        spec = spec_from_file_location("h4_v2_spatial_control_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "candidates.jsonl"
+            out = root / "out"
+            qa_id = "0001::clip"
+            source_rows = [
+                {
+                    "candidate_id": f"{qa_id}::pos0000-0015",
+                    "qa_id": qa_id,
+                    "clip_id": "clip",
+                    "window_id": f"{qa_id}::pos0000-0015",
+                    "dataset_name": "EgoSurgery",
+                    "candidate_spatial_type": "TRUE_SPATIAL_SUPPORT",
+                    "h4_temporally_eligible": True,
+                    "spatial_match_score": 0.8,
+                    "keep_yes": 1,
+                    "drop_yes": 0,
+                    "keep_control_yes": 0,
+                    "drop_control_yes": 1,
+                    "C_S": 1.0,
+                },
+                {
+                    "candidate_id": f"{qa_id}::pos0008-0023",
+                    "qa_id": qa_id,
+                    "clip_id": "clip",
+                    "window_id": f"{qa_id}::pos0008-0023",
+                    "dataset_name": "EgoSurgery",
+                    "candidate_spatial_type": "WEAK_SPATIAL_SUPPORT",
+                    "h4_temporally_eligible": True,
+                    "spatial_match_score": 0.25,
+                    "keep_yes": 1,
+                    "drop_yes": 1,
+                    "keep_control_yes": 1,
+                    "drop_control_yes": 0,
+                    "C_S": 0.5,
+                },
+            ]
+            source.write_text("\n".join(__import__("json").dumps(row) for row in source_rows) + "\n", encoding="utf-8")
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "20_analyze_h4_v2_spatial_control.py",
+                    "--joined_candidates", str(source),
+                    "--output_dir", str(out),
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+            summary = __import__("json").loads((out / "summary" / "h4_v2_exploratory_spatial_control_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["spatial_groups"]["ALIGNED_SPATIAL_SUPPORT"]["n_candidates"], 1)
+            self.assertEqual(summary["spatial_groups"]["MISALIGNED_SPATIAL_SUPPORT"]["n_candidates"], 1)
+            self.assertEqual(summary["within_qa_pairing"]["n_paired_qa"], 1)
+            self.assertEqual(summary["within_qa_pairing"]["mean_delta_roi_control_advantage"], 1.5)
+
 
 if __name__ == "__main__":
     unittest.main()
