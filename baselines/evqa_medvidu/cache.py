@@ -24,6 +24,7 @@ def build_cache_key(
             "ordered_benchmark_frame_hash": row["ordered_benchmark_frame_hash"],
             "selected_frame_hash": row["selected_frame_hash"],
             "timestamp_hash": row["timestamp_hash"],
+            "stg_target_schedule_hash": row.get("stg_target_schedule_hash"),
             "provided_region_hash": row.get("provided_region_hash"),
             "model_fingerprint": model_fingerprint,
             "prompt": prompt,

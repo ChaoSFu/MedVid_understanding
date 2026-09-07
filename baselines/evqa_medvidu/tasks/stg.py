@@ -43,10 +43,16 @@ class STGAdapter(MedVidUTaskAdapter):
 
     def to_medvidu_prediction(self, sample: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
         parts = []
-        for align, bbox in zip(parsed.get("mask_frame_alignment") or [], parsed.get("bboxes_by_mask_frame") or []):
+        bboxes = parsed.get("bboxes_by_mask_frame") or []
+        target_alignment = sample.get("stg_target_alignment") or []
+        missing_target_timestamps: list[float] = []
+        for target in target_alignment:
+            logical_index = int(target["logical_medvidu_frame_index"])
+            bbox = bboxes[logical_index] if logical_index < len(bboxes) else None
             if bbox is None:
+                missing_target_timestamps.append(float(target["target_timestamp"]))
                 continue
-            t = float(align["clip_local_timestamp"])
+            t = float(target["target_timestamp"])
             parts.append(f"{t:.1f} seconds: [{bbox[0]}, {bbox[1]}, {bbox[2]}, {bbox[3]}]")
         return {
             "sample_id": sample["sample_id"],
@@ -57,6 +63,9 @@ class STGAdapter(MedVidUTaskAdapter):
             "data_source": sample.get("data_source"),
             "metadata": sample.get("clip_metadata_gt_free", {}),
             "answer": " ".join(parts),
+            "stg_target_schedule": sample.get("stg_target_schedule"),
+            "stg_target_alignment": target_alignment,
+            "missing_target_timestamps": missing_target_timestamps,
             "raw_temporal_segments": parsed.get("temporal_segments", []),
             "gt_information_available_to_model": False,
         }
@@ -66,4 +75,3 @@ class STGAdapter(MedVidUTaskAdapter):
             raise ValueError("not an STG prediction")
         if "answer" not in prediction:
             raise ValueError("missing answer")
-

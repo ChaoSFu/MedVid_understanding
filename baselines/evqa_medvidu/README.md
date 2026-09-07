@@ -10,7 +10,7 @@ Scientific labels:
 
 This package keeps `third_party/EVQA` upstream-clean. It does not download the model, finetune on MedVidU, create fake MP4s, access source videos beyond benchmark-provided frames, or tune prompts/parameters against MedVidU scores.
 
-The default output root is versioned as `evqa_medvidu_v3_text_contracts_no_seg`.
+The default output root is versioned as `evqa_medvidu_v4_stg_target_aligned`.
 CVS and RC use fixed task-format contracts: CVS emits the three required scores
 on one line, and RC emits a concise textual description of the supplied
 reference region. CVS and RC also forbid the `<|seg|>` decoding token. This separates them from STG, whose native output includes
@@ -40,3 +40,13 @@ adapter fixes it at
 This prevents long, high-resolution clips from exceeding the model context
 without dropping frames. The value is recorded in the cache key and prediction
 artifacts; override it only as an explicit new, frozen experiment setting.
+
+STG time alignment is a frozen, GT-free adapter. It parses the requested
+`start`, `end`, and sampling interval from the human task question, maps source
+frame indices to clip-local time using the dataset source timebase, and exports
+only the requested timestamp keys with boxes from the nearest benchmark frame.
+CholecTrack20 uses its 25 Hz source timebase; CoPESD and EgoSurgery retain their
+respective 1 Hz and 0.5 Hz source timebases. The manifest writes
+`audit/stg_target_timestamp_alignment.json`, while STG smoke reports requested,
+emitted, and missing target boxes. This is an output adapter only: all
+benchmark-provided frames are still passed to the model in their listed order.

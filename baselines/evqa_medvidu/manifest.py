@@ -18,6 +18,7 @@ from .config import (
 )
 from .frame_adapter import logical_frame_identities, path_exists_audit, select_model_frames
 from .io_utils import assert_no_gt_leak, read_json, read_jsonl, sha256_json, sha256_text, write_json, write_jsonl
+from .stg_time_spec import build_stg_target_alignment, parse_stg_target_schedule
 from .temporal_mapper import TemporalMapper, audit_uniform_spacing
 
 
@@ -137,6 +138,14 @@ def build_gt_free_row(
         "fake_mp4_used": False,
         "path_mapping": {"old_data_root": old_data_root, "new_data_root": new_data_root},
     }
+    if task == "stg":
+        schedule = parse_stg_target_schedule(question)
+        target_alignment = build_stg_target_alignment(local_times, sampled_frames, frame_paths, schedule)
+        row["stg_target_schedule"] = schedule.to_dict()
+        row["stg_target_alignment"] = target_alignment
+        row["stg_target_schedule_hash"] = sha256_json(
+            {"schedule": row["stg_target_schedule"], "alignment": target_alignment}
+        )
     if task == "rc":
         region = _provided_region(sample, old_data_root, new_data_root)
         if region is None:
@@ -256,6 +265,22 @@ def build_manifests(cfg: RunConfig) -> dict[str, Any]:
                 "last_timestamp": _numeric_summary([row["local_timestamps"][-1] for row in rows if row["local_timestamps"]]),
             }
             for task, rows in rows_by_task.items()
+        },
+    )
+    stg_alignment_errors = [
+        float(item["absolute_timing_error_seconds"])
+        for row in rows_by_task["stg"]
+        for item in row.get("stg_target_alignment", [])
+    ]
+    write_json(
+        cfg.audit_dir / "stg_target_timestamp_alignment.json",
+        {
+            "version": "stg_question_schedule_and_nearest_frame_v1",
+            "n_stg_rows": len(rows_by_task["stg"]),
+            "n_target_timestamps": len(stg_alignment_errors),
+            "max_absolute_timing_error_seconds": max(stg_alignment_errors) if stg_alignment_errors else None,
+            "mean_absolute_timing_error_seconds": (sum(stg_alignment_errors) / len(stg_alignment_errors)) if stg_alignment_errors else None,
+            "policy": "Parse STG target times from the human task question and pair each with the nearest GT-free benchmark frame.",
         },
     )
     write_json(

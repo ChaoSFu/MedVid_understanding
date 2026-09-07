@@ -17,12 +17,17 @@ from baselines.evqa_medvidu.raw_output import parse_cvs_components, parse_tempor
 from baselines.evqa_medvidu.run_smoke import cap_model_frames_for_dry_run
 from baselines.evqa_medvidu.spatial.mask_frame_alignment import build_mask_frame_alignment
 from baselines.evqa_medvidu.spatial.mask_to_bbox import tight_bbox
+from baselines.evqa_medvidu.stg_time_spec import build_stg_target_alignment, parse_stg_target_schedule
+from baselines.evqa_medvidu.temporal_mapper import TemporalMapper
 from baselines.evqa_medvidu.tasks import get_adapter
 from baselines.evqa_medvidu.tasks.base import SchemaMismatch
 
 
 def sample(qa_type: str = "stg", n: int = 5, dataset_name: str = "AVOS") -> dict:
     frames = list(range(10, 10 + n))
+    question = "<video>\nQuestion?"
+    if qa_type == "stg":
+        question = "<video>\nGive the bounding boxes every 1 second from 0 to 0 seconds."
     return {
         "id": f"id-{qa_type}",
         "qa_type": qa_type,
@@ -32,7 +37,7 @@ def sample(qa_type: str = "stg", n: int = 5, dataset_name: str = "AVOS") -> dict
         "sampled_video_frames": frames,
         "metadata": {"fps": "1.0", "video_id": "v"},
         "conversations": [
-            {"from": "human", "value": "<video>\nQuestion?"},
+            {"from": "human", "value": question},
             {"from": "gpt", "value": "leaky answer"},
         ],
         "struc_info": [{"start": 1, "end": 2, "bbox_dict": {"1": [1, 2, 3, 4]}}],
@@ -64,7 +69,7 @@ class EVQAMedVidUTests(unittest.TestCase):
 
     def test_gt_stripping_and_question_preservation(self):
         row = build_gt_free_row(sample(), 0, new_data_root=None)
-        self.assertEqual(row["human_question"], "<video>\nQuestion?")
+        self.assertEqual(row["human_question"], "<video>\nGive the bounding boxes every 1 second from 0 to 0 seconds.")
         self.assertNotIn("conversations", row)
         self.assertNotIn("struc_info", row)
         assert_no_gt_leak(row)
@@ -172,12 +177,45 @@ class EVQAMedVidUTests(unittest.TestCase):
     def test_stg_single_masklet_to_medvidu_answer(self):
         adapter = get_adapter("stg")
         row = build_gt_free_row(sample(n=2), 0, new_data_root=None)
+        row["stg_target_alignment"] = [
+            {
+                "target_timestamp": 1.0,
+                "logical_medvidu_frame_index": 1,
+                "source_frame_index": 11,
+                "matched_frame_timestamp": 1.0,
+                "absolute_timing_error_seconds": 0.0,
+                "frame_path": row["ordered_frame_paths"][1],
+            }
+        ]
         masklet = np.zeros((2, 4, 5), dtype=np.uint8)
         masklet[1, 1:3, 2:4] = 1
         raw = {"sample_id": row["sample_id"], "manifest_row": row, "raw_textual_response": "Answer [[0, 1]]", "raw_masklets": [{"mask": masklet}]}
         parsed = adapter.parse_evqa_output(raw)
         pred = adapter.to_medvidu_prediction(row, parsed)
-        self.assertIn("0.1 seconds: [2.0, 1.0, 3.0, 2.0]", pred["answer"])
+        self.assertEqual(pred["answer"], "1.0 seconds: [2.0, 1.0, 3.0, 2.0]")
+
+    def test_cholectrack20_uses_25_hz_source_timebase(self):
+        result = TemporalMapper.map("CholecTrack20", [20751, 20776, 20801], ["a", "b", "c"], {"fps": "1.0"})
+        self.assertEqual([obs.local_time for obs in result.observations], [0.0, 1.0, 2.0])
+
+    def test_stg_schedule_and_nearest_alignment(self):
+        schedule = parse_stg_target_schedule("What are the boxes sampled every 4 seconds from 4.0 to 12.0 seconds?")
+        self.assertEqual(schedule.target_timestamps, (4.0, 8.0, 12.0))
+        alignment = build_stg_target_alignment(
+            [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0],
+            list(range(7)),
+            [f"f{i}" for i in range(7)],
+            schedule,
+        )
+        self.assertEqual([item["logical_medvidu_frame_index"] for item in alignment], [2, 4, 6])
+
+    def test_stg_schedule_covers_between_seconds_wording(self):
+        schedule = parse_stg_target_schedule("Between 150.0 seconds and 206.0 seconds, where is it every 8 seconds?")
+        self.assertEqual(schedule.target_timestamps, (150.0, 158.0, 166.0, 174.0, 182.0, 190.0, 198.0, 206.0))
+
+    def test_stg_schedule_does_not_append_non_grid_end(self):
+        schedule = parse_stg_target_schedule("Track it every 8 seconds from 66 to 78 seconds.")
+        self.assertEqual(schedule.target_timestamps, (66.0, 74.0))
 
     def test_temporal_and_cvs_parsers(self):
         self.assertEqual(parse_temporal_segments("evidence [[1.5, 2.0], [3, 4]]"), [[1.5, 2.0], [3.0, 4.0]])

@@ -50,11 +50,25 @@ def run_task_smoke(cfg: RunConfig, backend: EVQABackend, task: str, max_model_fr
         "inference_config": backend.inference_config(task),
         "formal_result_allowed": max_model_frames is None,
     }
+    if task == "stg":
+        report.update(
+            {
+                "target_boxes_requested": 0,
+                "target_boxes_emitted": 0,
+                "target_boxes_missing": 0,
+            }
+        )
     for row in rows:
         row = cap_model_frames_for_dry_run(row, max_model_frames)
         try:
-            status, _, _ = backend.run_row(row)
+            status, _, medvidu = backend.run_row(row)
             report[status["status"]] += 1
+            if task == "stg" and medvidu is not None:
+                target_alignment = medvidu.get("stg_target_alignment") or []
+                missing = medvidu.get("missing_target_timestamps") or []
+                report["target_boxes_requested"] += len(target_alignment)
+                report["target_boxes_missing"] += len(missing)
+                report["target_boxes_emitted"] += len(target_alignment) - len(missing)
         except Exception as exc:
             report["errors"].append({"sample_id": row.get("sample_id"), "error": repr(exc)})
             break

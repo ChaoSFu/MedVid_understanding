@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 EVQA_ROOT = REPO_ROOT / "third_party" / "EVQA"
 EVQA_TRAIN_ROOT = EVQA_ROOT / "train"
 DEFAULT_DATA_PATH = REPO_ROOT / "data_json" / "init_datas" / "medvidu_eccv2026_trainval.json"
-DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "baselines" / "evqa_medvidu_v3_text_contracts_no_seg"
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "baselines" / "evqa_medvidu_v4_stg_target_aligned"
 DEFAULT_OLD_DATA_ROOT = "/root/data"
 DEFAULT_NEW_DATA_ROOT = os.environ.get("MEDVIDU_DATA_ROOT", "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata")
 
@@ -36,9 +36,9 @@ RC_OUTPUT_CONTRACT = (
 )
 SAMPLING_VERSION = "medvidu_all_benchmark_frames_no_downsampling_v1"
 FRAME_ADAPTER_VERSION = "ordered_benchmark_frame_list_no_fake_mp4_v1"
-TIMESTAMP_ADAPTER_VERSION = "medvidu_gt_free_clip_local_timelens_mapper_v1"
+TIMESTAMP_ADAPTER_VERSION = "medvidu_gt_free_evqa_source_timebase_and_stg_schedule_v2"
 MASK_TO_BBOX_VERSION = "tight_bbox_v1"
-CACHE_VERSION = "evqa_medvidu_cache_v1"
+CACHE_VERSION = "evqa_medvidu_cache_v2"
 SMOKE_SIZE = 10
 SMOKE_SEED = 42
 
