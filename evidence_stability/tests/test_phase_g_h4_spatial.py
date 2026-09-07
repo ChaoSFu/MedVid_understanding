@@ -488,6 +488,75 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertIn("per_timestamp_iou", lines[0])
             self.assertIn('"timestamp"', lines[2])
 
+    def test_h4_discovery_attrition_audit_cli_uses_existing_outputs_only(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "19_audit_h4_discovery_attrition.py"
+        spec = spec_from_file_location("h4_attrition_audit_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = {
+                name: root / f"{name}.jsonl"
+                for name in ["manifest", "window_gt", "support", "pointer", "joined", "interventions", "intervention_predictions"]
+            }
+            qa_id = "0001::clip"
+            candidates = [f"{qa_id}::pos0000-0015", f"{qa_id}::pos0008-0023"]
+            payloads = {
+                "manifest": [
+                    {"candidate_id": candidates[0], "qa_id": qa_id, "dataset_name": "EgoSurgery"},
+                    {"candidate_id": candidates[1], "qa_id": qa_id, "dataset_name": "EgoSurgery"},
+                ],
+                "window_gt": [
+                    {"candidate_id": candidates[0], "h4_temporally_eligible": True},
+                    {"candidate_id": candidates[1], "h4_temporally_eligible": False},
+                ],
+                "support": [
+                    {"candidate_id": candidate, "parsed_prediction": "YES"} for candidate in candidates
+                ],
+                "pointer": [
+                    {"candidate_id": candidate, "bbox_valid": True} for candidate in candidates
+                ],
+                "joined": [
+                    {"candidate_id": candidates[0], "candidate_spatial_type": "TRUE_SPATIAL_SUPPORT", "spatial_match_score": 0.8},
+                    {"candidate_id": candidates[1], "candidate_spatial_type": "NOT_TEMPORALLY_ELIGIBLE", "spatial_match_score": 0.0},
+                ],
+                "interventions": [
+                    {"intervention_id": f"{candidates[0]}::KEEP_ROI_V1", "intervention_type": "KEEP_ROI_V1", "generation_valid": True}
+                ],
+                "intervention_predictions": [
+                    {"intervention_id": f"{candidates[0]}::KEEP_ROI_V1", "intervention_type": "KEEP_ROI_V1", "parsed_prediction": "YES"}
+                ],
+            }
+            for name, rows in payloads.items():
+                paths[name].write_text("\n".join(__import__("json").dumps(row) for row in rows) + "\n", encoding="utf-8")
+            out = root / "out"
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "19_audit_h4_discovery_attrition.py",
+                    "--model_manifest", str(paths["manifest"]),
+                    "--window_gt", str(paths["window_gt"]),
+                    "--support_predictions", str(paths["support"]),
+                    "--spatial_pointer_predictions", str(paths["pointer"]),
+                    "--joined_candidates", str(paths["joined"]),
+                    "--interventions", str(paths["interventions"]),
+                    "--intervention_predictions", str(paths["intervention_predictions"]),
+                    "--output_dir", str(out),
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+            summary = __import__("json").loads((out / "summary" / "h4_discovery_attrition_diagnostic.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["window_funnel"]["n_model_windows"], 2)
+            self.assertEqual(summary["window_funnel"]["n_temporally_eligible_windows"], 1)
+            self.assertEqual(summary["spatial_labels"]["iou_bins_temporally_eligible_joined_candidates"][">=0.5"], 1)
+            self.assertEqual(summary["qa_pairing"]["n_primary_paired_qa"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
