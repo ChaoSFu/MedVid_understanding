@@ -11,9 +11,10 @@ from baselines.evqa_medvidu.backend import EVQABackend, _build_ref_box_kwargs, _
 from baselines.evqa_medvidu.config import RunConfig
 from baselines.evqa_medvidu.evaluation.join import gt_index, join_audit, prediction_index
 from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_times, select_model_frames
-from baselines.evqa_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, write_json
+from baselines.evqa_medvidu.io_utils import append_jsonl, assert_no_gt_leak, completed_cache, write_json, write_jsonl
 from baselines.evqa_medvidu.manifest import build_gt_free_row, build_manifests, canonical_task, choose_smoke_rows
 from baselines.evqa_medvidu.raw_output import parse_cvs_components, parse_temporal_segments
+from baselines.evqa_medvidu.run_full import run_full_tasks
 from baselines.evqa_medvidu.run_smoke import cap_model_frames_for_dry_run
 from baselines.evqa_medvidu.spatial.mask_frame_alignment import build_mask_frame_alignment
 from baselines.evqa_medvidu.spatial.mask_to_bbox import tight_bbox
@@ -216,6 +217,38 @@ class EVQAMedVidUTests(unittest.TestCase):
     def test_stg_schedule_does_not_append_non_grid_end(self):
         schedule = parse_stg_target_schedule("Track it every 8 seconds from 66 to 78 seconds.")
         self.assertEqual(schedule.target_timestamps, (66.0, 74.0))
+
+    def test_full_runner_is_ordered_resumable_and_isolates_sample_errors(self):
+        class FakeBackend:
+            def run_row(self, row):
+                if row["sample_id"] == "rc-bad":
+                    raise RuntimeError("synthetic failure")
+                status = "cached" if row["sample_id"].endswith("cached") else "new"
+                return {"status": status, "sample_id": row["sample_id"]}, None, None
+
+        with tempfile.TemporaryDirectory() as td:
+            cfg = RunConfig(output_root=Path(td))
+            cfg.make_dirs()
+            for task, ids in {"stg": ["stg-new"], "rc": ["rc-bad"], "cvs": ["cvs-cached"]}.items():
+                write_jsonl(
+                    cfg.manifest_dir / f"{task}_gt_free.jsonl",
+                    [{"sample_id": sample_id, "task": task} for sample_id in ids],
+                )
+
+            calls = []
+
+            def evaluator(pred_path, data_path, output_path):
+                calls.append(pred_path.stem)
+                write_json(output_path, {"evaluated": pred_path.stem})
+                return {"evaluated": pred_path.stem}
+
+            report = run_full_tasks(cfg, FakeBackend(), evaluators={task: evaluator for task in ("stg", "rc", "cvs")})
+            self.assertEqual(report["task_order"], ["stg", "rc", "cvs"])
+            self.assertEqual(report["tasks"]["stg"]["new"], 1)
+            self.assertEqual(report["tasks"]["cvs"]["cached"], 1)
+            self.assertEqual(report["tasks"]["rc"]["errors"], 1)
+            self.assertEqual(calls, ["stg", "rc", "cvs"])
+            self.assertEqual(report["status"], "COMPLETE_WITH_SAMPLE_ERRORS")
 
     def test_temporal_and_cvs_parsers(self):
         self.assertEqual(parse_temporal_segments("evidence [[1.5, 2.0], [3, 4]]"), [[1.5, 2.0], [3.0, 4.0]])

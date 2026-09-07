@@ -59,7 +59,7 @@ def build_report(cfg: RunConfig, model_path: Path | None, upstream: dict[str, An
             "upstream_official_policy": "fps=1.0, max_frames=128, sample_frames=int(duration*fps), uniform",
             "MedVidU_adaptation": "all benchmark-provided frames in listed order; no temporal downsampling",
             "additional_sampling": False,
-            "timestamp_mapper": "baselines.timelens_medvidu.temporal_mapper.TemporalMapper",
+            "timestamp_mapper": "baselines.evqa_medvidu.temporal_mapper.TemporalMapper",
         },
         "STG": {"smoke": cfg.smoke_size, "completed": False, "temporal_parse_valid": None, "mask_valid": None, "bbox_conversion_valid": None, "schema_mismatch": None, "OOM_or_errors": stop_reasons},
         "RC": {

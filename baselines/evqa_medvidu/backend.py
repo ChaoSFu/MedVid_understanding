@@ -95,7 +95,10 @@ class EVQABackend:
         raw_path = self.output_root / "predictions" / "raw" / f"{row['task']}.jsonl"
         medvidu_path = self.output_root / "predictions" / "medvidu" / f"{row['task']}.jsonl"
         err_path = self.output_root / "predictions" / "errors" / f"{row['task']}.jsonl"
-        if cache_key in completed_cache(raw_path):
+        # A MedVidU prediction is the durable completion record. Raw artifacts
+        # are appended after it so an interruption cannot leave a cache hit with
+        # no submit-ready prediction.
+        if cache_key in completed_cache(medvidu_path):
             return {"status": "cached", "cache_key": cache_key, "sample_id": row["sample_id"]}, None, None
 
         try:
@@ -105,8 +108,8 @@ class EVQABackend:
             medvidu = adapter.to_medvidu_prediction(row, parsed)
             medvidu["cache_key"] = cache_key
             adapter.validate_prediction(medvidu)
-            append_jsonl(raw_path, _json_safe_raw(raw))
             append_jsonl(medvidu_path, medvidu)
+            append_jsonl(raw_path, _json_safe_raw(raw))
             return {"status": "new", "cache_key": cache_key, "sample_id": row["sample_id"]}, raw, medvidu
         except SchemaMismatch as exc:
             error = {"sample_id": row["sample_id"], "cache_key": cache_key, "task": row["task"], "error_type": "SCHEMA_MISMATCH", "error": str(exc)}

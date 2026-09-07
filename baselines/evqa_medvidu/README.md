@@ -28,7 +28,22 @@ python -B -m baselines.evqa_medvidu.run_official_reproduction \
 python -B -m baselines.evqa_medvidu.run_smoke --model-path /local/path/ST-Evidence-7B
 ```
 
-Full runs are intentionally guarded until smoke artifacts and cache restart audits are reviewed.
+After reviewing all v4 smoke artifacts, run the resumable full sequence:
+
+```bash
+python -B -m baselines.evqa_medvidu.run_full \
+  --model-path /local/path/ST-Evidence-7B \
+  --allow-without-official-reproduction \
+  --i-reviewed-smoke-and-freeze-adapters
+```
+
+The default order is STG (780), RC (310), then CVS (600). Successful
+MedVidU predictions are the completion cache, so restarting the same command
+only runs missing rows. Per-sample exceptions are written to
+`predictions/errors/<task>.jsonl` and do not stop the task. Progress is updated
+atomically after every row in `audit/full_run_progress.json`; the final report
+and post-inference evaluation artifacts are written under `audit/` and
+`evaluation/` respectively.
 
 Visual input policy: the MedVidU adapter passes every benchmark-provided frame
 to the model, in listed order, with no `fps` or `max_frames` temporal cap. This
