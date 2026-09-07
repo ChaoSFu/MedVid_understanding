@@ -58,8 +58,8 @@ def environment_snapshot() -> str:
     return "\n".join(lines) + "\n"
 
 
-def select_preflight_qa(samples: list[dict[str, Any]], n: int, seed: int) -> list[dict[str, Any]]:
-    pool = [s for s in samples if len(s.get("frame_paths") or []) >= H4_WINDOW_SIZE]
+def select_preflight_qa(samples: list[dict[str, Any]], n: int, seed: int, min_frames: int = H4_WINDOW_SIZE) -> list[dict[str, Any]]:
+    pool = [s for s in samples if len(s.get("frame_paths") or []) >= min_frames]
     rng = random.Random(seed)
     by_stratum: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for sample in pool:
@@ -225,7 +225,7 @@ def main() -> None:
     if duplicate_qa_ids:
         raise RuntimeError(f"Duplicate H4 qa_id values: {duplicate_qa_ids[:20]}")
 
-    selected = select_preflight_qa(normalized, args.preflight_qa, args.seed)
+    selected = select_preflight_qa(normalized, args.preflight_qa, args.seed, min_frames=args.window_size)
     selected_ids = {row["qa_id"] for row in selected}
     selected_manifest = [qa_manifest_row(row) for row in selected]
 

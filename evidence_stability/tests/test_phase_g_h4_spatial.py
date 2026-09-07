@@ -138,6 +138,63 @@ class PhaseGH4SpatialTests(unittest.TestCase):
         self.assertIn("h4_temporally_eligible", aligned)
         self.assertEqual(aligned["temporal_eligibility_rule"], "h2_strong_temporal_alignment")
 
+    def test_h4_preflight_probe_cli_dry_run(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        prepare_script = Path(__file__).resolve().parents[1] / "scripts" / "14_prepare_h4_preflight.py"
+        probe_script = Path(__file__).resolve().parents[1] / "scripts" / "15_probe_h4_spatial_preflight.py"
+        prepare_spec = spec_from_file_location("h4_prepare_script", prepare_script)
+        probe_spec = spec_from_file_location("h4_probe_script", probe_script)
+        prepare_module = module_from_spec(prepare_spec)
+        probe_module = module_from_spec(probe_spec)
+        assert prepare_spec and prepare_spec.loader and probe_spec and probe_spec.loader
+        prepare_spec.loader.exec_module(prepare_module)
+        probe_spec.loader.exec_module(probe_module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data = Path(tmp) / "stg.json"
+            out = Path(tmp) / "out"
+            data.write_text(__import__("json").dumps([stg_sample()]), encoding="utf-8")
+
+            old_prepare_argv = prepare_module.sys.argv
+            old_probe_argv = probe_module.sys.argv
+            try:
+                prepare_module.sys.argv = [
+                    "14_prepare_h4_preflight.py",
+                    "--data_json",
+                    str(data),
+                    "--output_dir",
+                    str(out),
+                    "--window_size",
+                    "2",
+                    "--stride",
+                    "2",
+                    "--preflight_qa",
+                    "1",
+                ]
+                with redirect_stdout(StringIO()):
+                    prepare_module.main()
+
+                probe_module.sys.argv = [
+                    "15_probe_h4_spatial_preflight.py",
+                    "--manifest",
+                    str(out / "manifest" / "h4_model_manifest_gt_free.jsonl"),
+                    "--output_dir",
+                    str(out),
+                    "--model_backend",
+                    "dummy",
+                    "--dry_run",
+                ]
+                with redirect_stdout(StringIO()):
+                    probe_module.main()
+            finally:
+                prepare_module.sys.argv = old_prepare_argv
+                probe_module.sys.argv = old_probe_argv
+
+            summary = __import__("json").loads((out / "summary" / "h4_spatial_preflight_probe_summary.json").read_text(encoding="utf-8"))
+            self.assertFalse(summary["model_inference_executed"])
+            self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
