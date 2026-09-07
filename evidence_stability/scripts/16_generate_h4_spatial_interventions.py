@@ -19,6 +19,7 @@ from evidence_stability.cache import stable_hash  # noqa: E402
 from evidence_stability.phase_d2 import runtime_frame_path  # noqa: E402
 from evidence_stability.spatial import (  # noqa: E402
     H4_PROTOCOL_VERSION,
+    bbox_area_fraction,
     box_iou,
     control_bbox_norm,
     h4_gt_leakage_audit,
