@@ -215,7 +215,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run H4 support judgment and spatial pointer probing.")
     p.add_argument("--manifest", default="outputs/stg_pilot/phase_g/h4_spatial_v1/manifest/h4_model_manifest_gt_free.jsonl")
     p.add_argument("--output_dir", default="outputs/stg_pilot/phase_g/h4_spatial_v1")
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="dummy")
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl", "local_hf_vlm"], default="dummy")
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default=None)
@@ -263,8 +263,8 @@ def main() -> None:
     pointer_path.touch(exist_ok=True)
     errors_path.touch(exist_ok=True)
 
-    if args.model_backend == "qwen3_vl" and not args.model_path:
-        raise ValueError("--model_path is required for --model_backend qwen3_vl")
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"} and not args.model_path:
+        raise ValueError("--model_path is required when using a local Hugging Face VLM backend")
     model = build_model(args)
 
     support_completed = completed_cache_keys(support_path)

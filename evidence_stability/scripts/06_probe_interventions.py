@@ -542,7 +542,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--preflight_only", action="store_true")
     p.add_argument("--allow_scientific_environment_mismatch", action="store_true")
     p.add_argument("--prompt_version", default=PROMPT_VERSION)
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default=FROZEN_QWEN_BACKEND)
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl", "local_hf_vlm"], default=FROZEN_QWEN_BACKEND)
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default=FROZEN_QWEN_MODEL_PATH)
@@ -581,8 +581,8 @@ def main() -> None:
 
     if args.prompt_version != PROMPT_VERSION:
         raise RuntimeError(f"Prompt version mismatch: {args.prompt_version} != {PROMPT_VERSION}")
-    if args.model_backend == "qwen3_vl" and not args.model_path:
-        raise ValueError("--model_path is required when --model_backend qwen3_vl")
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"} and not args.model_path:
+        raise ValueError("--model_path is required when using a local Hugging Face VLM backend")
 
     raw_rows = read_jsonl(args.interventions)
     assert_unique_field(raw_rows, "intervention_id", "Phase D.1 intervention manifest")

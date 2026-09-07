@@ -297,6 +297,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--errors", default="outputs/tal_pilot/phase_f/h3_dynamic_v1/predictions/full/h3_dynamic_errors.jsonl")
     p.add_argument("--output_dir", default="outputs/tal_pilot/phase_f/h3_dynamic_v1")
     p.add_argument("--allow_incomplete", action="store_true")
+    p.add_argument("--model_specific_cohort", action="store_true")
     return p.parse_args()
 
 
@@ -320,13 +321,20 @@ def main() -> None:
     manifest = read_jsonl(args.manifest)
     candidates = read_jsonl(args.candidate_reconstruction)
     paired_qa = read_jsonl(args.paired_qa)
-    assert_frozen_h3_counts(candidates, paired_qa)
+    if not args.model_specific_cohort:
+        assert_frozen_h3_counts(candidates, paired_qa)
     result_rows = read_jsonl(args.probe_results)
     error_rows = read_jsonl(args.errors) if Path(args.errors).exists() else []
     joined, join_audit = join_h3_results(manifest, candidates, result_rows, error_rows)
     if not args.allow_incomplete:
         completion = join_audit["completion"]
-        if completion["n_final_success_results"] != 474 or completion["unresolved_errors"] or completion["missing"] or completion["extra"]:
+        expected_interventions = len([row for row in manifest if row.get("generation_valid")])
+        if (
+            completion["n_final_success_results"] != expected_interventions
+            or completion["unresolved_errors"]
+            or completion["missing"]
+            or completion["extra"]
+        ):
             raise RuntimeError(f"H3 full prediction completion audit failed: {completion}")
         if join_audit["prediction_counts"].get("INVALID", 0) or join_audit["prediction_counts"].get("ERROR", 0):
             raise RuntimeError(f"H3 full predictions contain INVALID/ERROR: {join_audit['prediction_counts']}")
@@ -336,7 +344,7 @@ def main() -> None:
     primary_rows = [row for row in qa_rows if row.get("target_field") == "action"]
     all_paired_rows = list(qa_rows)
     phase_only_rows = [row for row in qa_rows if row.get("target_field") == "phase"]
-    if len(primary_rows) != 9 or len(all_paired_rows) != 16 or len(phase_only_rows) != 7:
+    if not args.model_specific_cohort and (len(primary_rows) != 9 or len(all_paired_rows) != 16 or len(phase_only_rows) != 7):
         raise RuntimeError(
             f"H3 QA cohort counts changed: primary={len(primary_rows)} all={len(all_paired_rows)} phase={len(phase_only_rows)}"
         )
@@ -360,6 +368,7 @@ def main() -> None:
     summary = {
         "protocol": protocol,
         "candidate_cohort": {
+            "model_specific_cohort": args.model_specific_cohort,
             "total": len(candidates),
             "TRUE_SUPPORT": Counter(row["candidate_type"] for row in candidates)["TRUE_SUPPORT"],
             "SPURIOUS_SUPPORT": Counter(row["candidate_type"] for row in candidates)["SPURIOUS_SUPPORT"],

@@ -196,7 +196,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--errors", default=None)
     p.add_argument("--summary_output", default=None)
     p.add_argument("--log_path", default=None)
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="dummy")
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl", "local_hf_vlm"], default="dummy")
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default=None)
@@ -237,8 +237,8 @@ def main() -> None:
         raise RuntimeError(f"H4 intervention manifest contains GT leakage: {leakage}")
     if any(not row.get("intervention_frame_paths") for row in rows):
         raise RuntimeError("H4 intervention manifest contains rows without intervention_frame_paths")
-    if args.model_backend == "qwen3_vl" and not args.model_path:
-        raise ValueError("--model_path is required for --model_backend qwen3_vl")
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"} and not args.model_path:
+        raise ValueError("--model_path is required when using a local Hugging Face VLM backend")
 
     model = build_model(args)
     set_model_max_new_tokens(model, args.max_new_tokens)

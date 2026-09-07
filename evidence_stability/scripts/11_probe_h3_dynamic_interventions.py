@@ -351,7 +351,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry_run", action="store_true")
     p.add_argument("--preflight_only", action="store_true")
     p.add_argument("--allow_scientific_environment_mismatch", action="store_true")
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="qwen3_vl")
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl", "local_hf_vlm"], default="qwen3_vl")
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default="/mnt/hdd3/huihui/models/Qwen3-VL-8B-Instruct")
@@ -369,6 +369,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument("--max_new_tokens", type=int, default=8)
     p.add_argument("--log_path", default=None)
+    p.add_argument("--model_specific_cohort", action="store_true")
     return p.parse_args()
 
 
@@ -402,6 +403,8 @@ def main() -> None:
         write_json(out_dir / ("h3_dynamic_full_summary.json" if args.run_all else "h3_dynamic_smoke_summary.json"), summary)
         raise RuntimeError(summary["stop_reason"])
 
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"} and not args.model_path:
+        raise ValueError("--model_path is required when using a local Hugging Face VLM backend")
     model = build_model(args)
     model_fingerprint = model.fingerprint()
     decoding_config = model.generation_config()
@@ -509,9 +512,9 @@ def main() -> None:
     n_completed = completion_audit["n_final_success_results"] + completion_audit["unresolved_errors"]
     processor_audit = processor_frame_audit(debug_records)
     if not args.run_all and not args.dry_run:
-        if len(projections) != 36:
+        if not args.model_specific_cohort and len(projections) != 36:
             raise RuntimeError(f"H3 smoke expected 36 interventions, got {len(projections)}")
-        if n_completed != 36:
+        if n_completed != len(projections):
             raise RuntimeError(f"H3 smoke incomplete: {completion_audit}")
         if final_counts["INVALID"] or final_counts["ERROR"]:
             raise RuntimeError(f"H3 smoke invalid/error predictions: {dict(final_counts)}")
@@ -519,9 +522,9 @@ def main() -> None:
         if freeze.get("n_checked", 0) and not freeze.get("all_input_frame_count_16"):
             raise RuntimeError(f"FREEZE processor did not preserve 16 logical entries: {freeze}")
     if args.run_all and not args.dry_run:
-        if len(projections) != 474:
+        if not args.model_specific_cohort and len(projections) != 474:
             raise RuntimeError(f"H3 full expected 474 interventions, got {len(projections)}")
-        if n_completed != 474:
+        if n_completed != len(projections):
             raise RuntimeError(f"H3 full incomplete: {completion_audit}")
 
     summary = {
@@ -529,6 +532,7 @@ def main() -> None:
         "study_stage": "h3_dynamic_discovery",
         "smoke_mode": not args.run_all,
         "full_discovery_executed": bool(args.run_all and not args.dry_run),
+        "model_specific_cohort": args.model_specific_cohort,
         "manifest": args.manifest,
         "probe_results": probe_results,
         "errors": errors_path,

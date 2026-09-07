@@ -275,12 +275,12 @@ def reconstruct_h3_candidates(
     phase_c_labeled_rows: list[dict[str, Any]],
     paired_qa_rows: list[dict[str, Any]],
     *,
-    expected_total: int = 158,
-    expected_true: int = 64,
-    expected_spurious: int = 94,
-    expected_primary_action_qa: int = 9,
-    expected_all_paired_qa: int = 16,
-    expected_phase_only_qa: int = 7,
+    expected_total: int | None = 158,
+    expected_true: int | None = 64,
+    expected_spurious: int | None = 94,
+    expected_primary_action_qa: int | None = 9,
+    expected_all_paired_qa: int | None = 16,
+    expected_phase_only_qa: int | None = 7,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     by_window = {str(row["window_id"]): row for row in phase_c_labeled_rows}
     candidates: list[dict[str, Any]] = []
@@ -336,23 +336,23 @@ def reconstruct_h3_candidates(
         "dataset_counts": dict(Counter(row.get("dataset_name") for row in candidates)),
     }
     failures = []
-    if len(candidates) != expected_total:
+    if expected_total is not None and len(candidates) != expected_total:
         failures.append(f"total={len(candidates)} expected={expected_total}")
-    if label_counts["TRUE_SUPPORT"] != expected_true:
+    if expected_true is not None and label_counts["TRUE_SUPPORT"] != expected_true:
         failures.append(f"TRUE={label_counts['TRUE_SUPPORT']} expected={expected_true}")
-    if label_counts["SPURIOUS_SUPPORT"] != expected_spurious:
+    if expected_spurious is not None and label_counts["SPURIOUS_SUPPORT"] != expected_spurious:
         failures.append(f"SPURIOUS={label_counts['SPURIOUS_SUPPORT']} expected={expected_spurious}")
-    if prediction_counts != Counter({"YES": expected_total}):
+    if any(prediction != "YES" for prediction in prediction_counts):
         failures.append(f"original predictions not all YES: {dict(prediction_counts)}")
     if duplicate_ids:
         failures.append(f"duplicate candidate IDs: {duplicate_ids[:5]}")
-    if frame_count_counts != Counter({16: expected_total}):
+    if any(frame_count != 16 for frame_count in frame_count_counts):
         failures.append(f"frame counts not all 16: {dict(frame_count_counts)}")
-    if audit["n_primary_action_qa"] != expected_primary_action_qa:
+    if expected_primary_action_qa is not None and audit["n_primary_action_qa"] != expected_primary_action_qa:
         failures.append(f"primary action QA={audit['n_primary_action_qa']} expected={expected_primary_action_qa}")
-    if audit["n_all_paired_qa"] != expected_all_paired_qa:
+    if expected_all_paired_qa is not None and audit["n_all_paired_qa"] != expected_all_paired_qa:
         failures.append(f"all paired QA={audit['n_all_paired_qa']} expected={expected_all_paired_qa}")
-    if audit["n_phase_only_qa"] != expected_phase_only_qa:
+    if expected_phase_only_qa is not None and audit["n_phase_only_qa"] != expected_phase_only_qa:
         failures.append(f"phase-only QA={audit['n_phase_only_qa']} expected={expected_phase_only_qa}")
     if failures:
         audit["failures"] = failures

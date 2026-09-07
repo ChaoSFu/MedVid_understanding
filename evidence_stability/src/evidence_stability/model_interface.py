@@ -121,11 +121,12 @@ def build_model(args: Any) -> BaseVideoVLM:
             temperature=args.temperature,
             max_new_tokens=args.max_new_tokens,
         )
-    if args.model_backend == "qwen3_vl":
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"}:
         from evidence_stability.models.qwen3_vl import Qwen3VLVideoWindowModel
 
         return Qwen3VLVideoWindowModel(
             model_path=args.model_path,
+            model_name=(Path(args.model_path).name if args.model_backend == "local_hf_vlm" else None),
             device=args.device,
             dtype=args.dtype,
             max_new_tokens=args.max_new_tokens,

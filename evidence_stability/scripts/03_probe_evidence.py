@@ -18,7 +18,7 @@ sys.path.insert(0, str(SRC_DIR))
 from evidence_stability.cache import make_probe_cache_key, stable_hash  # noqa: E402
 from evidence_stability.model_interface import build_model  # noqa: E402
 from evidence_stability.prompts import PROMPT_VERSION, build_evidence_presence_prompt, parse_yes_no  # noqa: E402
-from evidence_stability.utils import append_jsonl, read_jsonl, write_json  # noqa: E402
+from evidence_stability.utils import append_jsonl, read_json, read_jsonl, write_json  # noqa: E402
 
 
 logger = logging.getLogger("phase_c_probe")
@@ -249,12 +249,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--probe_results", default=None)
     p.add_argument("--errors", default=None)
     p.add_argument("--selected_qa_output", default=None)
+    p.add_argument(
+        "--reuse_qa_selection",
+        default=None,
+        help="Reuse a prior Phase C QA-selection JSON for a fair cross-model comparison.",
+    )
     p.add_argument("--summary_output", default=None)
     p.add_argument("--log_path", default=None)
     p.add_argument("--max_qa", type=int, default=10)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--prompt_version", default=PROMPT_VERSION)
-    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="dummy")
+    p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl", "local_hf_vlm"], default="dummy")
     p.add_argument("--model_name", default="dummy-video-vlm")
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default=None)
@@ -290,7 +295,17 @@ def main() -> None:
 
     samples = read_jsonl(args.samples)
     sample_by_qa = {s["qa_id"]: s for s in samples}
-    qa_ids = select_qa_ids(samples, args.max_qa, args.seed)
+    if args.reuse_qa_selection:
+        selection = read_json(args.reuse_qa_selection)
+        qa_ids = [str(qa_id) for qa_id in selection.get("qa_ids", [])]
+        eligible_ids = {str(sample["qa_id"]) for sample in samples if sample.get("analysis_eligible")}
+        missing = [qa_id for qa_id in qa_ids if qa_id not in eligible_ids]
+        if missing:
+            raise RuntimeError(f"Reused Phase C selection contains non-eligible or missing QA IDs: {missing[:10]}")
+        if len(qa_ids) != len(set(qa_ids)):
+            raise RuntimeError("Reused Phase C QA selection contains duplicate qa_id values.")
+    else:
+        qa_ids = select_qa_ids(samples, args.max_qa, args.seed)
     write_json(
         selected_qa_output,
         {
@@ -299,6 +314,7 @@ def main() -> None:
             "n_qa": len(qa_ids),
             "qa_ids": qa_ids,
             "dataset_counts": dict(Counter(sample_by_qa[q]["dataset_name"] for q in qa_ids)),
+            "reuse_qa_selection": args.reuse_qa_selection,
         },
     )
 
@@ -311,8 +327,8 @@ def main() -> None:
     if args.limit_windows >= 0:
         windows = windows[: args.limit_windows]
 
-    if args.model_backend == "qwen3_vl" and not args.model_path:
-        raise ValueError("--model_path is required when --model_backend qwen3_vl")
+    if args.model_backend in {"qwen3_vl", "local_hf_vlm"} and not args.model_path:
+        raise ValueError("--model_path is required when using a local Hugging Face VLM backend")
 
     model = build_model(args)
     model_fingerprint = model.fingerprint()
@@ -514,6 +530,7 @@ def main() -> None:
         "new_inference_count": counts["YES"] + counts["NO"] + counts["INVALID"],
         "completed_cache_at_start": completed_cache_at_start,
         "selected_qa_output": selected_qa_output,
+        "reuse_qa_selection": args.reuse_qa_selection,
         "probe_results": probe_results,
         "errors": errors_path,
         "frame_root": args.frame_root,

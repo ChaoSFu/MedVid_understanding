@@ -225,6 +225,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--paired_qa", default="outputs/tal_pilot/phase_c_server/qwen3_vl_8b_pilot50/paired_h2_qa.jsonl")
     p.add_argument("--phase_c_summary", default="outputs/tal_pilot/phase_c_server/qwen3_vl_8b_pilot50/phase_c_pilot_probe_summary.json")
     p.add_argument("--output_dir", default="outputs/tal_pilot/phase_f/h3_dynamic_v1")
+    p.add_argument(
+        "--model_specific_cohort",
+        action="store_true",
+        help="Allow H3 candidates to be reconstructed from a non-8B model's H2 pairing set.",
+    )
     p.add_argument("--frame_root", default=None)
     p.add_argument(
         "--source_frame_prefix",
@@ -241,7 +246,26 @@ def main() -> None:
 
     phase_c_rows = read_jsonl(args.phase_c_labeled)
     paired_qa_rows = read_jsonl(args.paired_qa)
-    candidates, reconstruction_audit = reconstruct_h3_candidates(phase_c_rows, paired_qa_rows)
+    expected = {} if args.model_specific_cohort else {
+        "expected_total": 158,
+        "expected_true": 64,
+        "expected_spurious": 94,
+        "expected_primary_action_qa": 9,
+        "expected_all_paired_qa": 16,
+        "expected_phase_only_qa": 7,
+    }
+    if args.model_specific_cohort:
+        expected = {
+            "expected_total": None,
+            "expected_true": None,
+            "expected_spurious": None,
+            "expected_primary_action_qa": None,
+            "expected_all_paired_qa": None,
+            "expected_phase_only_qa": None,
+        }
+    candidates, reconstruction_audit = reconstruct_h3_candidates(phase_c_rows, paired_qa_rows, **expected)
+    if not candidates:
+        raise RuntimeError("H3 requires at least one H2 TRUE/SPURIOUS paired candidate for this model.")
     interventions = [
         row
         for candidate in candidates
@@ -282,6 +306,7 @@ def main() -> None:
         "phase": "Phase F-D H3 Dynamic Evidence Verification preparation",
         "protocol_version": PROTOCOL_VERSION,
         "study_stage": "h3_dynamic_discovery",
+        "model_specific_cohort": args.model_specific_cohort,
         "candidate_reconstruction": reconstruction_audit,
         "intervention_generation": generation_audit,
         "gt_leakage_audit": leakage,

@@ -60,6 +60,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
     def __init__(
         self,
         model_path: str,
+        model_name: str | None = None,
         device: str = "cuda:0",
         dtype: str = "bfloat16",
         max_new_tokens: int = 8,
@@ -114,7 +115,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         self.model.to(self.device)
         self.model.eval()
 
-        self.model_name = "qwen3_vl_8b"
+        self.model_name = model_name or "qwen3_vl_8b"
         self.model_revision = self.fingerprint()["model_identity_hash"]
 
     def fingerprint(self) -> dict[str, Any]:

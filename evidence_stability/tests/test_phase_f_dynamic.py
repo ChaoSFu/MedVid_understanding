@@ -143,6 +143,21 @@ class PhaseFDynamicTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             reconstruct_h3_candidates(phase_c, paired)
 
+    def test_candidate_reconstruction_allows_model_specific_cohort_sizes(self):
+        phase_c, paired = synthetic_frozen_inputs()
+        candidates, audit = reconstruct_h3_candidates(
+            phase_c,
+            paired,
+            expected_total=None,
+            expected_true=None,
+            expected_spurious=None,
+            expected_primary_action_qa=None,
+            expected_all_paired_qa=None,
+            expected_phase_only_qa=None,
+        )
+        self.assertEqual(len(candidates), 158)
+        self.assertEqual(audit["original_prediction_counts"], {"YES": 158})
+
     def test_full_shuffle_preserves_length_multiset_duplicates_and_is_deterministic(self):
         frames = [f"f{i}.jpg" for i in range(16)]
         frames[5] = frames[4]
