@@ -47,6 +47,7 @@ def run_task_smoke(cfg: RunConfig, backend: EVQABackend, task: str, max_model_fr
         "errors": [],
         "max_model_frames": max_model_frames,
         "visual_input_config": backend.visual_input_config,
+        "inference_config": backend.inference_config(task),
         "formal_result_allowed": max_model_frames is None,
     }
     for row in rows:
@@ -118,6 +119,7 @@ def main() -> int:
         "formal_result_allowed": args.max_model_frames is None,
         "dry_run_frame_cap": args.max_model_frames,
         "visual_input_config": backend.visual_input_config,
+        "inference_config": {task: backend.inference_config(task) for task in tasks},
         "cache_restart_pass": all(rep["new"] == 0 and rep["cached"] == rep["requested"] for rep in second.values()),
     }
     write_json(cfg.audit_dir / "cache_restart.json", cache_report)

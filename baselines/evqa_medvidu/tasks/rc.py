@@ -21,7 +21,13 @@ class RCAdapter(MedVidUTaskAdapter):
 
     def parse_evqa_output(self, raw: dict[str, Any]) -> dict[str, Any]:
         text = str(raw.get("raw_textual_response") or "").strip()
-        return {"caption": text, "parse_valid": bool(text), "provided_region": raw["manifest_row"].get("provided_region")}
+        parse_valid = bool(text) and "<|" not in text
+        return {
+            "caption": text if parse_valid else "",
+            "parse_valid": parse_valid,
+            "parse_status": "OK" if parse_valid else "PARSE_INVALID",
+            "provided_region": raw["manifest_row"].get("provided_region"),
+        }
 
     def to_medvidu_prediction(self, sample: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -33,6 +39,8 @@ class RCAdapter(MedVidUTaskAdapter):
             "data_source": sample.get("data_source"),
             "metadata": sample.get("clip_metadata_gt_free", {}),
             "answer": parsed.get("caption", ""),
+            "parse_valid": parsed.get("parse_valid", False),
+            "parse_status": parsed.get("parse_status"),
             "provided_region": sample.get("provided_region"),
             "provided_region_is_task_input": True,
             "gt_information_available_to_model": False,
@@ -43,4 +51,3 @@ class RCAdapter(MedVidUTaskAdapter):
             raise ValueError("not an RC prediction")
         if not prediction.get("provided_region_is_task_input"):
             raise ValueError("RC prediction must preserve provided region provenance")
-

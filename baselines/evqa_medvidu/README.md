@@ -10,10 +10,10 @@ Scientific labels:
 
 This package keeps `third_party/EVQA` upstream-clean. It does not download the model, finetune on MedVidU, create fake MP4s, access source videos beyond benchmark-provided frames, or tune prompts/parameters against MedVidU scores.
 
-The default output root is versioned as `evqa_medvidu_v2_text_contracts`.
+The default output root is versioned as `evqa_medvidu_v3_text_contracts_no_seg`.
 CVS and RC use fixed task-format contracts: CVS emits the three required scores
 on one line, and RC emits a concise textual description of the supplied
-reference region. This separates them from STG, whose native output includes
+reference region. CVS and RC also forbid the `<|seg|>` decoding token. This separates them from STG, whose native output includes
 the `<|seg|>` control token and SAM2 mask propagation.
 
 Run order:

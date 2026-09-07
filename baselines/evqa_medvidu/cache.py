@@ -12,6 +12,7 @@ def build_cache_key(
     prompt: str,
     adapter_payload: dict[str, Any],
     visual_input_config: dict[str, Any] | None = None,
+    inference_config: dict[str, Any] | None = None,
 ) -> str:
     return sha256_json(
         {
@@ -30,5 +31,6 @@ def build_cache_key(
             "sampling_policy": row["model_sampling"]["policy"],
             "adapter_payload": adapter_payload,
             "visual_input_config": visual_input_config or {},
+            "inference_config": inference_config or {},
         }
     )

@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from baselines.evqa_medvidu.cache import build_cache_key
-from baselines.evqa_medvidu.backend import EVQABackend, _build_ref_box_kwargs, _needs_sam2_frames, _reset_segmentation_output
+from baselines.evqa_medvidu.backend import EVQABackend, _build_ref_box_kwargs, _forbid_segmentation_output, _needs_sam2_frames, _reset_segmentation_output
 from baselines.evqa_medvidu.config import RunConfig
 from baselines.evqa_medvidu.evaluation.join import gt_index, join_audit, prediction_index
 from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_times, select_model_frames
@@ -129,6 +129,24 @@ class EVQAMedVidUTests(unittest.TestCase):
         )
         self.assertNotEqual(low, high)
 
+    def test_inference_constraint_changes_cache_key(self):
+        row = build_gt_free_row(sample(n=3), 0, new_data_root=None)
+        unrestricted = build_cache_key(
+            row,
+            {"model": "m"},
+            "prompt",
+            {"adapter": 1},
+            inference_config={"forbid_segmentation_output": False},
+        )
+        text_only = build_cache_key(
+            row,
+            {"model": "m"},
+            "prompt",
+            {"adapter": 1},
+            inference_config={"forbid_segmentation_output": True},
+        )
+        self.assertNotEqual(unrestricted, text_only)
+
     def test_mask_bbox_edge_cases(self):
         self.assertIsNone(tight_bbox(np.zeros((3, 4), dtype=np.uint8)))
         mask = np.zeros((5, 6), dtype=np.uint8)
@@ -204,6 +222,9 @@ class EVQAMedVidUTests(unittest.TestCase):
         self.assertTrue(_needs_sam2_frames("stg"))
         self.assertFalse(_needs_sam2_frames("rc"))
         self.assertFalse(_needs_sam2_frames("cvs"))
+        self.assertFalse(_forbid_segmentation_output("stg"))
+        self.assertTrue(_forbid_segmentation_output("rc"))
+        self.assertTrue(_forbid_segmentation_output("cvs"))
 
     def test_rc_and_cvs_prompts_use_text_output_contracts(self):
         backend = EVQABackend(Path("/unused-model"), Path("/unused-output"), {"model": "test"})
@@ -216,6 +237,17 @@ class EVQAMedVidUTests(unittest.TestCase):
         self.assertIn("Do not output masks or special tokens", rc_prompt)
         self.assertIn("Two structures: <0|1|2>", cvs_prompt)
         self.assertIn("Do not output masks, temporal evidence, special tokens, or explanations", cvs_prompt)
+
+    def test_rc_special_token_output_is_invalid(self):
+        adapter = get_adapter("rc")
+        row = build_gt_free_row(rc_sample(), 1, new_data_root=None)
+        parsed = adapter.parse_evqa_output(
+            {"raw_textual_response": "The green object <|seg|>.", "manifest_row": row}
+        )
+        prediction = adapter.to_medvidu_prediction(row, parsed)
+        self.assertFalse(prediction["parse_valid"])
+        self.assertEqual(prediction["parse_status"], "PARSE_INVALID")
+        self.assertEqual(prediction["answer"], "")
 
     def test_stg_resets_segmentation_output_buffer(self):
         class Model:

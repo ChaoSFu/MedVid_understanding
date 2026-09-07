@@ -90,6 +90,7 @@ class EVQABackend:
             prompt,
             model_input,
             visual_input_config=self.visual_input_config,
+            inference_config=self.inference_config(row["task"]),
         )
         raw_path = self.output_root / "predictions" / "raw" / f"{row['task']}.jsonl"
         medvidu_path = self.output_root / "predictions" / "medvidu" / f"{row['task']}.jsonl"
@@ -150,16 +151,21 @@ class EVQABackend:
             if key in batch:
                 batch[key] = _move_nested(batch[key], self.device)
         _reset_segmentation_output(self.model, row["task"])
+        generate_kwargs: dict[str, Any] = {
+            "do_sample": self.generation.do_sample,
+            "temperature": self.generation.temperature,
+            "top_k": self.generation.top_k,
+            "top_p": self.generation.top_p,
+            "repetition_penalty": self.generation.repetition_penalty,
+            "max_new_tokens": self.generation.max_new_tokens,
+        }
+        if _forbid_segmentation_output(row["task"]):
+            seg_token_id = getattr(self.model.config, "seg_token_id", None)
+            if seg_token_id is None:
+                raise RuntimeError("model config has no seg_token_id for text-task decoding constraint")
+            generate_kwargs["bad_words_ids"] = [[int(seg_token_id)]]
         with torch.no_grad():
-            output_ids = self.model.generate(
-                **batch,
-                do_sample=self.generation.do_sample,
-                temperature=self.generation.temperature,
-                top_k=self.generation.top_k,
-                top_p=self.generation.top_p,
-                repetition_penalty=self.generation.repetition_penalty,
-                max_new_tokens=self.generation.max_new_tokens,
-            )
+            output_ids = self.model.generate(**batch, **generate_kwargs)
         output_ids = output_ids[0, data.input_ids.size(1) :]
         if len(output_ids) and output_ids[-1] == self.processor.tokenizer.eos_token_id:
             output_ids = output_ids[:-1]
@@ -190,6 +196,7 @@ class EVQABackend:
             "manifest_row": row,
             "generation_config": asdict(self.generation),
             "visual_input_config": self.visual_input_config,
+            "inference_config": self.inference_config(row["task"]),
             "input_token_count": int(data.input_ids.size(1)),
         }
 
@@ -202,6 +209,12 @@ class EVQABackend:
             "max_pixels_per_frame": self.max_pixels_per_frame,
         }
 
+    def inference_config(self, task: str) -> dict[str, Any]:
+        return {
+            "generation": asdict(self.generation),
+            "forbid_segmentation_output": _forbid_segmentation_output(task),
+        }
+
 
 def _strip_video_token(text: str) -> str:
     return text.replace("<video>\n", "").replace("<video>", "").strip()
@@ -209,6 +222,10 @@ def _strip_video_token(text: str) -> str:
 
 def _needs_sam2_frames(task: str) -> bool:
     return task == "stg"
+
+
+def _forbid_segmentation_output(task: str) -> bool:
+    return task in {"rc", "cvs"}
 
 
 def _reset_segmentation_output(model: Any, task: str) -> None:
