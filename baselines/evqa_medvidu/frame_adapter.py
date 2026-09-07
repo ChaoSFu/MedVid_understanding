@@ -30,7 +30,14 @@ class SamplingResult:
         }
 
 
-def official_sample_frame_count(clip_duration: float, total_frames: int, fps: float = OFFICIAL_FPS, max_frames: int = OFFICIAL_MAX_FRAMES) -> int:
+def official_sample_frame_count(
+    clip_duration: float,
+    total_frames: int,
+    fps: float = OFFICIAL_FPS,
+    max_frames: int | None = OFFICIAL_MAX_FRAMES,
+) -> int:
+    if max_frames is None:
+        return int(total_frames)
     sample_frames = int(float(clip_duration) * float(fps))
     return max(1, min(sample_frames, min(int(max_frames), int(total_frames))))
 
@@ -50,7 +57,7 @@ def select_model_frames(
     local_timestamps: list[float],
     clip_duration: float,
     fps: float = OFFICIAL_FPS,
-    max_frames: int = OFFICIAL_MAX_FRAMES,
+    max_frames: int | None = None,
 ) -> SamplingResult:
     if len(frame_paths) != len(local_timestamps):
         raise ValueError("frame_paths and local_timestamps must have the same length")
@@ -89,4 +96,3 @@ def logical_frame_identities(frame_paths: list[str], source_frame_indices: list[
 def path_exists_audit(frame_paths: list[str]) -> dict[str, Any]:
     missing = [path for path in frame_paths if not Path(path).exists()]
     return {"n_paths": len(frame_paths), "n_missing": len(missing), "missing_preview": missing[:10]}
-

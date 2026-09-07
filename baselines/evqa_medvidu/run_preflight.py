@@ -56,8 +56,8 @@ def build_report(cfg: RunConfig, model_path: Path | None, upstream: dict[str, An
         },
         "VISUAL_BOUNDARY": {"benchmark_frames_only": True, "source_raw_video_accessed": False, "fake_MP4_used": False},
         "SAMPLING": {
-            "official_policy": "fps=1.0, max_frames=128, sample_frames=int(duration*fps), uniform",
-            "MedVidU_adaptation": "nearest logical MedVidU benchmark frame to official target clip-local times",
+            "upstream_official_policy": "fps=1.0, max_frames=128, sample_frames=int(duration*fps), uniform",
+            "MedVidU_adaptation": "all benchmark-provided frames in listed order; no temporal downsampling",
             "additional_sampling": False,
             "timestamp_mapper": "baselines.timelens_medvidu.temporal_mapper.TemporalMapper",
         },

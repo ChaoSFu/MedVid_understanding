@@ -83,7 +83,7 @@ def build_gt_free_row(
     old_data_root: str = DEFAULT_OLD_DATA_ROOT,
     new_data_root: str | None = DEFAULT_NEW_DATA_ROOT,
     fps: float = 1.0,
-    max_frames: int = 128,
+    max_frames: int | None = None,
 ) -> dict[str, Any]:
     task = canonical_task(sample.get("qa_type"))
     if task is None:
@@ -239,8 +239,8 @@ def build_manifests(cfg: RunConfig) -> dict[str, Any]:
     write_json(
         cfg.audit_dir / "frame_sampling_policy.json",
         {
-            "official_policy": "fps=1.0, max_frames=128, sample_frames=int(video_duration*fps), uniform over clip",
-            "medvidu_adaptation": "target clip-local seconds are mapped to nearest benchmark-provided logical frame; no source frames are accessed",
+            "upstream_official_policy": "fps=1.0, max_frames=128, sample_frames=int(video_duration*fps), uniform over clip",
+            "medvidu_policy": "all benchmark-provided frames are passed to the model in listed order; no temporal downsampling and no source frames are accessed",
             "sampling_version": rows_by_task["stg"][0]["model_sampling"]["policy"] if rows_by_task["stg"] else None,
             "additional_sampling": False,
             "fake_mp4_used": False,
@@ -346,4 +346,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -26,7 +26,7 @@ OFFICIAL_MAX_PIXELS_PER_FRAME = 256 * 28 * 28
 VISUAL_RESOLUTION_POLICY_VERSION = "per_frame_max_pixels_v1"
 
 PROMPT_VERSION = "official_st_evidence_wrapper_medvidu_question_verbatim_v1"
-SAMPLING_VERSION = "official_fps_1_clip_local_nearest_medvidu_frame_list_v1"
+SAMPLING_VERSION = "medvidu_all_benchmark_frames_no_downsampling_v1"
 FRAME_ADAPTER_VERSION = "ordered_benchmark_frame_list_no_fake_mp4_v1"
 TIMESTAMP_ADAPTER_VERSION = "medvidu_gt_free_clip_local_timelens_mapper_v1"
 MASK_TO_BBOX_VERSION = "tight_bbox_v1"
@@ -80,7 +80,7 @@ class RunConfig:
     smoke_size: int = SMOKE_SIZE
     smoke_seed: int = SMOKE_SEED
     fps: float = OFFICIAL_FPS
-    max_frames: int = OFFICIAL_MAX_FRAMES
+    max_frames: int | None = None
     generation: GenerationConfig = field(default_factory=GenerationConfig)
 
     @property

@@ -86,6 +86,13 @@ class EVQAMedVidUTests(unittest.TestCase):
         self.assertEqual(result.selected_logical_indices, [0, 1])
         self.assertEqual(result.selected_frame_paths, ["a", "b"])
 
+    def test_default_sampling_uses_every_benchmark_frame(self):
+        paths = [f"frame-{i}" for i in range(180)]
+        timestamps = [float(i) / 30.0 for i in range(180)]
+        result = select_model_frames(paths, timestamps, timestamps[-1])
+        self.assertEqual(result.selected_logical_indices, list(range(180)))
+        self.assertEqual(result.selected_frame_paths, paths)
+
     def test_dry_run_frame_cap_changes_sampling_and_hash(self):
         row = build_gt_free_row(sample(n=200, dataset_name="SyntheticLongClip"), 0, new_data_root=None)
         capped = cap_model_frames_for_dry_run(row, 16)

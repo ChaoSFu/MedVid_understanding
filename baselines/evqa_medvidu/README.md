@@ -24,9 +24,12 @@ python -B -m baselines.evqa_medvidu.run_smoke --model-path /local/path/ST-Eviden
 
 Full runs are intentionally guarded until smoke artifacts and cache restart audits are reviewed.
 
-Visual input policy: selected benchmark frames remain at the official `fps=1.0`,
-`max_frames=128` sampling policy. For image-list input, E-VQA's vision utility
-interprets `max_pixels` as a cap on each frame, so this adapter fixes it at
+Visual input policy: the MedVidU adapter passes every benchmark-provided frame
+to the model, in listed order, with no `fps` or `max_frames` temporal cap. This
+differs from the upstream ST-Evidence script's `fps=1.0`, `max_frames=128`
+policy and is recorded as a MedVidU-specific adaptation. For image-list input,
+E-VQA's vision utility interprets `max_pixels` as a cap on each frame, so this
+adapter fixes it at
 `256 * 28 * 28` pixels per frame (approximately 448x448 for square images).
 This prevents long, high-resolution clips from exceeding the model context
 without dropping frames. The value is recorded in the cache key and prediction
