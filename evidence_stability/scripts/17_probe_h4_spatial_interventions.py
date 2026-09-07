@@ -149,8 +149,9 @@ def processor_frame_audit(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
+    stage = summary["study_stage"]
     lines = [
-        "# H4 Spatial Intervention Preflight Probe",
+        f"# H4 Spatial Intervention {stage.title()} Probe",
         "",
         "## Status",
         f"- protocol version: {summary['protocol_version']}",
@@ -181,7 +182,7 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- processor failures: {summary['processor_failures']}",
         f"- processor frame audit: {summary['processor_frame_audit'].get('all_observed_cases_represent_expected_frames')}",
         "",
-        "This is still H4 preflight. No post-hoc GT join, C_S computation, 50-QA discovery, formal statistics, or independent confirmation was run.",
+        "No post-hoc GT join, C_S computation, formal statistics, or independent confirmation was run.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -209,6 +210,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max_new_tokens", type=int, default=8)
     p.add_argument("--limit_interventions", type=int, default=-1)
     p.add_argument("--dry_run", action="store_true")
+    p.add_argument("--study_stage", choices=["preflight", "discovery"], default="preflight")
     return p.parse_args()
 
 
@@ -219,7 +221,7 @@ def main() -> None:
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
     probe_results = Path(args.probe_results or out_dir / "predictions" / "intervention_predictions.jsonl")
     errors_path = Path(args.errors or out_dir / "predictions" / "intervention_errors.jsonl")
-    summary_output = Path(args.summary_output or out_dir / "summary" / "h4_spatial_intervention_preflight_probe_summary.json")
+    summary_output = Path(args.summary_output or out_dir / "summary" / f"h4_spatial_intervention_{args.study_stage}_probe_summary.json")
     log_path = Path(args.log_path or out_dir / "predictions" / "h4_spatial_intervention_probe.log")
     probe_results.touch(exist_ok=True)
     errors_path.touch(exist_ok=True)
@@ -295,6 +297,7 @@ def main() -> None:
             )
             record = {
                 "protocol_version": H4_PROTOCOL_VERSION,
+                "study_stage": args.study_stage,
                 "stage": "spatial_intervention_support_probe",
                 "qa_id": row["qa_id"],
                 "clip_id": row["clip_id"],
@@ -370,6 +373,7 @@ def main() -> None:
     processor_audit = processor_frame_audit(list(result_by_id.values()))
     summary = {
         "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": args.study_stage,
         "intervention_manifest": args.intervention_manifest,
         "output_dir": str(out_dir),
         "n_input_interventions": len(read_jsonl(args.intervention_manifest)),
@@ -395,7 +399,7 @@ def main() -> None:
             "git_status_short": git_output(["status", "--short"]),
         },
         "model_inference_executed": not args.dry_run,
-        "discovery_executed": False,
+        "discovery_executed": args.study_stage == "discovery" and not args.dry_run,
         "formal_statistics_run": False,
         "independent_confirmation_run": False,
         "elapsed_sec": round(time.time() - started, 3),

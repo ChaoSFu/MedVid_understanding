@@ -195,6 +195,48 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertFalse(summary["model_inference_executed"])
             self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
 
+    def test_h4_discovery_preparation_is_labeled_and_gt_free(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "14_prepare_h4_preflight.py"
+        spec = spec_from_file_location("h4_discovery_prepare_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data = root / "stg.json"
+            out = root / "out"
+            data.write_text(__import__("json").dumps([stg_sample(idx) for idx in range(50)]), encoding="utf-8")
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "14_prepare_h4_preflight.py",
+                    "--data_json",
+                    str(data),
+                    "--output_dir",
+                    str(out),
+                    "--study_stage",
+                    "discovery",
+                    "--qa_count",
+                    "50",
+                    "--window_size",
+                    "2",
+                    "--stride",
+                    "2",
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+
+            summary = __import__("json").loads((out / "summary" / "h4_discovery_prepare_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["study_stage"], "discovery")
+            self.assertEqual(summary["cohort"]["n_qa"], 50)
+            self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
+            self.assertTrue((out / "manifest" / "h4_discovery_50_qa.json").exists())
+
     def test_h4_spatial_intervention_generation_cli(self):
         from importlib.util import module_from_spec, spec_from_file_location
 

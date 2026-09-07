@@ -173,8 +173,9 @@ def bbox_diagnostic(pointer_rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
+    stage = summary["study_stage"]
     lines = [
-        "# H4 Spatial Preflight Probe",
+        f"# H4 Spatial {stage.title()} Probe",
         "",
         "## Status",
         f"- protocol version: {summary['protocol_version']}",
@@ -204,14 +205,14 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- missing frame errors: {summary['missing_frame_errors']}",
         f"- processor failures: {summary['processor_failures']}",
         "",
-        "KEEP/DROP interventions, formal statistics, independent confirmation, and 50-QA discovery were not run.",
+        "KEEP/DROP interventions, formal statistics, and independent confirmation were not run.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Run H4 12-QA preflight support judgment and spatial pointer probing.")
+    p = argparse.ArgumentParser(description="Run H4 support judgment and spatial pointer probing.")
     p.add_argument("--manifest", default="outputs/stg_pilot/phase_g/h4_spatial_v1/manifest/h4_model_manifest_gt_free.jsonl")
     p.add_argument("--output_dir", default="outputs/stg_pilot/phase_g/h4_spatial_v1")
     p.add_argument("--model_backend", choices=["dummy", "openai_compatible", "qwen3_vl"], default="dummy")
@@ -236,6 +237,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--limit_windows", type=int, default=-1)
     p.add_argument("--dry_run", action="store_true")
     p.add_argument("--log_path", default=None)
+    p.add_argument("--study_stage", choices=["preflight", "discovery"], default="preflight")
     return p.parse_args()
 
 
@@ -244,7 +246,7 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     for sub in ["predictions", "manifest", "audit", "summary", "provenance"]:
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
-    log_path = args.log_path or out_dir / "predictions" / "h4_spatial_preflight_probe.log"
+    log_path = args.log_path or out_dir / "predictions" / f"h4_spatial_{args.study_stage}_probe.log"
     setup_logging(log_path)
 
     rows = read_jsonl(args.manifest)
@@ -275,7 +277,7 @@ def main() -> None:
     processor_failures = 0
     started = time.time()
 
-    logger.info("H4 preflight support probing windows=%d completed_cache=%d", len(rows), len(support_completed))
+    logger.info("H4 %s support probing windows=%d completed_cache=%d", args.study_stage, len(rows), len(support_completed))
     for i, row in enumerate(rows, start=1):
         prompt = build_h4_support_prompt(row["human_question"])
         try:
@@ -319,6 +321,7 @@ def main() -> None:
             record = {
                 "protocol_version": H4_PROTOCOL_VERSION,
                 "stage": "support",
+                "study_stage": args.study_stage,
                 "qa_id": row["qa_id"],
                 "clip_id": row["clip_id"],
                 "candidate_id": row["candidate_id"],
@@ -366,7 +369,7 @@ def main() -> None:
         raise RuntimeError(f"H4 supporting manifest contains GT leakage: {supporting_leakage}")
     write_jsonl(out_dir / "manifest" / "h4_supporting_candidates_gt_free.jsonl", supporting_manifest)
 
-    logger.info("H4 preflight spatial pointer requests=%d completed_cache=%d", len(supporting_rows), len(pointer_completed))
+    logger.info("H4 %s spatial pointer requests=%d completed_cache=%d", args.study_stage, len(supporting_rows), len(pointer_completed))
     for i, row in enumerate(supporting_rows, start=1):
         prompt = build_spatial_pointer_prompt(row["human_question"])
         try:
@@ -398,6 +401,7 @@ def main() -> None:
             record = {
                 "protocol_version": H4_PROTOCOL_VERSION,
                 "stage": "spatial_pointer",
+                "study_stage": args.study_stage,
                 "qa_id": row["qa_id"],
                 "clip_id": row["clip_id"],
                 "candidate_id": row["candidate_id"],
@@ -442,6 +446,7 @@ def main() -> None:
     }
     summary = {
         "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": args.study_stage,
         "manifest": args.manifest,
         "output_dir": str(out_dir),
         "model_backend": args.model_backend,
@@ -470,13 +475,14 @@ def main() -> None:
         "model_inference_executed": not args.dry_run,
         "spatial_pointing_executed": not args.dry_run,
         "interventions_generated": False,
-        "discovery_executed": False,
+        "discovery_executed": args.study_stage == "discovery" and not args.dry_run,
         "formal_statistics_run": False,
         "independent_confirmation_run": False,
         "elapsed_sec": round(time.time() - started, 3),
     }
-    write_json(out_dir / "summary" / "h4_spatial_preflight_probe_summary.json", summary)
-    write_summary_md(out_dir / "summary" / "h4_spatial_preflight_probe_summary.md", summary)
+    summary_stem = f"h4_spatial_{args.study_stage}_probe_summary"
+    write_json(out_dir / "summary" / f"{summary_stem}.json", summary)
+    write_summary_md(out_dir / "summary" / f"{summary_stem}.md", summary)
     (out_dir / "provenance" / "environment_snapshot_probe.txt").write_text(environment_snapshot(), encoding="utf-8")
     (out_dir / "provenance" / "git_status_probe.txt").write_text(repo["git_status_short"] + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))

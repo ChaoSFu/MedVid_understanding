@@ -161,6 +161,7 @@ def write_visual_sheet(path: Path, rows: list[dict[str, Any]]) -> bool:
 def strip_model_manifest(row: dict[str, Any]) -> dict[str, Any]:
     allowed = [
         "intervention_id",
+        "study_stage",
         "candidate_id",
         "qa_id",
         "clip_id",
@@ -258,6 +259,7 @@ def generate_for_candidate(row: dict[str, Any], out_dir: Path, frame_root: str |
         manifest_rows.append(
             {
                 "protocol_version": H4_PROTOCOL_VERSION,
+                "study_stage": row.get("study_stage"),
                 "intervention_id": intervention_id,
                 "candidate_id": row["candidate_id"],
                 "qa_id": row["qa_id"],
@@ -323,6 +325,8 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
     lines = [
         "# H4 Spatial Intervention Generation",
         "",
+        f"- study stage: {summary['study_stage']}",
+        "",
         "## Input",
         f"- spatial pointer candidates: {summary['input']['n_pointer_rows']}",
         f"- valid bbox candidates: {summary['input']['n_valid_bbox_candidates']}",
@@ -339,14 +343,14 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- missing frame errors: {summary['errors']['n_errors']}",
         f"- visual sheets written: {summary['visual_audit']['n_written']}",
         "",
-        "No model inference, 50-QA discovery, formal statistics, or independent confirmation was run.",
+        "No intervention model inference, formal statistics, or independent confirmation was run.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate H4 preflight KEEP/DROP ROI interventions and engineering audits.")
+    p = argparse.ArgumentParser(description="Generate H4 KEEP/DROP ROI interventions and engineering audits.")
     p.add_argument("--spatial_pointer_predictions", default="outputs/stg_pilot/phase_g/h4_spatial_v1/predictions/spatial_pointer_predictions.jsonl")
     p.add_argument("--supporting_candidates", default="outputs/stg_pilot/phase_g/h4_spatial_v1/manifest/h4_supporting_candidates_gt_free.jsonl")
     p.add_argument("--output_dir", default="outputs/stg_pilot/phase_g/h4_spatial_v1")
@@ -357,13 +361,14 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--visual_limit", type=int, default=10)
     p.add_argument("--log_path", default=None)
+    p.add_argument("--study_stage", choices=["preflight", "discovery"], default="preflight")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     out_dir = Path(args.output_dir)
-    for sub in ["manifest", "audit", "summary", "visualizations/preflight", "provenance", "interventions"]:
+    for sub in ["manifest", "audit", "summary", f"visualizations/{args.study_stage}", "provenance", "interventions"]:
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
     setup_logging(args.log_path or out_dir / "audit" / "h4_spatial_intervention_generation.log")
     supporting_by_candidate = {}
@@ -419,7 +424,7 @@ def main() -> None:
     for idx, (candidate_id, rows) in enumerate(sorted(by_candidate.items())):
         if idx >= args.visual_limit:
             break
-        sheet_path = out_dir / "visualizations" / "preflight" / f"{stable_hash({'candidate_id': candidate_id})[:16]}.jpg"
+        sheet_path = out_dir / "visualizations" / args.study_stage / f"{stable_hash({'candidate_id': candidate_id})[:16]}.jpg"
         written = write_visual_sheet(sheet_path, rows)
         visual_rows.append({"candidate_id": candidate_id, "visualization_path": str(sheet_path), "written": written})
 
@@ -441,6 +446,7 @@ def main() -> None:
     }
     summary = {
         "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": args.study_stage,
         "input": {
             "spatial_pointer_predictions": args.spatial_pointer_predictions,
             "n_pointer_rows": len(read_jsonl(args.spatial_pointer_predictions)),
@@ -453,7 +459,7 @@ def main() -> None:
         "visual_audit": {"requested": args.visual_limit, "n_written": sum(row["written"] for row in visual_rows), "cases": visual_rows},
         "repo": repo,
         "model_inference_executed": False,
-        "discovery_executed": False,
+        "discovery_executed": args.study_stage == "discovery",
         "formal_statistics_run": False,
         "independent_confirmation_run": False,
     }

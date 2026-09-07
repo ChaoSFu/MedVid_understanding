@@ -305,9 +305,10 @@ def persistence_diagnostic(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
-    primary = summary["primary_preflight_qa"]
+    stage = summary["study_stage"]
+    primary = summary["primary_qa"]
     lines = [
-        "# H4 Spatial Preflight Join Report",
+        f"# H4 Spatial {stage.title()} Join Report",
         "",
         "## Scope",
         f"- protocol version: {summary['protocol_version']}",
@@ -321,7 +322,7 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- temporally eligible: {summary['candidate_join_audit']['n_temporally_eligible']}",
         f"- candidates with C_S: {summary['candidate_join_audit']['n_with_C_S']}",
         "",
-        "## Primary QA Preflight",
+        "## Primary QA",
         f"- paired QA: {primary['n_paired_qa']}",
         f"- delta_C positive: {primary['delta_C_positive']}",
         f"- delta_C zero: {primary['delta_C_zero']}",
@@ -331,18 +332,19 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- mean delta_suff: {primary['mean_delta_suff']}",
         f"- mean delta_nec: {primary['mean_delta_nec']}",
         "",
-        "This is a 12-QA engineering preflight join. No 50-QA discovery, formal statistics, or independent confirmation was run.",
+        "This is a descriptive post-hoc join. Formal statistics and independent confirmation were not run.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Post-hoc H4 preflight GT join and spatial causality summary.")
+    p = argparse.ArgumentParser(description="Post-hoc H4 GT join and spatial causality summary.")
     p.add_argument("--window_gt", default="outputs/stg_pilot/phase_g/h4_spatial_v1/joined/h4_preflight_windows_with_temporal_gt.jsonl")
     p.add_argument("--spatial_pointer_predictions", default="outputs/stg_pilot/phase_g/h4_spatial_v1/predictions/spatial_pointer_predictions.jsonl")
     p.add_argument("--intervention_predictions", default="outputs/stg_pilot/phase_g/h4_spatial_v1/predictions/intervention_predictions.jsonl")
     p.add_argument("--output_dir", default="outputs/stg_pilot/phase_g/h4_spatial_v1")
+    p.add_argument("--study_stage", choices=["preflight", "discovery"], default="preflight")
     return p.parse_args()
 
 
@@ -389,31 +391,35 @@ def main() -> None:
     }
     summary = {
         "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": args.study_stage,
         "spatial_label_protocol": H4_SPATIAL_LABEL_PROTOCOL,
         "window_gt": args.window_gt,
         "spatial_pointer_predictions": args.spatial_pointer_predictions,
         "intervention_predictions": args.intervention_predictions,
         "candidate_join_audit": candidate_audit,
         "intervention_audit": intervention_audit,
-        "primary_preflight_qa": primary,
+        "primary_qa": primary,
         "persistence_diagnostic": persistence_diagnostic(candidate_rows_),
         "repo": {
             "git_commit": git_output(["rev-parse", "HEAD"]),
             "git_status_short": git_output(["status", "--short"]),
         },
         "model_inference_executed": False,
-        "discovery_executed": False,
+        "discovery_executed": args.study_stage == "discovery",
         "formal_statistics_run": False,
         "independent_confirmation_run": False,
     }
+    if args.study_stage == "preflight":
+        summary["primary_preflight_qa"] = primary
     write_jsonl(out_dir / "joined" / "h4_candidates_with_gt.jsonl", candidate_rows_)
     write_csv(out_dir / "candidate" / "candidate_spatial_causality.csv", candidate_rows_)
     write_csv(out_dir / "qa" / "h4_primary_paired_qa.csv", qa_rows_)
     write_json(out_dir / "summary" / "h4_spatial_persistence_diagnostic.json", summary["persistence_diagnostic"])
-    write_json(out_dir / "summary" / "h4_preflight_join_summary.json", summary)
-    write_summary_md(out_dir / "summary" / "h4_preflight_join_summary.md", summary)
+    summary_stem = f"h4_{args.study_stage}_join_summary"
+    write_json(out_dir / "summary" / f"{summary_stem}.json", summary)
+    write_summary_md(out_dir / "summary" / f"{summary_stem}.md", summary)
     write_json(out_dir / "audit" / "join_audit.json", {"candidate_join_audit": candidate_audit, "intervention_audit": intervention_audit})
-    (out_dir / "provenance" / "git_status_h4_preflight_join.txt").write_text(summary["repo"]["git_status_short"] + "\n", encoding="utf-8")
+    (out_dir / "provenance" / f"git_status_h4_{args.study_stage}_join.txt").write_text(summary["repo"]["git_status_short"] + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

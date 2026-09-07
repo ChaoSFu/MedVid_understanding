@@ -140,8 +140,10 @@ def write_protocol_freeze_md(path: Path, freeze: dict[str, Any]) -> None:
 
 
 def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
+    stage = summary["study_stage"]
+    cohort = summary["cohort"]
     lines = [
-        "# H4 Spatial Preflight Preparation",
+        f"# H4 Spatial {stage.title()} Preparation",
         "",
         "## Protocol",
         f"- protocol version: {summary['protocol_version']}",
@@ -155,10 +157,11 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- normalization errors: {summary['n_normalization_errors']}",
         f"- datasets: {summary['dataset_counts']}",
         "",
-        "## Preflight Cohort",
-        f"- selected QA: {summary['preflight']['n_qa']}",
-        f"- dataset counts: {summary['preflight']['dataset_counts']}",
-        f"- cohort sha256: {summary['preflight']['cohort_sha256']}",
+        "## Cohort",
+        f"- study stage: {stage}",
+        f"- selected QA: {cohort['n_qa']}",
+        f"- dataset counts: {cohort['dataset_counts']}",
+        f"- cohort sha256: {cohort['cohort_sha256']}",
         "",
         "## Windows",
         f"- total windows: {summary['windows']['n_windows']}",
@@ -170,14 +173,14 @@ def write_summary_md(path: Path, summary: dict[str, Any]) -> None:
         f"- model manifest rows: {summary['gt_leakage_audit']['n_model_manifest_rows']}",
         f"- GT leakage: {summary['gt_leakage_audit']['gt_leakage']}",
         "",
-        "No model inference, spatial pointing, KEEP/DROP intervention, formal statistics, or discovery run was executed.",
+        "No model inference, spatial pointing, KEEP/DROP intervention, formal statistics, or independent confirmation was executed.",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Prepare GT-blind H4 STG preflight cohort and window manifests.")
+    p = argparse.ArgumentParser(description="Prepare a GT-blind H4 STG cohort and window manifests.")
     p.add_argument("--data_json", default="data_json/medvidu_filtered/trainval/stg.json")
     p.add_argument("--output_dir", default="outputs/stg_pilot/phase_g/h4_spatial_v1")
     p.add_argument("--frame_root", default=None)
@@ -186,6 +189,8 @@ def parse_args() -> argparse.Namespace:
         default="/root/data,/mnt/hdd3/huihui/hh_datas/MedVidU/valdata,/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
     )
     p.add_argument("--preflight_qa", type=int, default=H4_PREFLIGHT_QA_COUNT)
+    p.add_argument("--qa_count", type=int, default=None, help="Override cohort size; discovery is frozen at 50 QA.")
+    p.add_argument("--study_stage", choices=["preflight", "discovery"], default="preflight")
     p.add_argument("--seed", type=int, default=H4_DISCOVERY_SEED)
     p.add_argument("--window_size", type=int, default=H4_WINDOW_SIZE)
     p.add_argument("--stride", type=int, default=H4_WINDOW_STRIDE)
@@ -196,7 +201,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     out_dir = Path(args.output_dir)
-    for sub in ["audit", "summary", "provenance", "manifest", "predictions", "joined", "candidate", "qa", "visualizations/preflight", "visualizations/discovery"]:
+    for sub in ["audit", "summary", "provenance", "manifest", "predictions", "joined", "candidate", "qa", f"visualizations/{args.study_stage}"]:
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
 
     raw = read_json(args.data_json)
@@ -225,7 +230,12 @@ def main() -> None:
     if duplicate_qa_ids:
         raise RuntimeError(f"Duplicate H4 qa_id values: {duplicate_qa_ids[:20]}")
 
-    selected = select_preflight_qa(normalized, args.preflight_qa, args.seed, min_frames=args.window_size)
+    qa_count = args.qa_count if args.qa_count is not None else args.preflight_qa
+    if args.study_stage == "discovery" and qa_count != 50:
+        raise ValueError("H4 discovery is frozen to --qa_count 50.")
+    selected = select_preflight_qa(normalized, qa_count, args.seed, min_frames=args.window_size)
+    if len(selected) != qa_count:
+        raise RuntimeError(f"Requested {qa_count} H4 QA records but selected only {len(selected)}")
     selected_ids = {row["qa_id"] for row in selected}
     selected_manifest = [qa_manifest_row(row) for row in selected]
 
@@ -243,7 +253,9 @@ def main() -> None:
             if window["qa_id"] not in selected_ids:
                 continue
             windows.append(window)
-            model_manifest.append(h4_model_window_manifest_row(sample, window))
+            model_row = h4_model_window_manifest_row(sample, window)
+            model_row["study_stage"] = args.study_stage
+            model_manifest.append(model_row)
             alignment = h4_window_temporal_alignment(sample, window)
             joined_windows.append(
                 {
@@ -252,6 +264,7 @@ def main() -> None:
                     "candidate_id": window["candidate_id"],
                     "window_id": window["window_id"],
                     "dataset_name": sample["dataset_name"],
+                    "study_stage": args.study_stage,
                     "human_question": sample["human_question"],
                     "frame_ids": list(window["frame_indices"]),
                     "local_timestamps": list(window["frame_times"]),
@@ -268,7 +281,7 @@ def main() -> None:
     if duplicate_candidate_ids:
         raise RuntimeError(f"Duplicate H4 candidate IDs: {duplicate_candidate_ids[:20]}")
     if any(row["n_frames"] != args.window_size for row in model_manifest):
-        raise RuntimeError("H4 preflight model manifest contains non-16-frame window")
+        raise RuntimeError("H4 model manifest contains a window with unexpected frame count")
 
     leakage = h4_gt_leakage_audit(model_manifest)
     if leakage["gt_leakage"]:
@@ -293,7 +306,8 @@ def main() -> None:
     }
     cohort_payload = {
         "protocol_version": H4_PROTOCOL_VERSION,
-        "cohort": "h4_preflight_12_qa",
+        "study_stage": args.study_stage,
+        "cohort": f"h4_{args.study_stage}_{qa_count}_qa",
         "seed": args.seed,
         "selection_rule": "GT-blind deterministic stratification by dataset, then seeded shuffle over QA with >=16 input frames",
         "gt_blind_selection": True,
@@ -304,6 +318,7 @@ def main() -> None:
     }
     summary = {
         "protocol_version": H4_PROTOCOL_VERSION,
+        "study_stage": args.study_stage,
         "protocol_freeze": freeze,
         "data_json": args.data_json,
         "output_dir": str(out_dir),
@@ -313,7 +328,7 @@ def main() -> None:
         "n_normalized_qa": len(normalized),
         "n_normalization_errors": len(errors),
         "dataset_counts": dict(Counter(row["dataset_name"] for row in normalized)),
-        "preflight": {
+        "cohort": {
             "n_qa": len(selected),
             "dataset_counts": dict(Counter(row["dataset_name"] for row in selected)),
             "cohort_sha256": stable_hash(cohort_payload),
@@ -336,6 +351,11 @@ def main() -> None:
         "independent_confirmation_run": False,
     }
 
+    # Keep the historic preflight key for downstream readers, while discovery
+    # uses the unambiguous cohort key above.
+    if args.study_stage == "preflight":
+        summary["preflight"] = summary["cohort"]
+
     write_json(out_dir / "audit" / "medvidu_stg_schema.json", audit)
     write_stg_schema_md(str(out_dir / "audit" / "medvidu_stg_schema.md"), audit)
     write_stg_schema_md(str(out_dir / "provenance" / "medvidu_stg_schema.md"), audit)
@@ -348,15 +368,16 @@ def main() -> None:
     (out_dir / "provenance" / "environment_snapshot.txt").write_text(environment_snapshot(), encoding="utf-8")
     (out_dir / "provenance" / "git_status.txt").write_text(repo["git_status_short"] + "\n", encoding="utf-8")
 
-    write_json(out_dir / "manifest" / "h4_preflight_12_qa.json", cohort_payload)
-    write_jsonl(out_dir / "manifest" / "h4_preflight_windows_gt_free.jsonl", model_manifest)
+    stage_tag = args.study_stage
+    write_json(out_dir / "manifest" / f"h4_{stage_tag}_{qa_count}_qa.json", cohort_payload)
+    write_jsonl(out_dir / "manifest" / f"h4_{stage_tag}_windows_gt_free.jsonl", model_manifest)
     write_jsonl(out_dir / "manifest" / "h4_model_manifest_gt_free.jsonl", model_manifest)
-    write_jsonl(out_dir / "joined" / "h4_preflight_windows_with_temporal_gt.jsonl", joined_windows)
+    write_jsonl(out_dir / "joined" / f"h4_{stage_tag}_windows_with_temporal_gt.jsonl", joined_windows)
     write_json(out_dir / "audit" / "gt_leakage_audit.json", leakage)
-    write_json(out_dir / "audit" / "preflight_window_generation_audit.json", summary["windows"])
+    write_json(out_dir / "audit" / f"{stage_tag}_window_generation_audit.json", summary["windows"])
     write_json(out_dir / "audit" / "normalization_errors.json", errors)
-    write_json(out_dir / "summary" / "h4_preflight_prepare_summary.json", summary)
-    write_summary_md(out_dir / "summary" / "h4_preflight_prepare_summary.md", summary)
+    write_json(out_dir / "summary" / f"h4_{stage_tag}_prepare_summary.json", summary)
+    write_summary_md(out_dir / "summary" / f"h4_{stage_tag}_prepare_summary.md", summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 
