@@ -69,8 +69,7 @@ def make_roi_image(image: Any, pixel_box: list[int], intervention_type: str) -> 
     from PIL import Image, ImageFilter
 
     blurred = image.filter(ImageFilter.GaussianBlur(radius=gaussian_blur_radius(*image.size)))
-    mask = image.new("L", image.size, 0)
-    region = image.new("L", image.size, 0)
+    region = Image.new("L", image.size, 0)
     region.paste(255, box=tuple(pixel_box))
     if intervention_type.startswith("KEEP"):
         return Image.composite(image, blurred, region)
