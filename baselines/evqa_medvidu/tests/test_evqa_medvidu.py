@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from baselines.evqa_medvidu.cache import build_cache_key
-from baselines.evqa_medvidu.backend import _build_ref_box_kwargs, _needs_sam2_frames, _reset_segmentation_output
+from baselines.evqa_medvidu.backend import EVQABackend, _build_ref_box_kwargs, _needs_sam2_frames, _reset_segmentation_output
 from baselines.evqa_medvidu.config import RunConfig
 from baselines.evqa_medvidu.evaluation.join import gt_index, join_audit, prediction_index
 from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_times, select_model_frames
@@ -204,6 +204,18 @@ class EVQAMedVidUTests(unittest.TestCase):
         self.assertTrue(_needs_sam2_frames("stg"))
         self.assertFalse(_needs_sam2_frames("rc"))
         self.assertFalse(_needs_sam2_frames("cvs"))
+
+    def test_rc_and_cvs_prompts_use_text_output_contracts(self):
+        backend = EVQABackend(Path("/unused-model"), Path("/unused-output"), {"model": "test"})
+        rc_row = build_gt_free_row(rc_sample(), 1, new_data_root=None)
+        cvs_row = build_gt_free_row(cvs_sample(), 2, new_data_root=None)
+        rc_prompt = backend.build_prompt(rc_row)
+        cvs_prompt = backend.build_prompt(cvs_row)
+        self.assertIn("<|ref|>", rc_prompt)
+        self.assertIn("plain-English description", rc_prompt)
+        self.assertIn("Do not output masks or special tokens", rc_prompt)
+        self.assertIn("Two structures: <0|1|2>", cvs_prompt)
+        self.assertIn("Do not output masks, temporal evidence, special tokens, or explanations", cvs_prompt)
 
     def test_stg_resets_segmentation_output_buffer(self):
         class Model:

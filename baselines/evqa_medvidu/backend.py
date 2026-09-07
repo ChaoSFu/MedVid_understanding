@@ -11,6 +11,8 @@ from .config import (
     EVQA_TRAIN_ROOT,
     OFFICIAL_MAX_PIXELS_PER_FRAME,
     OFFICIAL_MIN_PIXELS,
+    CVS_OUTPUT_CONTRACT,
+    RC_OUTPUT_CONTRACT,
     VISUAL_RESOLUTION_POLICY_VERSION,
     GenerationConfig,
 )
@@ -73,9 +75,9 @@ class EVQABackend:
         if row["task"] == "stg":
             return f"{question} Answer the question and provide evidence in the form of temporal ([[start1, end1], [start2, end2], ...]) and spatial evidence (masks)."
         if row["task"] == "rc":
-            return f"Here is a video with a provided region denoted by [0] <|ref|>. {question}"
+            return f"Here is a video with a reference region denoted by <|ref|>.\n{question}\n{RC_OUTPUT_CONTRACT}"
         if row["task"] == "cvs":
-            return f"{question} Provide the answer. If temporal or spatial evidence is relevant, include it in the native E-VQA evidence format."
+            return f"{question}\n{CVS_OUTPUT_CONTRACT}"
         raise KeyError(row["task"])
 
     def run_row(self, row: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any] | None]:

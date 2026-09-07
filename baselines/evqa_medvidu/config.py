@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 EVQA_ROOT = REPO_ROOT / "third_party" / "EVQA"
 EVQA_TRAIN_ROOT = EVQA_ROOT / "train"
 DEFAULT_DATA_PATH = REPO_ROOT / "data_json" / "init_datas" / "medvidu_eccv2026_trainval.json"
-DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "baselines" / "evqa_medvidu"
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "outputs" / "baselines" / "evqa_medvidu_v2_text_contracts"
 DEFAULT_OLD_DATA_ROOT = "/root/data"
 DEFAULT_NEW_DATA_ROOT = os.environ.get("MEDVIDU_DATA_ROOT", "/mnt/hdd3/huihui/hh_datas/MedVidU/valdata")
 
@@ -25,7 +25,15 @@ OFFICIAL_MIN_PIXELS = 128 * 28 * 28
 OFFICIAL_MAX_PIXELS_PER_FRAME = 256 * 28 * 28
 VISUAL_RESOLUTION_POLICY_VERSION = "per_frame_max_pixels_v1"
 
-PROMPT_VERSION = "official_st_evidence_wrapper_medvidu_question_verbatim_v1"
+PROMPT_VERSION = "medvidu_task_output_contracts_v2"
+CVS_OUTPUT_CONTRACT = (
+    "Output exactly one line in this format: Two structures: <0|1|2>, Cystic plate: <0|1|2>, "
+    "Hepatocystic triangle: <0|1|2>. Do not output masks, temporal evidence, special tokens, or explanations."
+)
+RC_OUTPUT_CONTRACT = (
+    "Answer with only a concise plain-English description of the referenced object and its action. "
+    "Do not output masks or special tokens."
+)
 SAMPLING_VERSION = "medvidu_all_benchmark_frames_no_downsampling_v1"
 FRAME_ADAPTER_VERSION = "ordered_benchmark_frame_list_no_fake_mp4_v1"
 TIMESTAMP_ADAPTER_VERSION = "medvidu_gt_free_clip_local_timelens_mapper_v1"
