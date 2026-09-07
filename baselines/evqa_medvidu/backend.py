@@ -147,6 +147,7 @@ class EVQABackend:
         for key in ("point_coords", "point_labels", "point_frames", "frames"):
             if key in batch:
                 batch[key] = _move_nested(batch[key], self.device)
+        _reset_segmentation_output(self.model, row["task"])
         with torch.no_grad():
             output_ids = self.model.generate(
                 **batch,
@@ -206,6 +207,12 @@ def _strip_video_token(text: str) -> str:
 
 def _needs_sam2_frames(task: str) -> bool:
     return task == "stg"
+
+
+def _reset_segmentation_output(model: Any, task: str) -> None:
+    """Match UniPixel's per-generation `self.seg = []` output-buffer reset."""
+    if _needs_sam2_frames(task):
+        model.seg = []
 
 
 def _pil_to_tensor(image: Any) -> Any:

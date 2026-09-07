@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from baselines.evqa_medvidu.cache import build_cache_key
-from baselines.evqa_medvidu.backend import _build_ref_box_kwargs, _needs_sam2_frames
+from baselines.evqa_medvidu.backend import _build_ref_box_kwargs, _needs_sam2_frames, _reset_segmentation_output
 from baselines.evqa_medvidu.config import RunConfig
 from baselines.evqa_medvidu.evaluation.join import gt_index, join_audit, prediction_index
 from baselines.evqa_medvidu.frame_adapter import nearest_indices_for_target_times, select_model_frames
@@ -204,6 +204,18 @@ class EVQAMedVidUTests(unittest.TestCase):
         self.assertTrue(_needs_sam2_frames("stg"))
         self.assertFalse(_needs_sam2_frames("rc"))
         self.assertFalse(_needs_sam2_frames("cvs"))
+
+    def test_stg_resets_segmentation_output_buffer(self):
+        class Model:
+            pass
+
+        model = Model()
+        model.seg = ["previous output"]
+        _reset_segmentation_output(model, "stg")
+        self.assertEqual(model.seg, [])
+        model.seg = ["non-stg output"]
+        _reset_segmentation_output(model, "cvs")
+        self.assertEqual(model.seg, ["non-stg output"])
 
     def test_manifest_inventory_and_smoke_gt_blind(self):
         with tempfile.TemporaryDirectory() as td:
