@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import platform
 import subprocess
@@ -28,8 +29,23 @@ from evidence_stability.spatial import (  # noqa: E402
 from evidence_stability.utils import read_jsonl, write_json, write_jsonl  # noqa: E402
 
 
+logger = logging.getLogger("h4_spatial_interventions")
 INTERVENTION_TYPES = ("KEEP_ROI_V1", "DROP_ROI_V1", "KEEP_CONTROL_V1", "DROP_CONTROL_V1")
 BLUR_VERSION = "gaussian_blur_sigma_0.05_min_hw_v1"
+
+
+def setup_logging(log_path: str | Path | None) -> None:
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    stream = logging.StreamHandler()
+    stream.setFormatter(formatter)
+    logger.addHandler(stream)
+    if log_path:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
 
 def git_output(args: list[str]) -> str:
@@ -174,6 +190,7 @@ def generate_for_candidate(row: dict[str, Any], out_dir: Path, frame_root: str |
     source_paths = resolve_frame_paths(row, frame_root, source_frame_prefix)
     missing = [path for path in source_paths if not Path(path).exists()]
     if missing:
+        logger.warning("candidate=%s missing_frames=%d", row["candidate_id"], len(missing))
         return [], [], [{"candidate_id": row["candidate_id"], "error_type": "MISSING_FRAMES", "missing_frame_paths": missing[:20]}]
     bbox = [int(v) for v in row["predicted_bbox_norm"]]
     control_bbox, control_valid, control_iou = control_bbox_norm(bbox)
@@ -193,6 +210,13 @@ def generate_for_candidate(row: dict[str, Any], out_dir: Path, frame_root: str |
         resolutions: list[list[int]] = []
         if generation_valid:
             candidate_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(
+                "candidate=%s intervention=%s frames=%d bbox=%s",
+                row["candidate_id"],
+                intervention_type,
+                len(source_paths),
+                intervention_bbox,
+            )
             for idx, source_path in enumerate(source_paths):
                 image = Image.open(source_path).convert("RGB")
                 width, height = image.size
@@ -325,6 +349,7 @@ def parse_args() -> argparse.Namespace:
         default="/root/data,/mnt/hdd3/huihui/hh_datas/MedVidU/valdata,/mnt/hdd/huihui/hh_datas/MedVidU/valdata",
     )
     p.add_argument("--visual_limit", type=int, default=10)
+    p.add_argument("--log_path", default=None)
     return p.parse_args()
 
 
@@ -333,6 +358,7 @@ def main() -> None:
     out_dir = Path(args.output_dir)
     for sub in ["manifest", "audit", "summary", "visualizations/preflight", "provenance", "interventions"]:
         (out_dir / sub).mkdir(parents=True, exist_ok=True)
+    setup_logging(args.log_path or out_dir / "audit" / "h4_spatial_intervention_generation.log")
     supporting_by_candidate = {}
     if Path(args.supporting_candidates).exists():
         supporting_by_candidate = {
@@ -344,15 +370,30 @@ def main() -> None:
         for row in read_jsonl(args.spatial_pointer_predictions)
         if row.get("support_prediction") == "YES" and row.get("bbox_valid") and row.get("predicted_bbox_norm")
     ]
+    logger.info(
+        "loaded pointer_rows=%d valid_bbox_candidates=%d output_dir=%s",
+        len(read_jsonl(args.spatial_pointer_predictions)),
+        len(pointer_rows),
+        out_dir,
+    )
 
     interventions: list[dict[str, Any]] = []
     pixel_rows: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
-    for row in pointer_rows:
+    for i, row in enumerate(pointer_rows, start=1):
+        logger.info("processing candidate %d/%d id=%s", i, len(pointer_rows), row["candidate_id"])
         generated, pixel_audit, row_errors = generate_for_candidate(row, out_dir, args.frame_root, args.source_frame_prefix)
         interventions.extend(generated)
         pixel_rows.extend(pixel_audit)
         errors.extend(row_errors)
+        logger.info(
+            "candidate %d/%d done generated=%d pixel_audit=%d errors=%d",
+            i,
+            len(pointer_rows),
+            len(generated),
+            len(pixel_audit),
+            len(row_errors),
+        )
 
     ids = [row["intervention_id"] for row in interventions]
     duplicates = [value for value, count in Counter(ids).items() if count > 1]
@@ -421,7 +462,15 @@ def main() -> None:
     write_summary_md(out_dir / "summary" / "h4_spatial_intervention_generation_summary.md", summary)
     (out_dir / "provenance" / "environment_snapshot_intervention_generation.txt").write_text(environment_snapshot(), encoding="utf-8")
     (out_dir / "provenance" / "git_status_intervention_generation.txt").write_text(repo["git_status_short"] + "\n", encoding="utf-8")
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    logger.info(
+        "done interventions=%d valid=%d invalid=%d pixel_failures=%d errors=%d",
+        generation_audit["n_interventions"],
+        generation_audit["generation_valid"],
+        generation_audit["generation_invalid"],
+        pixel_summary["n_failures"],
+        len(errors),
+    )
+    print(json.dumps(summary, ensure_ascii=False, indent=2), flush=True)
 
 
 if __name__ == "__main__":
