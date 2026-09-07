@@ -124,15 +124,22 @@ def write_visual_sheet(path: Path, rows: list[dict[str, Any]]) -> bool:
         return False
     thumbs = []
     labels = []
+    if rows:
+        source_paths = rows[0].get("source_frame_paths") or []
+        if source_paths and Path(source_paths[0]).exists():
+            img = Image.open(source_paths[0]).convert("RGB")
+            if rows[0].get("predicted_bbox_norm"):
+                draw = ImageDraw.Draw(img)
+                box = normalized_to_pixel_bbox(rows[0]["predicted_bbox_norm"], img.size[0], img.size[1])
+                draw.rectangle(box, outline=(255, 0, 0), width=4)
+            img.thumbnail((240, 180))
+            thumbs.append(img.copy())
+            labels.append("ORIGINAL_BBOX")
     for row in rows:
-        frame_paths = row.get("frame_paths") or []
+        frame_paths = row.get("intervention_frame_paths") or []
         if not frame_paths or not Path(frame_paths[0]).exists():
             continue
         img = Image.open(frame_paths[0]).convert("RGB")
-        if row.get("predicted_bbox_norm"):
-            draw = ImageDraw.Draw(img)
-            box = normalized_to_pixel_bbox(row["predicted_bbox_norm"], img.size[0], img.size[1])
-            draw.rectangle(box, outline=(255, 0, 0), width=4)
         img.thumbnail((240, 180))
         thumbs.append(img.copy())
         labels.append(row["intervention_type"])
