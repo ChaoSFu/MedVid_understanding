@@ -325,6 +325,101 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertFalse(summary["model_inference_executed"])
             self.assertEqual(summary["gt_leakage_audit"]["gt_leakage"], 0)
 
+    def test_h4_preflight_join_cli_computes_spatial_delta(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "18_join_analyze_h4_spatial_preflight.py"
+        spec = spec_from_file_location("h4_join_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            window_gt = root / "window_gt.jsonl"
+            pointer = root / "pointer.jsonl"
+            interventions = root / "interventions.jsonl"
+            out = root / "out"
+            qa_id = "0001::clip"
+            gt_rows = []
+            pointer_rows = []
+            intervention_rows = []
+            specs = [
+                ("true", [0, 0, 500, 500], "TRUE_SPATIAL_SUPPORT", {"KEEP_ROI_V1": "YES", "DROP_ROI_V1": "NO"}),
+                ("spur", [500, 500, 900, 900], "SPURIOUS_SPATIAL_SUPPORT", {"KEEP_ROI_V1": "NO", "DROP_ROI_V1": "YES"}),
+            ]
+            for name, bbox, _label, preds in specs:
+                candidate_id = f"{qa_id}::pos{name}"
+                gt_rows.append(
+                    {
+                        "qa_id": qa_id,
+                        "clip_id": "clip",
+                        "candidate_id": candidate_id,
+                        "window_id": candidate_id,
+                        "dataset_name": "EgoSurgery",
+                        "human_question": "Track the tool.",
+                        "local_timestamps": [0.0, 1.0],
+                        "stg_bbox_dict": {"0.0": [0, 0, 50, 50]},
+                        "h4_temporally_eligible": True,
+                        "temporal_eligibility_rule": "h2_strong_temporal_alignment",
+                        "n_gt_visible_in_window": 1,
+                        "n_gt_visible_total": 1,
+                        "evidence_density": 0.5,
+                        "gt_evidence_recall": 1.0,
+                    }
+                )
+                pointer_rows.append(
+                    {
+                        "qa_id": qa_id,
+                        "clip_id": "clip",
+                        "candidate_id": candidate_id,
+                        "window_id": candidate_id,
+                        "dataset_name": "EgoSurgery",
+                        "support_prediction": "YES",
+                        "bbox_valid": True,
+                        "predicted_bbox_norm": bbox,
+                        "bbox_area_fraction": 0.25,
+                        "processor_metadata": {"image_sizes": [[100, 100]]},
+                    }
+                )
+                for intervention_type, pred in preds.items():
+                    intervention_rows.append(
+                        {
+                            "qa_id": qa_id,
+                            "clip_id": "clip",
+                            "candidate_id": candidate_id,
+                            "window_id": candidate_id,
+                            "intervention_id": f"{candidate_id}::{intervention_type}",
+                            "intervention_type": intervention_type,
+                            "parsed_prediction": pred,
+                        }
+                    )
+            window_gt.write_text("\n".join(__import__("json").dumps(row) for row in gt_rows) + "\n", encoding="utf-8")
+            pointer.write_text("\n".join(__import__("json").dumps(row) for row in pointer_rows) + "\n", encoding="utf-8")
+            interventions.write_text("\n".join(__import__("json").dumps(row) for row in intervention_rows) + "\n", encoding="utf-8")
+            old_argv = module.sys.argv
+            try:
+                module.sys.argv = [
+                    "18_join_analyze_h4_spatial_preflight.py",
+                    "--window_gt",
+                    str(window_gt),
+                    "--spatial_pointer_predictions",
+                    str(pointer),
+                    "--intervention_predictions",
+                    str(interventions),
+                    "--output_dir",
+                    str(out),
+                ]
+                with redirect_stdout(StringIO()):
+                    module.main()
+            finally:
+                module.sys.argv = old_argv
+            summary = __import__("json").loads((out / "summary" / "h4_preflight_join_summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["candidate_join_audit"]["candidate_spatial_type_counts"]["TRUE_SPATIAL_SUPPORT"], 1)
+            self.assertEqual(summary["candidate_join_audit"]["candidate_spatial_type_counts"]["SPURIOUS_SPATIAL_SUPPORT"], 1)
+            self.assertEqual(summary["primary_preflight_qa"]["n_paired_qa"], 1)
+            self.assertEqual(summary["primary_preflight_qa"]["mean_delta_C"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
