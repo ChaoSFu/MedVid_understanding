@@ -420,6 +420,32 @@ class PhaseGH4SpatialTests(unittest.TestCase):
             self.assertEqual(summary["primary_preflight_qa"]["n_paired_qa"], 1)
             self.assertEqual(summary["primary_preflight_qa"]["mean_delta_C"], 1.0)
 
+    def test_h4_join_csv_accepts_optional_spatial_details(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+
+        script = Path(__file__).resolve().parents[1] / "scripts" / "18_join_analyze_h4_spatial_preflight.py"
+        spec = spec_from_file_location("h4_join_csv_script", script)
+        module = module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = Path(tmp) / "candidate.csv"
+            module.write_csv(
+                csv_path,
+                [
+                    {"candidate_id": "first", "spatial_match_score": None},
+                    {
+                        "candidate_id": "second",
+                        "spatial_match_score": 0.5,
+                        "per_timestamp_iou": [{"timestamp": 1.0, "iou": 0.5}],
+                    },
+                ],
+            )
+            lines = csv_path.read_text(encoding="utf-8").splitlines()
+            self.assertIn("per_timestamp_iou", lines[0])
+            self.assertIn('"timestamp"', lines[2])
+
 
 if __name__ == "__main__":
     unittest.main()

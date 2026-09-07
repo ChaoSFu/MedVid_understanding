@@ -40,11 +40,23 @@ def write_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         p.write_text("", encoding="utf-8")
         return
-    fields = list(rows[0])
+    # Spatial-match details are present only for candidates with evaluable GT
+    # boxes, so derive a stable union rather than assuming every row has the
+    # first row's schema.
+    fields = list(dict.fromkeys(key for row in rows for key in row))
+
+    def csv_value(value: Any) -> Any:
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False)
+        return value
+
     with p.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            {field: csv_value(row.get(field)) for field in fields}
+            for row in rows
+        )
 
 
 def clean_mean(values: list[Any]) -> float | None:
