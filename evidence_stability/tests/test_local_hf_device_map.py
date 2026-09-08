@@ -1,6 +1,6 @@
 import unittest
 
-from evidence_stability.models.qwen3_vl import Qwen3VLVideoWindowModel
+from evidence_stability.models.qwen3_vl import Qwen3VLVideoWindowModel, _parse_max_memory
 
 
 class _ModelStub:
@@ -28,3 +28,10 @@ class LocalHFDeviceMapTests(unittest.TestCase):
         model.device = "cuda:0"
         model.device_map = None
         self.assertEqual(model._input_device(), "cuda:0")
+
+    def test_max_memory_parser_uses_visible_cuda_indices(self):
+        self.assertEqual(_parse_max_memory("cuda:0=35GiB,cuda:1=70GiB"), {0: "35GiB", 1: "70GiB"})
+
+    def test_max_memory_parser_rejects_malformed_entry(self):
+        with self.assertRaises(ValueError):
+            _parse_max_memory("cuda:0")

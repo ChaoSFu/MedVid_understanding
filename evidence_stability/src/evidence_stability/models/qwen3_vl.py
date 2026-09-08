@@ -36,6 +36,27 @@ def _torch_dtype(torch_module: Any, dtype_name: str) -> Any:
     raise ValueError(f"Unsupported dtype: {dtype_name}")
 
 
+def _parse_max_memory(spec: str | None) -> dict[int | str, str] | None:
+    if not spec:
+        return None
+    parsed: dict[int | str, str] = {}
+    for item in spec.split(","):
+        key, separator, value = item.strip().partition("=")
+        if not separator or not key or not value:
+            raise ValueError("--max_memory must use comma-separated DEVICE=LIMIT entries")
+        normalized_key: int | str
+        if key.startswith("cuda:"):
+            normalized_key = int(key.removeprefix("cuda:"))
+        elif key.isdigit():
+            normalized_key = int(key)
+        elif key in {"cpu", "disk"}:
+            normalized_key = key
+        else:
+            raise ValueError(f"Unsupported --max_memory device key: {key}")
+        parsed[normalized_key] = value
+    return parsed
+
+
 def _resolve_model_class(transformers_module: Any, config: dict[str, Any]) -> type:
     architectures = config.get("architectures") or []
     for architecture in architectures:
@@ -63,6 +84,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         model_name: str | None = None,
         device: str = "cuda:0",
         device_map: str | None = None,
+        max_memory: str | None = None,
         dtype: str = "bfloat16",
         max_new_tokens: int = 8,
         do_sample: bool = False,
@@ -83,6 +105,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         self.model_path = str(Path(model_path))
         self.device = device
         self.device_map = device_map
+        self.max_memory = _parse_max_memory(max_memory)
         self.dtype_name = dtype
         self.torch_dtype = _torch_dtype(torch, dtype)
         self.max_new_tokens = max_new_tokens
@@ -115,6 +138,8 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         }
         if self.device_map:
             model_kwargs["device_map"] = self.device_map
+            if self.max_memory:
+                model_kwargs["max_memory"] = self.max_memory
         self.model = model_class.from_pretrained(self.model_path, **model_kwargs)
         if not self.device_map:
             self.model.to(self.device)
@@ -141,6 +166,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
             "dtype": self.dtype_name,
             "device": self.device,
             "device_map": self.device_map,
+            "max_memory": self.max_memory,
             "do_sample": self.do_sample,
             "max_new_tokens": self.max_new_tokens,
             "enable_thinking": False,

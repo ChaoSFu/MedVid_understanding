@@ -129,6 +129,7 @@ def build_model(args: Any) -> BaseVideoVLM:
             model_name=(Path(args.model_path).name if args.model_backend == "local_hf_vlm" else None),
             device=args.device,
             device_map=getattr(args, "device_map", None),
+            max_memory=getattr(args, "max_memory", None),
             dtype=args.dtype,
             max_new_tokens=args.max_new_tokens,
             do_sample=False,
