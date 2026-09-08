@@ -201,6 +201,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model_revision", default="v1")
     p.add_argument("--model_path", default=None)
     p.add_argument("--device", default="cuda:0")
+    p.add_argument("--device_map", choices=["auto", "balanced", "balanced_low_0", "sequential"], default=None)
     p.add_argument("--dtype", default="bfloat16")
     p.add_argument("--processor_min_pixels", type=int, default=None)
     p.add_argument("--processor_max_pixels", type=int, default=None)

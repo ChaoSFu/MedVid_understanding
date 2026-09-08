@@ -62,6 +62,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         model_path: str,
         model_name: str | None = None,
         device: str = "cuda:0",
+        device_map: str | None = None,
         dtype: str = "bfloat16",
         max_new_tokens: int = 8,
         do_sample: bool = False,
@@ -81,6 +82,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         self.Image = Image
         self.model_path = str(Path(model_path))
         self.device = device
+        self.device_map = device_map
         self.dtype_name = dtype
         self.torch_dtype = _torch_dtype(torch, dtype)
         self.max_new_tokens = max_new_tokens
@@ -106,14 +108,18 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
             processor_kwargs["max_pixels"] = processor_max_pixels
 
         self.processor = AutoProcessor.from_pretrained(self.model_path, **processor_kwargs)
-        self.model = model_class.from_pretrained(
-            self.model_path,
-            torch_dtype=self.torch_dtype,
-            trust_remote_code=True,
-            local_files_only=True,
-        )
-        self.model.to(self.device)
+        model_kwargs: dict[str, Any] = {
+            "torch_dtype": self.torch_dtype,
+            "trust_remote_code": True,
+            "local_files_only": True,
+        }
+        if self.device_map:
+            model_kwargs["device_map"] = self.device_map
+        self.model = model_class.from_pretrained(self.model_path, **model_kwargs)
+        if not self.device_map:
+            self.model.to(self.device)
         self.model.eval()
+        self.input_device = self._input_device()
 
         self.model_name = model_name or "qwen3_vl_8b"
         self.model_revision = self.fingerprint()["model_identity_hash"]
@@ -134,6 +140,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
             "torch_version": self.torch.__version__,
             "dtype": self.dtype_name,
             "device": self.device,
+            "device_map": self.device_map,
             "do_sample": self.do_sample,
             "max_new_tokens": self.max_new_tokens,
             "enable_thinking": False,
@@ -169,6 +176,18 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
             "current_allocated_bytes": self.torch.cuda.memory_allocated(device_obj),
             "current_reserved_bytes": self.torch.cuda.memory_reserved(device_obj),
         }
+
+    def _input_device(self) -> str:
+        """Use the first CUDA shard as the entry device for Accelerate dispatch."""
+        if not self.device_map:
+            return self.device
+        device_map = getattr(self.model, "hf_device_map", {}) or {}
+        for mapped_device in device_map.values():
+            if isinstance(mapped_device, int):
+                return f"cuda:{mapped_device}"
+            if isinstance(mapped_device, str) and mapped_device.startswith("cuda"):
+                return mapped_device
+        return self.device
 
     def _processor_call(self, messages: list[dict[str, Any]], images: list[Any]) -> Any:
         try:
@@ -242,7 +261,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
 
         inputs = self._processor_call(messages, images)
         self.last_processor_metadata = self._collect_processor_metadata(inputs, len(images), image_sizes)
-        inputs = self._to_device(inputs, self.device)
+        inputs = self._to_device(inputs, self.input_device)
 
         if str(self.device).startswith("cuda") and self.torch.cuda.is_available():
             self.torch.cuda.reset_peak_memory_stats(self.torch.device(self.device))
