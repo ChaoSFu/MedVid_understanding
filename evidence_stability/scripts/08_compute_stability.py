@@ -460,7 +460,7 @@ def main() -> None:
     summary = {
         "joined_intervention_results_available": True,
         "joined_results": args.joined_results,
-        "real_h2_analysis_executed": False,
+        "real_h2_analysis_executed": True,
         "inferential_statistics_run": False,
         "threshold_selection_run": False,
         "learned_weights": None,

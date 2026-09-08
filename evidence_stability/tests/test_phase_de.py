@@ -503,7 +503,7 @@ class PhaseDETests(unittest.TestCase):
             self.assertTrue((out_dir / "provenance" / "h2_protocol_provenance.json").exists())
             self.assertTrue((out_dir / "intervention_retention_matrix.csv").exists())
             summary = read_json(out_dir / "summary" / "phase_e_summary.json")
-            self.assertFalse(summary["real_h2_analysis_executed"])
+            self.assertTrue(summary["real_h2_analysis_executed"])
             self.assertFalse(summary["threshold_selection_run"])
             primary = read_json(out_dir / "summary" / "h2_primary_action_summary.json")
             phase = read_json(out_dir / "summary" / "h2_phase_only_summary.json")
