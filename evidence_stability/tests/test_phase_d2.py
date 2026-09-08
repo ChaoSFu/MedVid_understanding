@@ -78,6 +78,34 @@ def make_row(
 
 
 class PhaseD2Tests(unittest.TestCase):
+    def test_existing_result_cache_index_rejects_duplicate_intervention_ids(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "results.jsonl"
+            write_jsonl(
+                path,
+                [
+                    {"intervention_id": "a", "cache_key": "key-a"},
+                    {"intervention_id": "a", "cache_key": "key-b"},
+                ],
+            )
+            with self.assertRaises(RuntimeError):
+                phase_d2_script.load_existing_result_cache_index(path)
+
+    def test_existing_result_cache_index_preserves_unique_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "results.jsonl"
+            write_jsonl(
+                path,
+                [
+                    {"intervention_id": "a", "cache_key": "key-a"},
+                    {"intervention_id": "b", "cache_key": "key-b"},
+                ],
+            )
+            self.assertEqual(
+                phase_d2_script.load_existing_result_cache_index(path),
+                {"a": "key-a", "b": "key-b"},
+            )
+
     def test_generation_valid_only_filter_ignores_strict_valid(self):
         rows = [
             make_row(1, generation_valid=True, strict_valid=False),
@@ -641,7 +669,10 @@ class PhaseD2Tests(unittest.TestCase):
                 projection["n_frames"],
                 {"deterministic_dummy": True},
             )
-            write_jsonl(results, [{"cache_key": cache_key}])
+            write_jsonl(
+                results,
+                [{"intervention_id": projection["intervention_id"], "cache_key": cache_key}],
+            )
             argv = [
                 "06_probe_interventions.py",
                 "--interventions",

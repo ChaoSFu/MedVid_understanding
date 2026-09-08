@@ -86,6 +86,28 @@ def load_completed_cache_keys(path: str | Path) -> set[str]:
     return keys
 
 
+def load_existing_result_cache_index(path: str | Path) -> dict[str, str]:
+    rows = read_jsonl(path) if Path(path).exists() else []
+    by_intervention_id: dict[str, str] = {}
+    duplicate_ids: list[str] = []
+    for row in rows:
+        intervention_id = str(row.get("intervention_id"))
+        cache_key = str(row.get("cache_key"))
+        if not intervention_id or intervention_id == "None" or not cache_key or cache_key == "None":
+            raise RuntimeError("Existing intervention result is missing intervention_id or cache_key.")
+        if intervention_id in by_intervention_id:
+            duplicate_ids.append(intervention_id)
+            continue
+        by_intervention_id[intervention_id] = cache_key
+    if duplicate_ids:
+        raise RuntimeError(
+            "Duplicate intervention_id values already exist in probe results; "
+            "do not resume this file. Create a clean deduplicated result file first. "
+            f"Examples: {sorted(set(duplicate_ids))[:5]}"
+        )
+    return by_intervention_id
+
+
 def assert_unique_field(rows: list[dict[str, Any]], field: str, context: str) -> None:
     counts = Counter(str(row.get(field)) for row in rows)
     duplicates = [value for value, count in counts.items() if count > 1]
@@ -736,12 +758,24 @@ def main() -> None:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return
     cache_keys, cache_audit = cache_key_audit(projections, model_hash, decoding_config)
-    completed = load_completed_cache_keys(probe_results)
+    existing_by_intervention_id = load_existing_result_cache_index(probe_results)
+    mismatched_existing = [
+        intervention_id
+        for intervention_id, existing_key in existing_by_intervention_id.items()
+        if intervention_id in cache_keys and cache_keys[intervention_id] != existing_key
+    ]
+    if mismatched_existing:
+        raise RuntimeError(
+            "Existing intervention results use a different model/prompt/decoding cache identity; "
+            "do not append to this result file. Use a separate output directory or create a clean compatible copy. "
+            f"Examples: {mismatched_existing[:5]}"
+        )
+    completed = set(existing_by_intervention_id)
     completed_cache_at_start = len(completed)
     remaining_interventions_at_start = sum(
         1
         for projection in projections
-        if cache_keys[projection["intervention_id"]] not in completed
+        if projection["intervention_id"] not in completed
     )
     counts = Counter()
     memory_rows: list[dict[str, Any]] = []
@@ -757,7 +791,7 @@ def main() -> None:
     for i, projection in enumerate(projections, start=1):
         prompt, prompt_hash = prompt_for_projection(projection)
         cache_key = cache_keys[projection["intervention_id"]]
-        if cache_key in completed:
+        if projection["intervention_id"] in completed:
             counts["skipped_cached"] += 1
             continue
         if args.dry_run:
@@ -801,7 +835,7 @@ def main() -> None:
                 parsed,
             )
             append_jsonl(probe_results, record)
-            completed.add(cache_key)
+            completed.add(projection["intervention_id"])
             counts[parsed] += 1
             gpu_memory = model.gpu_memory_stats()
             if gpu_memory:

@@ -173,9 +173,14 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
             "processor_min_pixels": self.processor_min_pixels,
             "processor_max_pixels": self.processor_max_pixels,
         }
+        # Sharding and memory caps control placement, not the checkpoint,
+        # processor, prompt, or decoding behavior. Keep old single-GPU cache
+        # identities stable while recording dispatch settings for audit.
         payload["model_identity_hash"] = hashlib.sha256(
             json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
+        payload["device_map"] = self.device_map
+        payload["max_memory"] = self.max_memory
         return payload
 
     def generation_config(self) -> dict[str, Any]:
