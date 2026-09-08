@@ -108,6 +108,12 @@ def load_existing_result_cache_index(path: str | Path) -> dict[str, str]:
     return by_intervention_id
 
 
+def release_cuda_cache(model: Any) -> None:
+    torch_module = getattr(model, "torch", None)
+    if torch_module is not None and torch_module.cuda.is_available():
+        torch_module.cuda.empty_cache()
+
+
 def assert_unique_field(rows: list[dict[str, Any]], field: str, context: str) -> None:
     counts = Counter(str(row.get(field)) for row in rows)
     duplicates = [value for value, count in counts.items() if count > 1]
@@ -859,6 +865,10 @@ def main() -> None:
                         ),
                     }
                 )
+            # Outputs and debug metadata are CPU scalars/strings at this point.
+            # Releasing allocator-reserved blocks prevents a long mixed-size
+            # intervention run from accumulating unusable cached segments.
+            release_cuda_cache(model)
         except RuntimeError as exc:
             if "out of memory" in repr(exc).lower() or "cuda oom" in repr(exc).lower():
                 append_jsonl(

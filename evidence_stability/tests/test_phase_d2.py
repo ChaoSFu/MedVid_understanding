@@ -78,6 +78,29 @@ def make_row(
 
 
 class PhaseD2Tests(unittest.TestCase):
+    def test_release_cuda_cache_after_successful_intervention(self):
+        class Cuda:
+            def __init__(self):
+                self.calls = 0
+
+            def is_available(self):
+                return True
+
+            def empty_cache(self):
+                self.calls += 1
+
+        class Torch:
+            def __init__(self):
+                self.cuda = Cuda()
+
+        class Model:
+            def __init__(self):
+                self.torch = Torch()
+
+        model = Model()
+        phase_d2_script.release_cuda_cache(model)
+        self.assertEqual(model.torch.cuda.calls, 1)
+
     def test_existing_result_cache_index_rejects_duplicate_intervention_ids(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "results.jsonl"
