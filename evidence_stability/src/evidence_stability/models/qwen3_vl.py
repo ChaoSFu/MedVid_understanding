@@ -57,6 +57,21 @@ def _parse_max_memory(spec: str | None) -> dict[int | str, str] | None:
     return parsed
 
 
+_RUNTIME_PLACEMENT_FINGERPRINT_FIELDS = frozenset({"device_map", "max_memory"})
+
+
+def _model_identity_hash(fingerprint: dict[str, Any]) -> str:
+    """Hash scientific model identity while excluding runtime placement settings."""
+    identity = {
+        key: value
+        for key, value in fingerprint.items()
+        if key not in _RUNTIME_PLACEMENT_FINGERPRINT_FIELDS and key != "model_identity_hash"
+    }
+    return hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def _resolve_model_class(transformers_module: Any, config: dict[str, Any]) -> type:
     architectures = config.get("architectures") or []
     for architecture in architectures:
@@ -176,11 +191,7 @@ class Qwen3VLVideoWindowModel(BaseVideoVLM):
         # Sharding and memory caps control placement, not the checkpoint,
         # processor, prompt, or decoding behavior. Keep old single-GPU cache
         # identities stable while recording dispatch settings for audit.
-        payload["model_identity_hash"] = hashlib.sha256(
-            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
-        payload["device_map"] = self.device_map
-        payload["max_memory"] = self.max_memory
+        payload["model_identity_hash"] = _model_identity_hash(payload)
         return payload
 
     def generation_config(self) -> dict[str, Any]:
