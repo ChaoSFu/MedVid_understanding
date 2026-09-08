@@ -34,6 +34,7 @@ H4_SPURIOUS_IOU_THRESHOLD = 0.0
 H4_SPATIAL_LABEL_PROTOCOL = "true_mean_iou_ge_0.5_spurious_iou_eq_0"
 H4_SUPPORT_PROMPT_VERSION = "h4_evidence_presence_stg_v1"
 SPATIAL_POINTER_PROMPT_VERSION = "spatial_pointer_v1"
+SPATIAL_POINTER_COMPAT_PARSER_VERSION = "spatial_pointer_compat_qwen_list_wrapper_v1"
 STG_SOURCE_TIMEBASE_HZ = {
     "CholecTrack20": 25.0,
     "CoPESD": 1.0,
@@ -156,6 +157,49 @@ def parse_normalized_bbox_json(raw: str | None) -> dict[str, Any]:
         "bbox": values,
         "reason": "OK",
         "bbox_area_fraction": bbox_area_fraction(values),
+    }
+
+
+def parse_qwen_list_wrapped_bbox(raw: str | None) -> dict[str, Any]:
+    """Parse Qwen's known list-wrapped JSON variant without guessing coordinates.
+
+    This is intentionally separate from the frozen strict parser. It accepts only a
+    single JSON coordinate quadruple wrapped in Markdown, singleton lists, or a
+    singleton JSON string; it never extracts numbers from arbitrary prose.
+    """
+    strict = parse_normalized_bbox_json(raw)
+    if strict["bbox_valid"]:
+        return {**strict, "parse_method": "strict_json_object"}
+
+    text = (raw or "").strip()
+    text = re.sub(r"^`{1,3}json\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*`{1,3}$", "", text).strip()
+    try:
+        value: Any = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return {"bbox_valid": False, "bbox": None, "reason": f"JSON_DECODE_ERROR: {exc.msg}", "parse_method": None}
+
+    for _ in range(3):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                return {"bbox_valid": False, "bbox": None, "reason": "SINGLETON_STRING_IS_NOT_JSON", "parse_method": None}
+        elif isinstance(value, list) and len(value) == 1:
+            value = value[0]
+        else:
+            break
+
+    if not isinstance(value, list) or len(value) != 4:
+        return {"bbox_valid": False, "bbox": None, "reason": "EXPECTED_SINGLE_LIST_WRAPPED_BBOX", "parse_method": None}
+
+    validated = parse_normalized_bbox_json(json.dumps({"bbox": value}))
+    if not validated["bbox_valid"]:
+        return {**validated, "parse_method": None}
+    return {
+        **validated,
+        "reason": "OK_COMPAT_QWEN_LIST_WRAPPER",
+        "parse_method": "markdown_json_singleton_list_or_string",
     }
 
 

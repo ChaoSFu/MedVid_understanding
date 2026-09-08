@@ -16,6 +16,7 @@ from evidence_stability.spatial import (
     normalize_stg_sample,
     normalized_to_pixel_bbox,
     parse_normalized_bbox_json,
+    parse_qwen_list_wrapped_bbox,
 )
 
 
@@ -67,6 +68,16 @@ class PhaseGH4SpatialTests(unittest.TestCase):
         self.assertFalse(parse_normalized_bbox_json('{"bbox": [10, 0, 10, 20]}')["bbox_valid"])
         self.assertFalse(parse_normalized_bbox_json('{"bbox": [10.5, 0, 20, 20]}')["bbox_valid"])
         self.assertTrue(parse_normalized_bbox_json('{"bbox": [10.0, 0.0, 20.0, 20.0]}')["bbox_valid"])
+
+    def test_qwen_list_wrapper_parser_is_explicit_and_narrow(self):
+        wrapped = parse_qwen_list_wrapped_bbox('`json\n[\n  [596, 698, 645, 840]\n]\n`')
+        self.assertTrue(wrapped["bbox_valid"])
+        self.assertEqual(wrapped["bbox"], [596, 698, 645, 840])
+        string_wrapped = parse_qwen_list_wrapped_bbox('["[416, 536, 488, 650]"]')
+        self.assertTrue(string_wrapped["bbox_valid"])
+        self.assertTrue(parse_qwen_list_wrapped_bbox('{"bbox": [10, 20, 900, 950]}')["bbox_valid"])
+        self.assertFalse(parse_qwen_list_wrapped_bbox('bbox: [1, 2, 3, 4]')["bbox_valid"])
+        self.assertFalse(parse_qwen_list_wrapped_bbox('[[1, 2, 3, 4], [5, 6, 7, 8]]')["bbox_valid"])
 
     def test_bbox_area_pixel_mapping_and_iou(self):
         self.assertEqual(bbox_area_fraction([0, 0, 500, 500]), 0.25)
