@@ -261,6 +261,18 @@ class LocalHFTests(unittest.TestCase):
             self.assertEqual(before, backend.fingerprint())
             self.assertEqual(before["preprocessing"]["decode"], "Pillow_RGB")
 
+    def test_reviewed_template_kwargs_are_forwarded_and_audited(self):
+        processor = FakeProcessor()
+        with patch.dict(sys.modules, fake_modules(processor)):
+            backend = LocalHFBackend(self.config(chat_template_kwargs={"enable_thinking": False}))
+            backend.infer({"prompt": "Return JSON only.", "image_paths": [str(self.image)],
+                           "frame_ids": ["f0"]})
+            self.assertIs(processor.calls[0][1]["enable_thinking"], False)
+            self.assertEqual(
+                backend.fingerprint()["scientific_identity"]["chat_template_kwargs"],
+                {"enable_thinking": False},
+            )
+
     def test_template_errors_do_not_use_a_fallback_contract(self):
         processor = FakeProcessor()
         processor.raise_template_error = True

@@ -106,14 +106,21 @@ PYTHONPATH=src python -m relive inspect-local-hf \
 
 Copy one reviewed `PASS` candidate into `local_hf` only after this probe. The
 initial configuration must reproduce its `source` frame encoding, null
-pixel-limit overrides, empty template kwargs, and explicit image order.
+pixel-limit overrides, reviewed template kwargs, and explicit image order.
 
 For the reviewed `/mnt/hdd3/huihui/models/Qwen3.5-9B` checkpoint, use
-[`configs/qwen35_9b_medvidu_claim_smoke.yaml`](configs/qwen35_9b_medvidu_claim_smoke.yaml).
+[`configs/qwen35_9b_medvidu_claim_smoke_no_thinking.yaml`](configs/qwen35_9b_medvidu_claim_smoke_no_thinking.yaml).
 It pins the observed checkpoint/template hashes and the reviewed
-`images_then_text` plus `tokenized_chat_template` contract. Its `revision`
-label is derived from the checkpoint metadata hash because no upstream revision
-was reported by the local directory.
+`images_then_text` plus `tokenized_chat_template` contract. A processor-only
+probe on the same template showed that `enable_thinking: false` is accepted and
+changes its rendering from an open `<think>` prefix to a closed empty block.
+The original empty-kwargs baseline is retained as
+[`configs/qwen35_9b_medvidu_claim_smoke.yaml`](configs/qwen35_9b_medvidu_claim_smoke.yaml)
+for provenance only: its one-sample public-claim smoke emitted truncated
+natural-language analysis instead of JSON. Do not reuse that baseline cache
+with the no-thinking configuration. Its `revision` label is derived from the
+checkpoint metadata hash because no upstream revision was reported by the local
+directory.
 
 Copy [`configs/local_hf.example.yaml`](configs/local_hf.example.yaml) outside
 version control and fill every inspected value exactly. `model_class` must be a
