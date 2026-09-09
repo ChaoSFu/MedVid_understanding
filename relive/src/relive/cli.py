@@ -44,6 +44,7 @@ def _audit(args: argparse.Namespace) -> int:
 
 def _inspect_local_hf(args: argparse.Namespace) -> int:
     _emit(inspect_local_hf(args.model_path, probe_processor=args.probe_processor,
+                           probe_processor_images=args.probe_processor_images,
                            trust_remote_code=args.trust_remote_code), args.output)
     return 0
 
@@ -83,6 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("--model-path", required=True)
     inspect_parser.add_argument("--probe-processor", action="store_true",
                                 help="Instantiate only AutoProcessor with local files; never load model weights")
+    inspect_parser.add_argument("--probe-processor-images", action="store_true",
+                                help="Exercise four processor-only image/message contracts on synthetic in-memory images; never load model weights")
     inspect_parser.add_argument("--trust-remote-code", action="store_true",
                                 help="Permit the explicit processor probe to use checkpoint-provided code")
     inspect_parser.add_argument("--output")

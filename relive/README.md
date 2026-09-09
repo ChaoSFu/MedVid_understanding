@@ -88,6 +88,26 @@ code unless `--trust-remote-code` is explicitly passed. If it fails, do not
 guess an architecture or template. Resolve the reported compatibility issue
 before a model load.
 
+Before choosing `chat_message_layout` or `processor_call_mode`, run the
+processor image-contract probe. It creates two non-medical RGB images in memory
+and tests all four explicit layout/call-mode candidates through the same PIL
+message representation as `LocalHFBackend`; it never opens a model weight,
+constructs a model, moves a tensor to CUDA, or calls `generate`. A candidate
+passes only if `input_ids`, `pixel_values`, and `image_grid_thw` are present and
+the distinct two-image grid and pixel payload preserve a deliberately swapped
+image order. It reports facts for review and never picks a configuration.
+
+```bash
+PYTHONPATH=src python -m relive inspect-local-hf \
+  --model-path /mnt/hdd3/huihui/models/Qwen3.5-9B \
+  --probe-processor-images \
+  --output /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preflight/qwen35_processor_image_contract.json
+```
+
+Copy one reviewed `PASS` candidate into `local_hf` only after this probe. The
+initial configuration must reproduce its `source` frame encoding, null
+pixel-limit overrides, empty template kwargs, and explicit image order.
+
 Copy [`configs/local_hf.example.yaml`](configs/local_hf.example.yaml) outside
 version control and fill every inspected value exactly. `model_class` must be a
 literal entry in `config.json`'s `architectures`; `processor_class`, template
@@ -109,8 +129,9 @@ including duplicate frames, and never converts frame references into FPS or
 timestamps.
 
 First run the report-only path audit. It writes a human-question schema report,
-a public selector index, and a separate GT-isolation audit. It writes no runtime
-and makes no model call.
+a compact public selector index, a human-question selector with only the human
+question and verified public first/last frame paths, and a separate GT-isolation
+audit. It writes no runtime and makes no model call.
 
 ```bash
 PYTHONPATH=src python -m relive prepare-medvidu \
@@ -126,6 +147,14 @@ TAL needs time spans; STG and region-caption tasks need boxes; next-action is a
 future prediction; CVS and skill assessment need score vectors; dense captions
 need multiple time-bounded events; summaries need multiple claims. None is
 silently mapped to `action_qa`.
+
+Use `medvidu_public_question_selector.jsonl`, not the source JSON, when
+choosing a record for a user-authored visible claim. Its rows contain only
+`source_record_index`, public-record identity hashes, native `qa_type`, the
+human question, frame count, dataset name when public, and verified first/last
+frame paths. It never contains assistant values, annotations, answers, boxes,
+masks, or timestamp labels. A claim-verification smoke remains a custom public
+claim protocol, never an official MedVidU QA result.
 
 The only runtime-producing MedVidU adapter is
 `user_claim_verification_v1`. It requires a separate user-authored, public

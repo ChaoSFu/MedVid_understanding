@@ -205,6 +205,37 @@ def _public_record_index_payload(records: list[PublicMedVidURecord]) -> bytes:
     }) + b"\n" for record in records)
 
 
+def _public_question_selector_payload(records: list[PublicMedVidURecord], mapper: "_FrameMapper") -> bytes:
+    """Write only reviewed human questions and public, decoded frame references.
+
+    This is deliberately narrower than a source-row export.  Every listed
+    record has already passed the requested frame mapping audit, and the
+    selector contains the two values required to bind a later user-authored
+    claim manifest: ``source_record_index`` and ``public_record_sha256``.
+    It never emits source annotation fields or values from non-human turns.
+    """
+    rows = []
+    for record in records:
+        mapped_paths = [mapper.map(path) for path in record.video_paths]
+        if any(item.status != "PASS" or item.resolved_path is None for item in mapped_paths):
+            raise MedVidUPreparationError("PUBLIC_SELECTOR_REQUIRES_VERIFIED_FRAME_PATHS")
+        row = {
+            "source_record_index": record.source_record_index,
+            "sample_id": record.sample_id,
+            "public_record_sha256": record.public_record_sha256,
+            "question_sha256": record.question_sha256,
+            "qa_type": record.qa_type,
+            "question": record.question,
+            "frame_count": record.sampled_frame_count,
+            "first_verified_frame_path": mapped_paths[0].resolved_path,
+            "last_verified_frame_path": mapped_paths[-1].resolved_path,
+        }
+        if record.dataset_name is not None:
+            row["dataset_name"] = record.dataset_name
+        rows.append(row)
+    return b"".join(_canonical_bytes(row) + b"\n" for row in rows)
+
+
 class _FrameMapper:
     def __init__(self, source_prefix: str | Path, frame_root: str | Path):
         self.source_prefix = PurePosixPath(str(source_prefix))
@@ -414,18 +445,22 @@ def prepare_medvidu(
     schema = medvidu_schema_report(records, source_sha256)
     if adapter == REPORT_ONLY_ADAPTER:
         audit_records = records if path_audit_scope == "all" else records[:max_samples]
-        path_audit, _ = audit_frame_mapping(audit_records, source_prefix, frame_root)
+        path_audit, mapper = audit_frame_mapping(audit_records, source_prefix, frame_root)
         isolation = _isolation_audit(source_json=source_json, source_sha256=source_sha256, adapter=adapter,
                                      records=audit_records, path_audit=path_audit, runtime_sha256=None,
                                      manifest_path=None)
         schema_path = destination / "medvidu_human_question_schema.json"
         index_path = destination / "medvidu_public_record_index.jsonl"
+        selector_path = destination / "medvidu_public_question_selector.jsonl"
         audit_path = destination / "medvidu_gt_isolation_audit.json"
         _atomic_write(schema_path, _canonical_bytes(schema) + b"\n")
         _atomic_write(index_path, _public_record_index_payload(records))
         _atomic_write(audit_path, _canonical_bytes(isolation) + b"\n")
+        if path_audit["status"] == "PASS":
+            _atomic_write(selector_path, _public_question_selector_payload(audit_records, mapper))
         return {"status": path_audit["status"], "adapter": adapter, "runtime_generated": False,
                 "schema_report": str(schema_path), "public_record_index": str(index_path),
+                "public_question_selector": (str(selector_path) if path_audit["status"] == "PASS" else None),
                 "gt_isolation_audit": str(audit_path), "path_mapping": path_audit}
     if public_claim_manifest is None:
         raise MedVidUPreparationError("user_claim_verification_v1 requires --public-claim-manifest")

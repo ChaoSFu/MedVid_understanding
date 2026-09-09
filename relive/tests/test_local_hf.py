@@ -51,6 +51,63 @@ class FakeProcessor:
         return ['{"status":"SUPPORTED"}']
 
 
+class _ProbeTensor:
+    """Minimal CPU-tensor-shaped fixture for processor-contract audits."""
+
+    def __init__(self, value):
+        self.value = value
+        self.shape = self._shape(value)
+        self.dtype = "fake"
+        self.device = "cpu"
+
+    @staticmethod
+    def _shape(value):
+        if not isinstance(value, list):
+            return ()
+        return (len(value),) + (_ProbeTensor._shape(value[0]) if value else ())
+
+    def numel(self):
+        def count(value):
+            return sum(count(item) for item in value) if isinstance(value, list) else 1
+        return count(self.value)
+
+    def tolist(self):
+        return self.value
+
+
+class VisualProbeProcessor(FakeProcessor):
+    """Fake visual processor that preserves two image input orders."""
+
+    @staticmethod
+    def _inputs(images):
+        rows = [[1, image.height // 28, image.width // 28] for image in images]
+        pixels = [[image.width, image.height, *image.getpixel((0, 0))] for image in images]
+        return _FakeInputs(
+            input_ids=_ProbeTensor([[1, 2, 3]]),
+            pixel_values=_ProbeTensor(pixels),
+            image_grid_thw=_ProbeTensor(rows),
+        )
+
+    def apply_chat_template(self, messages, **kwargs):
+        self.calls.append((messages, kwargs))
+        if kwargs["tokenize"]:
+            images = [item["image"] for item in messages[0]["content"] if item["type"] == "image"]
+            return self._inputs(images)
+        return "rendered visual probe"
+
+    def __call__(self, **kwargs):
+        self.process_call = kwargs
+        return self._inputs(kwargs["images"])
+
+
+class MissingGridProbeProcessor(VisualProbeProcessor):
+    @staticmethod
+    def _inputs(images):
+        result = VisualProbeProcessor._inputs(images)
+        result.pop("image_grid_thw")
+        return result
+
+
 class FakeVisionModel:
     last = None
 
@@ -136,6 +193,33 @@ class LocalHFTests(unittest.TestCase):
         self.assertEqual(report["chat_template_status"], "UNIQUE_CONTENT")
         (self.model / "processor_config.json").write_text(json.dumps({"chat_template": "different"}))
         self.assertEqual(inspect_local_hf(self.model)["chat_template_status"], "AMBIGUOUS_CONTENT")
+
+    def test_processor_image_contract_probe_exercises_all_explicit_candidates_without_model_load(self):
+        processor = VisualProbeProcessor()
+        FakeVisionModel.last = None
+        (self.model / "processor_config.json").write_text(json.dumps({"processor_class": "VisualProbeProcessor"}))
+        with patch.dict(sys.modules, fake_modules(processor)):
+            report = inspect_local_hf(self.model, probe_processor_images=True)
+        probe = report["processor_image_contract_probe"]
+        self.assertEqual(report["inspection_mode"], "metadata_plus_processor_image_contract_no_model_load")
+        self.assertEqual(report["processor_probe"]["status"], "PASS")
+        self.assertEqual(probe["status"], "PASS")
+        self.assertFalse(probe["model_weights_loaded"])
+        self.assertEqual(probe["model_from_pretrained_calls"], 0)
+        self.assertEqual(probe["generate_calls"], 0)
+        self.assertIsNone(FakeVisionModel.last)
+        self.assertEqual(len(probe["candidates"]), 4)
+        self.assertTrue(all(candidate["status"] == "PASS" for candidate in probe["candidates"]))
+        self.assertTrue(all(candidate["conditions"]["grid_order_preserved_after_swap"] for candidate in probe["candidates"]))
+        self.assertTrue(all(candidate["conditions"]["pixel_values_change_after_swap"] for candidate in probe["candidates"]))
+
+    def test_processor_image_contract_probe_fails_closed_without_qwen_visual_grid(self):
+        processor = MissingGridProbeProcessor()
+        (self.model / "processor_config.json").write_text(json.dumps({"processor_class": "MissingGridProbeProcessor"}))
+        with patch.dict(sys.modules, fake_modules(processor)):
+            probe = inspect_local_hf(self.model, probe_processor_images=True)["processor_image_contract_probe"]
+        self.assertEqual(probe["status"], "FAIL")
+        self.assertTrue(all(candidate["status"] == "PROCESSOR_IMAGE_CONTRACT_FAILED" for candidate in probe["candidates"]))
 
     def test_local_config_is_closed_and_requires_all_reviewed_fields(self):
         valid = self.config()

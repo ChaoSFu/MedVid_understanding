@@ -91,12 +91,24 @@ class MedVidUPreparationTests(unittest.TestCase):
         self.assertFalse(result["runtime_generated"])
         self.assertTrue(Path(result["schema_report"]).is_file())
         self.assertTrue(Path(result["public_record_index"]).is_file())
+        self.assertTrue(Path(result["public_question_selector"]).is_file())
         self.assertTrue(Path(result["gt_isolation_audit"]).is_file())
         body = Path(result["gt_isolation_audit"]).read_text()
         self.assertNotIn("SECRET_ASSISTANT_ANSWER", body)
         self.assertNotIn("SECRET_STRUCTURE", body)
         self.assertNotIn("SECRET_METADATA", body)
         self.assertNotIn("SECRET_ASSISTANT_ANSWER", Path(result["public_record_index"]).read_text())
+        selector = [json.loads(line) for line in Path(result["public_question_selector"]).read_text().splitlines()]
+        self.assertEqual(len(selector), 2)
+        self.assertEqual(set(selector[0]), {
+            "source_record_index", "sample_id", "public_record_sha256", "question_sha256", "qa_type",
+            "question", "frame_count", "first_verified_frame_path", "last_verified_frame_path", "dataset_name",
+        })
+        self.assertEqual(selector[0]["question"], "When does suturing happen?")
+        self.assertTrue(selector[0]["first_verified_frame_path"].startswith(str(self.frame_root.resolve())))
+        self.assertNotIn("SECRET_ASSISTANT_ANSWER", Path(result["public_question_selector"]).read_text())
+        self.assertNotIn("SECRET_STRUCTURE", Path(result["public_question_selector"]).read_text())
+        self.assertNotIn("SECRET_METADATA", Path(result["public_question_selector"]).read_text())
         self.assertFalse(list(output.glob("*.runtime.jsonl")))
 
     def test_explicit_public_claim_manifest_creates_closed_runtime_without_time_or_gt(self):
