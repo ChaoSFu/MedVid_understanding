@@ -1,0 +1,67 @@
+# Frozen against Linux preflight checkpoint_metadata_sha256:
+# e8028cd2e14f4d3fe26e6c90020d07f6f3e5aacc8bcf9ebfadfb12ae89241cec
+# The selected contract was verified on synthetic, non-medical images with
+# Qwen3VLProcessor. `relive run` is the first command that loads model weights.
+framework_version: ReliVE-v1
+backend:
+  kind: local_hf
+  model: Qwen3.5-9B
+  revision: local-checkpoint-e8028cd2e14f
+  model_path: /mnt/hdd3/huihui/models/Qwen3.5-9B
+  checkpoint_metadata_sha256: e8028cd2e14f4d3fe26e6c90020d07f6f3e5aacc8bcf9ebfadfb12ae89241cec
+  model_class: Qwen3_5ForConditionalGeneration
+  processor_class: Qwen3VLProcessor
+  chat_template_source: tokenizer_config.json:chat_template
+  chat_template_sha256: a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715
+  chat_message_layout: images_then_text
+  processor_call_mode: tokenized_chat_template
+  chat_template_kwargs: {}
+  trust_remote_code: false
+  local_files_only: true
+  dtype: bfloat16
+  device: cuda:0
+  device_map: null
+  input_device: cuda:0
+  max_memory: null
+  processor_min_pixels: null
+  processor_max_pixels: null
+  generation:
+    do_sample: false
+    max_new_tokens: 128
+    use_cache: true
+  image_order: chronological
+  frame_encoding: source
+  timeout_seconds: 120
+  max_retries: 0
+acquisition:
+  method: sliding_windows
+  window_size: 3
+  stride: 2
+  max_candidates: 4
+claims:
+  max_claims: 3
+  max_alternatives: 2
+  contrast_fixtures: []
+spatial:
+  blur_radius: 4.0
+  control_count: 1
+  control_aggregation: all
+  control_version: relive-matched-corners-edges-v1
+  alternate_regions: [[0.1, 0.1, 0.7, 0.7]]
+  max_area_warning: 0.8
+policy:
+  name: semantic_contrast_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
+adaptation:
+  enabled: true
+  actions: [EXPAND_TEMPORAL_CONTEXT, TRY_ALTERNATE_SUPPORT_REGION, NEXT_CANDIDATE, ACQUIRE_MISSING_CLAIM]
+  expand_frames: 2
+budget:
+  max_calls: 60
+  max_candidates: 6
+  max_spatial_proposals: 2
+  max_rounds: 4
+reasoning:
+  mode: strict_reliability
+  max_answer_tokens: 128
