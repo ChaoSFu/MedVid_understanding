@@ -56,6 +56,113 @@ The default `smoke` phase permits at most five samples. An explicit `--phase pre
 
 For a configured service, copy the template outside version control, replace all placeholders, set the named credential environment variable, and use a `public_runtime` source. A real smoke run has not been executed by this package unless its run manifest says `synthetic: false` and records the actual backend fingerprint.
 
+## Local Hugging Face checkpoints
+
+`local_hf` is a frozen, in-process Hugging Face backend. It has no Qwen-specific
+class list, hand-written chat template, architecture fallback, automatic entry
+GPU selection, or automatic `trust_remote_code` setting. First inspect the
+checkpoint on the GPU host. The default inspection reads only checkpoint
+metadata, lists template candidates by source and SHA-256, checks whether the
+declared architecture is available in the installed `transformers`, and reports
+CUDA devices. It does not load a processor, model, or weight file.
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+PYTHONPATH=src python3.11 -m relive inspect-local-hf \
+  --model-path /mnt/hdd3/huihui/models/Qwen3.5-9B \
+  --output /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preflight/qwen35_metadata.json
+```
+
+After reviewing the static report, an explicit processor-only probe can confirm
+the loaded processor class and template hash without loading model weights:
+
+```bash
+PYTHONPATH=src python3.11 -m relive inspect-local-hf \
+  --model-path /mnt/hdd3/huihui/models/Qwen3.5-9B \
+  --probe-processor \
+  --output /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preflight/qwen35_processor.json
+```
+
+The processor probe uses local files and does not enable checkpoint-provided
+code unless `--trust-remote-code` is explicitly passed. If it fails, do not
+guess an architecture or template. Resolve the reported compatibility issue
+before a model load.
+
+Copy [`configs/local_hf.example.yaml`](configs/local_hf.example.yaml) outside
+version control and fill every inspected value exactly. `model_class` must be a
+literal entry in `config.json`'s `architectures`; `processor_class`, template
+source and template hash must match the loaded processor. The backend records
+checkpoint metadata identity, classes, template contract, dtype, device map,
+input device, generation parameters, and image encoding in the manifest and
+cache key. It uses `eval()` and `torch.inference_mode()` and never updates
+parameters. In-process `generate` cannot be safely killed by the configured
+timeout, so that limitation is recorded in the fingerprint rather than hidden.
+
+## MedVidU public-runtime preparation
+
+`prepare-medvidu` does not use the original assistant turn, `struc_info`,
+`RC_info`, source `metadata`, answers, boxes, masks, or temporal labels. It
+reads only the source ID, exactly one human question, ordered public frame
+paths, the paired `sampled_video_frames` vector for length/type validation, the
+native `qa_type`, and `dataset_name`. It preserves the input frame-list order,
+including duplicate frames, and never converts frame references into FPS or
+timestamps.
+
+First run the report-only path audit. It writes a human-question schema report,
+a public selector index, and a separate GT-isolation audit. It writes no runtime
+and makes no model call.
+
+```bash
+PYTHONPATH=src python3.11 -m relive prepare-medvidu \
+  --source-json /home/huihui/codes/MedVid_understanding/data_json/init_datas/medvidu_eccv2026_trainval.json \
+  --frame-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata \
+  --source-prefix /root/data \
+  --output-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preparation \
+  --adapter report_only --path-audit-scope all --max-samples 1
+```
+
+The native MedVidU question types are retained as unsupported in that report:
+TAL needs time spans; STG and region-caption tasks need boxes; next-action is a
+future prediction; CVS and skill assessment need score vectors; dense captions
+need multiple time-bounded events; summaries need multiple claims. None is
+silently mapped to `action_qa`.
+
+The only runtime-producing MedVidU adapter is
+`user_claim_verification_v1`. It requires a separate user-authored, public
+claim JSONL. Each line binds an inspected public record to a user claim:
+
+```json
+{"source_record_index":17,"public_record_sha256":"<from medvidu_public_record_index.jsonl>","target_claim":{"claim_id":"claim-17","text":"<user-authored visible claim>"}}
+```
+
+No `answer`, `bbox`, `mask`, `time_scope`, unknown field, or hidden-label value
+is accepted in this manifest. This adapter is a custom public-claim protocol
+smoke, not an official MedVidU QA result. Once a claim manifest exists, prepare
+one runtime sample, then run one real smoke:
+
+```bash
+PYTHONPATH=src python3.11 -m relive prepare-medvidu \
+  --source-json /home/huihui/codes/MedVid_understanding/data_json/init_datas/medvidu_eccv2026_trainval.json \
+  --frame-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata \
+  --output-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/runtime \
+  --adapter user_claim_verification_v1 --max-samples 1 \
+  --public-claim-manifest /absolute/path/public_claims.jsonl
+
+PYTHONPATH=src python3.11 -m relive run \
+  --config /absolute/path/local_hf.yaml \
+  --runtime /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/runtime/medvidu_user_claim_verification.runtime.jsonl \
+  --output-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/smoke_1 \
+  --cache-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/shared_cache \
+  --max-samples 1 --phase smoke
+```
+
+The runner requires the matching `.gt_isolation_audit.json` beside every real
+runtime and binds its runtime SHA-256 into the run manifest. It also rejects a
+real run under a `mock` directory or a synthetic run under a `real` directory.
+Repeat the same command with a fresh `smoke_5` output directory and
+`--max-samples 5` only after the one-sample run succeeds; reuse the same cache
+directory to verify zero new calls on a replay of identical inputs.
+
 | Policy | Required checks |
 | --- | --- |
 | `acquisition_only` | Never verifies; acquisition ablation only |

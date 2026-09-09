@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from relive.audits import audit_run, audit_strict_result
+from relive.backends.mock import MockBackend
 from relive.config import load_config, validate_config
+from relive.data.schemas import FIELD_SOURCES
 from relive.evaluation.metrics import evaluate
 from relive.runner import run
 
@@ -19,6 +24,11 @@ from relive.runner import run
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "configs" / "mock_smoke.yaml"
 RUNTIME = ROOT / "examples" / "synthetic_runtime.jsonl"
+
+
+class RealLikeMockBackend(MockBackend):
+    """A transport-free real-backend stand-in for output/audit boundary tests."""
+    synthetic = False
 
 
 class RunnerTests(unittest.TestCase):
@@ -139,6 +149,38 @@ class RunnerTests(unittest.TestCase):
             run(self.config(), RUNTIME, self.root / "too-many", max_samples=6, phase="smoke")
         with self.assertRaisesRegex(ValueError, "1–10"):
             run(self.config(), RUNTIME, self.root / "too-many-preflight", max_samples=11, phase="preflight")
+
+    def test_real_and_synthetic_output_paths_and_gt_isolation_audit_are_separated(self):
+        with self.assertRaisesRegex(ValueError, "Synthetic runs cannot write"):
+            run(self.config(), RUNTIME, self.root / "real" / "wrong", max_samples=1)
+        image = self.root / "public.png"
+        Image.new("RGB", (8, 8), "purple").save(image)
+        runtime = self.root / "public.runtime.jsonl"
+        row = {"sample_id": "public-1", "task": "claim_verification", "question": "What is visible?",
+               "frames": [{"frame_id": "f0", "path": str(image), "order": 0}],
+               "target_claim": {"claim_id": "claim-1", "text": "A visible action occurs."}}
+        payload = json.dumps(row, separators=(",", ":")) + "\n"
+        runtime.write_text(payload, encoding="utf-8")
+        Path(str(runtime) + ".provenance.json").write_text(json.dumps({
+            "schema_version": "relive-runtime-v1", "source_kind": "public_runtime",
+            "runtime_sha256": hashlib.sha256(payload.encode()).hexdigest(), "field_sources": FIELD_SOURCES,
+        }), encoding="utf-8")
+        config = self.config()
+        config["policy"]["name"] = "semantic_only"
+        config = validate_config(config)
+        backend = RealLikeMockBackend(config["backend"])
+        with self.assertRaisesRegex(ValueError, "GT-isolation audit"):
+            run(config, runtime, self.root / "real" / "missing-audit", max_samples=1, backend=backend)
+        Path(str(runtime) + ".gt_isolation_audit.json").write_text(json.dumps({
+            "status": "PASS", "runtime_sha256": hashlib.sha256(payload.encode()).hexdigest(),
+            "adapter": "test", "classification": "test-public-runtime",
+        }), encoding="utf-8")
+        summary = run(config, runtime, self.root / "real" / "real-run", max_samples=1, backend=backend)
+        self.assertFalse(summary["synthetic"])
+        manifest = self.root / "real" / "real-run" / "manifest" / "run.json"
+        self.assertEqual(json.loads(manifest.read_text())["runtime_gt_isolation_audit"]["status"], "PASS")
+        with self.assertRaisesRegex(ValueError, "Real runs cannot write"):
+            run(config, runtime, self.root / "mock" / "wrong", max_samples=1, backend=backend)
 
     def test_independent_evaluation_reads_ground_truth_only_when_requested(self):
         output = self.root / "evaluation"

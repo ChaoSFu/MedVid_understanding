@@ -452,6 +452,24 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
     backend = backend or make_backend(config["backend"])
     if not backend.synthetic and any(s.provenance["source_kind"] == "synthetic" for s in samples):
         raise ValueError("Real runs require public_runtime sources; synthetic fixtures stay separate")
+    output_parts = Path(output_dir).expanduser().resolve().parts
+    if backend.synthetic and "real" in output_parts:
+        raise ValueError("Synthetic runs cannot write under a real output directory")
+    if not backend.synthetic and "mock" in output_parts:
+        raise ValueError("Real runs cannot write under a mock output directory")
+    preparation_audit = None
+    if not backend.synthetic:
+        audit_path = Path(str(Path(runtime_path).expanduser().resolve()) + ".gt_isolation_audit.json")
+        try:
+            candidate_audit = json.loads(audit_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("Real runs require a readable GT-isolation audit beside the public runtime") from exc
+        if (not isinstance(candidate_audit, dict) or candidate_audit.get("status") != "PASS"
+                or candidate_audit.get("runtime_sha256") != samples[0].provenance["runtime_sha256"]):
+            raise ValueError("Real runtime GT-isolation audit is missing, failed, or does not bind this runtime SHA-256")
+        preparation_audit = {"path": str(audit_path), "status": candidate_audit["status"],
+                             "adapter": candidate_audit.get("adapter"),
+                             "classification": candidate_audit.get("classification")}
     store = ArtifactStore(output_dir)
     cache = ArtifactStore(cache_dir or (store.root / "inference"))
     inference = CachedInference(backend, cache)
@@ -472,6 +490,7 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
                 "control_version": CONTROL_VERSION, "git_commit": commit, "python": sys.version,
                 "platform": platform.platform(), "pillow": pillow_version, "cache_dir": str(cache.root),
                 "runtime_source_audit": source_audit, "model_parameters_updated": False,
+                "runtime_gt_isolation_audit": preparation_audit,
                 "phase": phase, "limits": f"{phase} run only; at most {maximum_for_phase} samples; no GT loading."}
     results = []
     new_calls, cached_samples = 0, 0

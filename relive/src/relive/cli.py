@@ -7,7 +7,9 @@ from pathlib import Path
 import sys
 
 from relive.audits import audit_run
+from relive.backends.inspection import inspect_local_hf
 from relive.config import load_config
+from relive.data.medvidu import PUBLIC_ADAPTER, REPORT_ONLY_ADAPTER, prepare_medvidu
 from relive.runner import run
 
 
@@ -40,6 +42,22 @@ def _audit(args: argparse.Namespace) -> int:
     return 0 if outcome["status"] == "PASS" else 2
 
 
+def _inspect_local_hf(args: argparse.Namespace) -> int:
+    _emit(inspect_local_hf(args.model_path, probe_processor=args.probe_processor,
+                           trust_remote_code=args.trust_remote_code), args.output)
+    return 0
+
+
+def _prepare_medvidu(args: argparse.Namespace) -> int:
+    outcome = prepare_medvidu(
+        args.source_json, args.frame_root, args.output_dir, source_prefix=args.source_prefix,
+        adapter=args.adapter, path_audit_scope=args.path_audit_scope, max_samples=args.max_samples,
+        public_claim_manifest=args.public_claim_manifest,
+    )
+    _emit(outcome, args.output)
+    return 0 if outcome["status"] == "PASS" else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="relive", description="ReliVE-v1 frozen-model evidence verification")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -61,6 +79,25 @@ def build_parser() -> argparse.ArgumentParser:
     audit_parser.add_argument("--run-dir", required=True)
     audit_parser.add_argument("--output")
     audit_parser.set_defaults(handler=_audit)
+    inspect_parser = commands.add_parser("inspect-local-hf", help="Read checkpoint metadata and GPU compatibility without loading weights")
+    inspect_parser.add_argument("--model-path", required=True)
+    inspect_parser.add_argument("--probe-processor", action="store_true",
+                                help="Instantiate only AutoProcessor with local files; never load model weights")
+    inspect_parser.add_argument("--trust-remote-code", action="store_true",
+                                help="Permit the explicit processor probe to use checkpoint-provided code")
+    inspect_parser.add_argument("--output")
+    inspect_parser.set_defaults(handler=_inspect_local_hf)
+    prepare_parser = commands.add_parser("prepare-medvidu", help="Audit MedVidU public fields and prepare only explicit public-claim runtime")
+    prepare_parser.add_argument("--source-json", required=True)
+    prepare_parser.add_argument("--frame-root", required=True)
+    prepare_parser.add_argument("--source-prefix", default="/root/data")
+    prepare_parser.add_argument("--output-dir", required=True)
+    prepare_parser.add_argument("--adapter", choices=(REPORT_ONLY_ADAPTER, PUBLIC_ADAPTER), default=REPORT_ONLY_ADAPTER)
+    prepare_parser.add_argument("--path-audit-scope", choices=("selected", "all"), default="selected")
+    prepare_parser.add_argument("--max-samples", type=int, default=5)
+    prepare_parser.add_argument("--public-claim-manifest")
+    prepare_parser.add_argument("--output")
+    prepare_parser.set_defaults(handler=_prepare_medvidu)
     return parser
 
 

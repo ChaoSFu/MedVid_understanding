@@ -29,8 +29,24 @@ DEFAULTS = {
 
 REAL_REQUIRED = {"kind", "base_url", "endpoint_path", "model", "revision", "credential_env",
                  "generation", "image_order", "frame_encoding", "timeout_seconds", "max_retries", "extra"}
-BACKEND_FIELDS = set(DEFAULTS["backend"]) | REAL_REQUIRED | {"jpeg_quality", "image_detail", "retry_backoff_seconds"}
+LOCAL_HF_REQUIRED = {
+    "kind", "model", "revision", "model_path", "checkpoint_metadata_sha256", "model_class",
+    "processor_class", "chat_template_source", "chat_template_sha256", "chat_message_layout",
+    "processor_call_mode", "chat_template_kwargs", "trust_remote_code", "local_files_only", "dtype",
+    "device", "device_map", "input_device", "max_memory", "processor_min_pixels",
+    "processor_max_pixels", "generation", "image_order", "frame_encoding", "timeout_seconds",
+    "max_retries",
+}
+MOCK_FIELDS = set(DEFAULTS["backend"]) | {"jpeg_quality", "image_detail", "retry_backoff_seconds"}
+OPENAI_FIELDS = REAL_REQUIRED | {"jpeg_quality", "image_detail", "retry_backoff_seconds"}
+LOCAL_HF_FIELDS = LOCAL_HF_REQUIRED | {"jpeg_quality", "retry_backoff_seconds"}
 SECRET_FIELDS = {"api_key", "apikey", "authorization", "password", "access_token", "secret", "secret_key", "token"}
+_LOCAL_GENERATION_FIELDS = {
+    "do_sample", "max_new_tokens", "min_new_tokens", "temperature", "top_p", "top_k",
+    "typical_p", "repetition_penalty", "length_penalty", "num_beams", "use_cache",
+}
+_LOCAL_DEVICE_MAPS = {"auto", "balanced", "balanced_low_0", "sequential"}
+_LOCAL_DTYPES = {"bfloat16", "float16", "float32"}
 
 
 def _plain(value: Any, where: str = "config") -> None:
@@ -60,16 +76,126 @@ def _number(value, name, minimum=0, maximum=None):
         raise ValueError(f"Invalid numeric value for {name}")
 
 
+def _sha256(value: Any, name: str) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+        raise ValueError(f"{name} must be a lowercase SHA-256 hex digest")
+
+
+def _local_device(value: Any, name: str) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"(?:cuda(?::[0-9]+)?|cpu|mps)", value):
+        raise ValueError(f"{name} must be an explicit cuda:N, cpu, or mps device")
+
+
+def _local_max_memory(value: Any) -> None:
+    if value is None:
+        return
+    if not isinstance(value, dict) or not value:
+        raise ValueError("backend.max_memory must be null or a nonempty object")
+    for device, limit in value.items():
+        if not isinstance(device, str) or not re.fullmatch(r"(?:cuda:[0-9]+|[0-9]+|cpu|disk)", device):
+            raise ValueError("backend.max_memory has an unsupported device key")
+        if not isinstance(limit, str) or not re.fullmatch(r"[1-9][0-9]*(?:MiB|GiB|MB|GB)", limit):
+            raise ValueError("backend.max_memory limits must be explicit positive memory strings")
+
+
+def _validate_local_generation(value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        raise ValueError("backend.generation must be a nonempty object for local_hf")
+    unknown = set(value) - _LOCAL_GENERATION_FIELDS
+    if unknown:
+        raise ValueError(f"Unsupported local_hf generation fields: {sorted(unknown)}")
+    if set(value) & {"model", "input_ids", "pixel_values", "stream", "messages", "return_dict"}:
+        raise ValueError("backend.generation cannot override model inputs")
+    if type(value.get("do_sample")) is not bool:
+        raise ValueError("local_hf generation.do_sample must be explicit boolean")
+    _integer(value.get("max_new_tokens"), "local_hf generation.max_new_tokens")
+    if "min_new_tokens" in value:
+        _integer(value["min_new_tokens"], "local_hf generation.min_new_tokens", minimum=0)
+        if value["min_new_tokens"] > value["max_new_tokens"]:
+            raise ValueError("local_hf generation.min_new_tokens cannot exceed max_new_tokens")
+    for key in ("temperature", "top_p", "typical_p", "repetition_penalty", "length_penalty"):
+        if key in value:
+            _number(value[key], f"local_hf generation.{key}", minimum=0)
+    for key in ("top_k", "num_beams"):
+        if key in value:
+            _integer(value[key], f"local_hf generation.{key}", minimum=1)
+    if "use_cache" in value and type(value["use_cache"]) is not bool:
+        raise ValueError("local_hf generation.use_cache must be boolean")
+
+
+def _validate_local_hf(raw: dict[str, Any]) -> dict[str, Any]:
+    missing = LOCAL_HF_REQUIRED - set(raw)
+    if missing:
+        raise ValueError(f"local_hf backend requires explicit settings: {sorted(missing)}")
+    prohibited = set(raw) & {"rules", "base_url", "endpoint_path", "credential_env", "extra", "image_detail"}
+    if prohibited:
+        raise ValueError(f"local_hf backend cannot contain transport, fixture, or opaque extra fields: {sorted(prohibited)}")
+    result = deepcopy(raw)
+    for name in ("model", "revision", "model_class", "processor_class", "chat_template_source"):
+        if not isinstance(result[name], str) or not result[name].strip():
+            raise ValueError(f"backend.{name} must be explicit and nonempty")
+    if not isinstance(result["model_path"], str) or not Path(result["model_path"]).is_absolute():
+        raise ValueError("backend.model_path must be an explicit absolute checkpoint directory")
+    _sha256(result["checkpoint_metadata_sha256"], "backend.checkpoint_metadata_sha256")
+    _sha256(result["chat_template_sha256"], "backend.chat_template_sha256")
+    if result["chat_message_layout"] not in {"images_then_text", "text_then_images"}:
+        raise ValueError("backend.chat_message_layout must be images_then_text or text_then_images")
+    if result["processor_call_mode"] not in {"render_then_process", "tokenized_chat_template"}:
+        raise ValueError("backend.processor_call_mode is unsupported")
+    if not isinstance(result["chat_template_kwargs"], dict):
+        raise ValueError("backend.chat_template_kwargs must be an explicit object")
+    reserved_template = {"messages", "tokenize", "add_generation_prompt", "return_dict", "return_tensors", "images", "text"}
+    if set(result["chat_template_kwargs"]) & reserved_template:
+        raise ValueError("backend.chat_template_kwargs cannot override the fixed adapter call contract")
+    if type(result["trust_remote_code"]) is not bool:
+        raise ValueError("backend.trust_remote_code must be explicit boolean")
+    if result["local_files_only"] is not True:
+        raise ValueError("backend.local_files_only must be true")
+    if result["dtype"] not in _LOCAL_DTYPES:
+        raise ValueError("backend.dtype must be bfloat16, float16, or float32")
+    _local_device(result["device"], "backend.device")
+    _local_device(result["input_device"], "backend.input_device")
+    device_map = result["device_map"]
+    if device_map is not None and not isinstance(device_map, dict) and device_map not in _LOCAL_DEVICE_MAPS:
+        raise ValueError("backend.device_map must be null, an explicit supported placement policy, or a placement object")
+    if isinstance(device_map, dict):
+        if not device_map:
+            raise ValueError("backend.device_map object cannot be empty")
+        for module, placement in device_map.items():
+            if not isinstance(module, str) or not module or not re.fullmatch(r"[A-Za-z0-9_.-]+", module):
+                raise ValueError("backend.device_map module keys must be explicit model paths")
+            if type(placement) is int:
+                if placement < 0:
+                    raise ValueError("backend.device_map numeric placements must be nonnegative")
+            elif placement not in {"cpu", "disk"} and not (isinstance(placement, str) and re.fullmatch(r"cuda:[0-9]+", placement)):
+                raise ValueError("backend.device_map has an unsupported placement")
+    _local_max_memory(result["max_memory"])
+    if result["device_map"] is None and result["max_memory"] is not None:
+        raise ValueError("backend.max_memory requires an explicit device_map")
+    for name in ("processor_min_pixels", "processor_max_pixels"):
+        if result[name] is not None:
+            _integer(result[name], f"backend.{name}")
+    if (result["processor_min_pixels"] is not None and result["processor_max_pixels"] is not None
+            and result["processor_min_pixels"] > result["processor_max_pixels"]):
+        raise ValueError("processor_min_pixels cannot exceed processor_max_pixels")
+    _validate_local_generation(result["generation"])
+    if result["frame_encoding"] != "jpeg" and "jpeg_quality" in result:
+        raise ValueError("backend.jpeg_quality is valid only when frame_encoding is jpeg")
+    return result
+
+
 def validate_backend(raw: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("backend must be an object")
     _plain(raw, "backend")
-    unknown = set(raw) - BACKEND_FIELDS
-    if unknown:
-        raise ValueError(f"Unknown backend fields: {sorted(unknown)}")
     kind = raw.get("kind", "mock")
-    if kind not in {"mock", "openai_compatible"}:
+    if kind not in {"mock", "openai_compatible", "local_hf"}:
         raise ValueError("Unsupported backend kind")
+    allowed = {"mock": MOCK_FIELDS, "openai_compatible": OPENAI_FIELDS,
+               "local_hf": LOCAL_HF_FIELDS}[kind]
+    unknown = set(raw) - allowed
+    if unknown:
+        raise ValueError(f"Unknown or inapplicable backend fields for {kind}: {sorted(unknown)}")
     if kind == "openai_compatible":
         missing = REAL_REQUIRED - set(raw)
         if missing:
@@ -84,6 +210,8 @@ def validate_backend(raw: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("endpoint_path must be an explicit relative API route, e.g. /chat/completions")
         if not isinstance(raw["credential_env"], str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", raw["credential_env"]):
             raise ValueError("credential_env must name an environment variable")
+    elif kind == "local_hf":
+        result = _validate_local_hf(raw)
     else:
         if set(raw) & {"base_url", "endpoint_path", "credential_env"}:
             raise ValueError("Mock backend must not contain endpoint or credential configuration")
@@ -110,12 +238,13 @@ def validate_backend(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("At most three technical retries are supported")
     if "retry_backoff_seconds" in result:
         _number(result["retry_backoff_seconds"], "retry_backoff_seconds", maximum=10)
-    for name in ("generation", "extra"):
+    generic_objects = ("generation", "extra") if kind != "local_hf" else ("generation",)
+    for name in generic_objects:
         if not isinstance(result[name], dict):
             raise ValueError(f"backend.{name} must be an object")
         if set(result[name]) & {"model", "messages", "stream", "headers", "extra_headers", "base_url"}:
             raise ValueError(f"backend.{name} cannot override transport identity or messages")
-    if set(result["generation"]) & set(result["extra"]):
+    if kind != "local_hf" and set(result["generation"]) & set(result["extra"]):
         raise ValueError("generation and extra cannot override one another")
     if kind == "mock":
         if not isinstance(result["rules"], list):

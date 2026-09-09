@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 from typing import Any
 
 from relive.types import Claim, Frame, RuntimeSample
@@ -25,7 +26,10 @@ SUPPORTED_TASKS = frozenset({"claim_verification", "action_qa"})
 _SAMPLE_FIELDS = {"sample_id", "task", "question", "frames", "video_path", "target_claim", "required_claims", "metadata"}
 _FRAME_FIELDS = {"frame_id", "path", "order", "timestamp", "timestamp_source", "source_reference"}
 _CLAIM_FIELDS = {"claim_id", "text", "entity", "action", "target", "time_scope", "required_for_question"}
-_METADATA_FIELDS = {"dataset_name", "query_timestamps", "unresolved_relations", "question_scope"}
+_METADATA_FIELDS = {
+    "dataset_name", "query_timestamps", "unresolved_relations", "question_scope",
+    "runtime_adapter", "source_qa_type", "source_record_sha256", "nonofficial_protocol",
+}
 _TIMESTAMP_SOURCES = {"explicit_public_metadata", "decoder_pts", "public_frame_manifest", "synthetic", "explicit"}
 
 
@@ -162,6 +166,14 @@ def _parse_sample(value: Any, base: Path, provenance: dict) -> RuntimeSample:
         _text(meta["question_scope"], "question_scope")
         if meta["question_scope"] not in {"single_action", "required_claims"}:
             raise RuntimeInputError("unsupported question_scope")
+    for key in ("runtime_adapter", "source_qa_type"):
+        if key in meta:
+            _text(meta[key], key)
+    if "source_record_sha256" in meta:
+        if not isinstance(meta["source_record_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", meta["source_record_sha256"]):
+            raise RuntimeInputError("source_record_sha256 must be a SHA-256 digest")
+    if "nonofficial_protocol" in meta and type(meta["nonofficial_protocol"]) is not bool:
+        raise RuntimeInputError("nonofficial_protocol must be boolean")
     target = _claim(obj["target_claim"], f"{sample_id}:target", set(ids)) if obj.get("target_claim") is not None else None
     required_raw = obj.get("required_claims", [])
     if not isinstance(required_raw, list):

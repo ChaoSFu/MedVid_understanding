@@ -1,0 +1,64 @@
+# Fill every angle-bracketed value from relive inspect-local-hf.  This template
+# intentionally contains no inferred Qwen model class or chat-template choice.
+framework_version: ReliVE-v1
+backend:
+  kind: local_hf
+  model: Qwen3.5-9B
+  revision: "<explicit checkpoint revision label>"
+  model_path: /mnt/hdd3/huihui/models/Qwen3.5-9B
+  checkpoint_metadata_sha256: "<inspect checkpoint.checkpoint_metadata_sha256>"
+  model_class: "<one exact config.json architectures entry>"
+  processor_class: "<exact processor class confirmed on this host>"
+  chat_template_source: "<one inspect checkpoint.chat_template_candidates source>"
+  chat_template_sha256: "<matching inspect template sha256>"
+  chat_message_layout: "<images_then_text or text_then_images after review>"
+  processor_call_mode: "<tokenized_chat_template or render_then_process after review>"
+  chat_template_kwargs: {}
+  trust_remote_code: false
+  local_files_only: true
+  dtype: bfloat16
+  device: cuda:0
+  device_map: null
+  input_device: cuda:0
+  max_memory: null
+  processor_min_pixels: null
+  processor_max_pixels: null
+  generation:
+    do_sample: false
+    max_new_tokens: 128
+  image_order: chronological
+  frame_encoding: source
+  timeout_seconds: 120
+  max_retries: 0
+acquisition:
+  method: sliding_windows
+  window_size: 3
+  stride: 2
+  max_candidates: 4
+claims:
+  max_claims: 3
+  max_alternatives: 2
+  contrast_fixtures: []
+spatial:
+  blur_radius: 4.0
+  control_count: 1
+  control_aggregation: all
+  control_version: relive-matched-corners-edges-v1
+  alternate_regions: [[0.1, 0.1, 0.7, 0.7]]
+  max_area_warning: 0.8
+policy:
+  name: semantic_contrast_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
+adaptation:
+  enabled: true
+  actions: [EXPAND_TEMPORAL_CONTEXT, TRY_ALTERNATE_SUPPORT_REGION, NEXT_CANDIDATE, ACQUIRE_MISSING_CLAIM]
+  expand_frames: 2
+budget:
+  max_calls: 60
+  max_candidates: 6
+  max_spatial_proposals: 2
+  max_rounds: 4
+reasoning:
+  mode: strict_reliability
+  max_answer_tokens: 128

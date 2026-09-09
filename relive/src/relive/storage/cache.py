@@ -82,7 +82,10 @@ def _safe_failure(exc: Exception) -> str:
         allowed = {"MOCK_FIXTURE_ERROR", "UNSUPPORTED_MOCK_STAGE", "HTTP_REDIRECT_REFUSED",
                    "UNSUPPORTED_SOURCE_IMAGE_FORMAT", "ANIMATED_FRAME_NOT_ALLOWED",
                    "FRAME_IDENTITY_LENGTH_MISMATCH", "CREDENTIAL_ENV_UNSET",
-                   "TRANSPORT_FAILURE", "INVALID_COMPLETION_ENVELOPE"}
+                   "TRANSPORT_FAILURE", "INVALID_COMPLETION_ENVELOPE",
+                   "LOCAL_HF_IMAGE_DECODE_FAILURE", "LOCAL_HF_IMAGE_ENCODING_FAILURE",
+                   "LOCAL_HF_TEMPLATE_APPLY_FAILURE", "LOCAL_HF_PROCESSOR_FAILURE",
+                   "LOCAL_HF_INPUT_PLACEMENT_FAILURE", "LOCAL_HF_GENERATION_FAILURE"}
         if code in allowed or re.fullmatch(r"HTTP_[1-5][0-9]{2}", code):
             return code
         return "BACKEND_ERROR"
