@@ -5,7 +5,9 @@
 # checkpoint also established that enable_thinking=false is accepted and renders
 # a closed empty <think> block. The baseline config without this reviewed
 # template argument produced truncated natural-language rather than JSON on the
-# first public-claim smoke, so do not share its cache with this configuration.
+# first public-claim smoke. Cache identity includes this template argument, so
+# the old entries cannot be reused even when the physical cache directory stays
+# the same.
 framework_version: ReliVE-v1
 backend:
   kind: local_hf

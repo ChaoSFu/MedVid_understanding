@@ -117,8 +117,9 @@ changes its rendering from an open `<think>` prefix to a closed empty block.
 The original empty-kwargs baseline is retained as
 [`configs/qwen35_9b_medvidu_claim_smoke.yaml`](configs/qwen35_9b_medvidu_claim_smoke.yaml)
 for provenance only: its one-sample public-claim smoke emitted truncated
-natural-language analysis instead of JSON. Do not reuse that baseline cache
-with the no-thinking configuration. Its `revision` label is derived from the
+natural-language analysis instead of JSON. The no-thinking template argument is
+part of the cache identity, so baseline cache entries cannot be reused even when
+the same cache directory is retained. Its `revision` label is derived from the
 checkpoint metadata hash because no upstream revision was reported by the local
 directory.
 
