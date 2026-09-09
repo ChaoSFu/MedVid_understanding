@@ -1,0 +1,51 @@
+framework_version: ReliVE-v1
+backend:
+  kind: openai_compatible
+  # Replace each explicit placeholder. Do not place a credential in this file.
+  base_url: https://your-vlm.example/v1
+  endpoint_path: /chat/completions
+  model: your-frozen-vlm
+  revision: your-model-revision
+  credential_env: RELIVE_API_KEY
+  generation:
+    temperature: 0.0
+    max_tokens: 128
+  image_order: chronological
+  frame_encoding: png
+  image_detail: auto
+  timeout_seconds: 30
+  max_retries: 1
+  retry_backoff_seconds: 0.25
+  extra: {}
+acquisition:
+  method: sliding_windows
+  window_size: 3
+  stride: 2
+  max_candidates: 4
+claims:
+  max_claims: 3
+  max_alternatives: 2
+  contrast_fixtures: []
+spatial:
+  blur_radius: 4.0
+  control_count: 1
+  control_aggregation: all
+  control_version: relive-matched-corners-edges-v1
+  alternate_regions: [[0.1, 0.1, 0.7, 0.7]]
+  max_area_warning: 0.8
+policy:
+  name: semantic_contrast_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
+adaptation:
+  enabled: true
+  actions: [EXPAND_TEMPORAL_CONTEXT, TRY_ALTERNATE_SUPPORT_REGION, NEXT_CANDIDATE, ACQUIRE_MISSING_CLAIM]
+  expand_frames: 2
+budget:
+  max_calls: 60
+  max_candidates: 6
+  max_spatial_proposals: 2
+  max_rounds: 4
+reasoning:
+  mode: strict_reliability
+  max_answer_tokens: 128

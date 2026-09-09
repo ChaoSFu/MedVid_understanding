@@ -1,0 +1,65 @@
+framework_version: ReliVE-v1
+backend:
+  kind: mock
+  model: relive-mock
+  revision: v1
+  rules:
+    - match:
+        stage: semantic
+        claim_text: The instrument moves away from the visible tissue.
+      response:
+        status: CONTRADICTED
+        observation: Synthetic fixture response; not a medical observation.
+  generation: {}
+  image_order: chronological
+  frame_encoding: png
+  timeout_seconds: 30
+  max_retries: 0
+  extra: {}
+acquisition:
+  method: sliding_windows
+  window_size: 3
+  stride: 2
+  max_candidates: 2
+claims:
+  max_claims: 2
+  max_alternatives: 1
+  contrast_fixtures:
+    - sample_id: synthetic-claim-verification
+      target_text: The instrument moves toward the visible tissue.
+      alternatives:
+        - The instrument moves away from the visible tissue.
+      comparison_dimension: direction of visible instrument movement
+      exclusivity_status: DECLARED_EXCLUSIVE
+      source: human_authored_synthetic
+    - sample_id: synthetic-action-qa
+      target_text: The instrument moves toward the visible tissue.
+      alternatives:
+        - The instrument moves away from the visible tissue.
+      comparison_dimension: direction of visible instrument movement
+      exclusivity_status: DECLARED_EXCLUSIVE
+      source: human_authored_synthetic
+spatial:
+  blur_radius: 2.0
+  control_count: 1
+  control_aggregation: all
+  control_version: relive-matched-corners-edges-v1
+  alternate_regions:
+    - [0.1, 0.1, 0.7, 0.7]
+  max_area_warning: 0.8
+policy:
+  name: semantic_contrast_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
+adaptation:
+  enabled: true
+  actions: [EXPAND_TEMPORAL_CONTEXT, TRY_ALTERNATE_SUPPORT_REGION, NEXT_CANDIDATE, ACQUIRE_MISSING_CLAIM]
+  expand_frames: 1
+budget:
+  max_calls: 30
+  max_candidates: 2
+  max_spatial_proposals: 2
+  max_rounds: 3
+reasoning:
+  mode: strict_reliability
+  max_answer_tokens: 128

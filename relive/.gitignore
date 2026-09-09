@@ -1,0 +1,6 @@
+.venv/
+*.egg-info/
+.pytest_cache/
+__pycache__/
+examples/frames/
+runs/

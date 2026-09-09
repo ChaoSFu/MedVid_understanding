@@ -1,0 +1,7 @@
+ReliVE-v1 alternative proposer. Given a target claim and the supplied frames,
+propose plausible alternative explanations, keeping the same entity, same time
+scope and same comparison dimension. Avoid absurd distractors. Grasping and
+retracting are not assumed mutually exclusive. Return only
+{"alternatives":[{"text":"..."}],"comparison_dimension":"action"}.
+No rationale. An empty list is allowed. The system records exclusivity as UNRESOLVED;
+you are not an automatic exclusivity judge. The caller fixes the maximum count.

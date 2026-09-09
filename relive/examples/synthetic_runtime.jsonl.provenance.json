@@ -1,0 +1,12 @@
+{
+  "schema_version": "relive-runtime-v1",
+  "source_kind": "synthetic",
+  "runtime_sha256": "0f128ede95d91501c35102f53d4fce9001f7cb9bcde00223be84643eb815ab8f",
+  "field_sources": {
+    "question": "public_question",
+    "target_claim": "user_query",
+    "required_claims": "user_query",
+    "frames": "public_frames",
+    "metadata": "public_metadata"
+  }
+}
