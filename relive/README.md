@@ -6,13 +6,13 @@ The framework separates acquisition from admission: chronological or uniform acq
 
 ## Install
 
-Use Python 3.11 or later. From this directory:
+Use Python 3.10 or later. From this directory:
 
 ```bash
-python3.11 -m pip install -e .
+python -m pip install -e .
 ```
 
-For a source checkout with the bundled dependencies already available, commands can instead use `PYTHONPATH=src python3.11 -m relive`.
+For a source checkout with the bundled dependencies already available, commands can instead use `PYTHONPATH=src python -m relive`.
 
 ## Supported tasks and runtime isolation
 
@@ -38,14 +38,14 @@ The bundled fixture is clearly synthetic and has no medical claim. It includes o
 
 ```bash
 cd relive
-PYTHONPATH=src python3.11 -m relive run \
+PYTHONPATH=src python -m relive run \
   --config configs/mock_smoke.yaml \
   --runtime examples/synthetic_runtime.jsonl \
   --output-dir runs/mock_smoke \
   --max-samples 2
 
-PYTHONPATH=src python3.11 -m relive audit --run-dir runs/mock_smoke
-PYTHONPATH=src python3.11 -m relive evaluate --run-dir runs/mock_smoke
+PYTHONPATH=src python -m relive audit --run-dir runs/mock_smoke
+PYTHONPATH=src python -m relive evaluate --run-dir runs/mock_smoke
 ```
 
 The default `smoke` phase permits at most five samples. An explicit `--phase preflight` permits at most ten engineering samples. There is no full benchmark command.
@@ -68,7 +68,7 @@ CUDA devices. It does not load a processor, model, or weight file.
 
 ```bash
 cd /home/huihui/codes/MedVid_understanding/relive
-PYTHONPATH=src python3.11 -m relive inspect-local-hf \
+PYTHONPATH=src python -m relive inspect-local-hf \
   --model-path /mnt/hdd3/huihui/models/Qwen3.5-9B \
   --output /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preflight/qwen35_metadata.json
 ```
@@ -77,7 +77,7 @@ After reviewing the static report, an explicit processor-only probe can confirm
 the loaded processor class and template hash without loading model weights:
 
 ```bash
-PYTHONPATH=src python3.11 -m relive inspect-local-hf \
+PYTHONPATH=src python -m relive inspect-local-hf \
   --model-path /mnt/hdd3/huihui/models/Qwen3.5-9B \
   --probe-processor \
   --output /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/preflight/qwen35_processor.json
@@ -113,7 +113,7 @@ a public selector index, and a separate GT-isolation audit. It writes no runtime
 and makes no model call.
 
 ```bash
-PYTHONPATH=src python3.11 -m relive prepare-medvidu \
+PYTHONPATH=src python -m relive prepare-medvidu \
   --source-json /home/huihui/codes/MedVid_understanding/data_json/init_datas/medvidu_eccv2026_trainval.json \
   --frame-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata \
   --source-prefix /root/data \
@@ -141,14 +141,14 @@ smoke, not an official MedVidU QA result. Once a claim manifest exists, prepare
 one runtime sample, then run one real smoke:
 
 ```bash
-PYTHONPATH=src python3.11 -m relive prepare-medvidu \
+PYTHONPATH=src python -m relive prepare-medvidu \
   --source-json /home/huihui/codes/MedVid_understanding/data_json/init_datas/medvidu_eccv2026_trainval.json \
   --frame-root /mnt/hdd3/huihui/hh_datas/MedVidU/valdata \
   --output-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/runtime \
   --adapter user_claim_verification_v1 --max-samples 1 \
   --public-claim-manifest /absolute/path/public_claims.jsonl
 
-PYTHONPATH=src python3.11 -m relive run \
+PYTHONPATH=src python -m relive run \
   --config /absolute/path/local_hf.yaml \
   --runtime /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/runtime/medvidu_user_claim_verification.runtime.jsonl \
   --output-dir /mnt/hdd3/huihui/MedVid_understanding/relive_output/real/smoke_1 \
@@ -180,14 +180,14 @@ Every inference attempt is immutable and content-addressed. Cache identity inclu
 A new output directory can reuse a cache directory when only certificate policy changes: raw inference remains immutable and certificates are recalculated.
 
 ```bash
-PYTHONPATH=src python3.11 -m relive run --config my_policy.yaml \
+PYTHONPATH=src python -m relive run --config my_policy.yaml \
   --runtime runtime.jsonl --output-dir runs/policy_b --cache-dir runs/shared_cache
 ```
 
 Only `relive evaluate` may open a ground-truth file:
 
 ```bash
-PYTHONPATH=src python3.11 -m relive evaluate \
+PYTHONPATH=src python -m relive evaluate \
   --run-dir runs/policy_b --ground-truth held_out_gt.jsonl --output evaluation.json
 ```
 
