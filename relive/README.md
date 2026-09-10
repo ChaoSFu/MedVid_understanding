@@ -169,6 +169,26 @@ cache key. It uses `eval()` and `torch.inference_mode()` and never updates
 parameters. In-process `generate` cannot be safely killed by the configured
 timeout, so that limitation is recorded in the fingerprint rather than hidden.
 
+## Calibration-only intervention visual sweep
+
+`scripts/calibration_intervention_sweep.py` is a no-model diagnostic for a
+previously frozen, human-authored fixed-ROI calibration manifest. It creates
+contact sheets for the existing Gaussian intervention at several radii and two
+opaque diagnostic operators: ROI mean fill and neutral-gray fill. The tool
+reads only the frozen manifest and its declared public frames; it does not load
+model weights, open an inference cache, create a runtime, or alter the core
+verifier, certificate rules, prompts, thresholds, or benchmark artifacts.
+
+Use the contact sheets only to choose an operator/setting before a *new*
+manifest is frozen. A setting must never be selected from Qwen verdicts.
+
+```bash
+PYTHONPATH=src python scripts/calibration_intervention_sweep.py \
+  --manifest /path/to/calibration_manifest.frozen.json \
+  --output-dir /path/to/calibration/intervention_sweep \
+  --blur-radii 4,8,16,32
+```
+
 ## MedVidU public-runtime preparation
 
 `prepare-medvidu` does not use the original assistant turn, `struc_info`,
