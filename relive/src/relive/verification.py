@@ -8,7 +8,12 @@ from .types import ExecutionStatus, SemanticStatus, VerificationResult
 
 
 def strict_json(raw: str) -> Any:
-    """Reject non-JSON constants and duplicate keys as ambiguous model output."""
+    """Parse direct JSON or one complete, exact Markdown JSON fence.
+
+    A completed `````json`` wrapper is a common rendering convention for local
+    chat models. It is accepted only when it encloses the entire response;
+    prose, partial fences, duplicate keys, and non-finite values remain errors.
+    """
     def pairs(items):
         result = {}
         for key, value in items:
@@ -22,14 +27,20 @@ def strict_json(raw: str) -> Any:
 
     if not isinstance(raw, str):
         raise ValueError("RESPONSE_MUST_BE_TEXT")
-    return json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+    payload = raw.strip()
+    if payload.startswith("```"):
+        opening, separator, remainder = payload.partition("\n")
+        if opening not in {"```", "```json"} or not separator or not remainder.endswith("\n```"):
+            raise ValueError("INCOMPLETE_OR_UNSUPPORTED_JSON_FENCE")
+        payload = remainder[:-4].strip()
+    return json.loads(payload, object_pairs_hook=pairs, parse_constant=constant)
 
 
 def execution_failure(
     status: ExecutionStatus,
     reason: str,
     raw_response_ref: str | None = None,
-    prompt_version: str = "relive-semantic-v1",
+    prompt_version: str = "relive-semantic-v2",
     input_references: dict[str, Any] | None = None,
 ) -> VerificationResult:
     if status == ExecutionStatus.OK:
@@ -41,7 +52,7 @@ def execution_failure(
 def parse_verification(
     raw: str,
     raw_response_ref: str | None = None,
-    prompt_version: str = "relive-semantic-v1",
+    prompt_version: str = "relive-semantic-v2",
     input_references: dict[str, Any] | None = None,
 ) -> VerificationResult:
     references = dict(input_references or {})

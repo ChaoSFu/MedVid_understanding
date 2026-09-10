@@ -7,7 +7,12 @@ from importlib.resources import files
 
 from relive.types import Claim, ContrastGroup, ExclusivityStatus, EvidenceCandidate
 
-PROMPT_VERSIONS = {name: f"relive-{name}-v1" for name in ("semantic", "claims", "contrasts", "spatial")}
+PROMPT_VERSIONS = {
+    "semantic": "relive-semantic-v2",
+    "claims": "relive-claims-v1",
+    "contrasts": "relive-contrasts-v1",
+    "spatial": "relive-spatial-v1",
+}
 
 
 def stable_id(prefix: str, value) -> str:

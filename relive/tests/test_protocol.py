@@ -80,6 +80,13 @@ class VerificationParserTests(unittest.TestCase):
             self.assertEqual(result.execution_status, ExecutionStatus.PARSE_ERROR)
         self.assertEqual(inputs, {"frame_ids": ["f0", "f1"]})
 
+    def test_complete_json_markdown_fence_is_accepted_but_partial_fence_is_not(self):
+        complete = parse_verification("```json\n{\"status\":\"SUPPORTED\"}\n```")
+        self.assertEqual(complete.execution_status, ExecutionStatus.OK)
+        self.assertEqual(complete.semantic_status, SemanticStatus.SUPPORTED)
+        partial = parse_verification("```json\n{\"status\":\"SUPPORTED\"}")
+        self.assertEqual(partial.execution_status, ExecutionStatus.PARSE_ERROR)
+
     def test_explicit_technical_failures_do_not_imply_contradiction(self):
         for status in (ExecutionStatus.INFERENCE_ERROR, ExecutionStatus.PARSE_ERROR, ExecutionStatus.INVALID_INPUT):
             result = execution_failure(status, "synthetic transport/parse failure")

@@ -95,10 +95,13 @@ class SampleRunner:
                                                    "raw_response_ref": prior.raw_response_ref,
                                                    "reason": "SAME_INPUT_REUSED_WITHOUT_NEW_INFERENCE"})
                 return prior
-        # The verifier receives only claim, image IDs and trusted timing. It does
-        # not receive proposer rationale, old verdicts or intervention labels.
-        data = {"frame_ids": frame_ids, "timing": timing_summary(frames)}
-        if sample.metadata.get("query_timestamps"):
+        # The verifier receives only the claim and images. Its bounded v2 output
+        # cannot cite frame IDs: the candidate/frame binding is retained in
+        # `references` below rather than inviting a model to echo long IDs.
+        # Other proposal stages retain the IDs and any trusted timing in prompt
+        # data because their schemas may use them.
+        data = {} if stage == "semantic" else {"frame_ids": frame_ids, "timing": timing_summary(frames)}
+        if stage != "semantic" and sample.metadata.get("query_timestamps"):
             # These are an explicitly whitelisted public task query, not a hidden
             # annotated action span. Their timebase is never inferred here.
             data["public_query_timestamps"] = list(sample.metadata["query_timestamps"])

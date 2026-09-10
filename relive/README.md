@@ -123,6 +123,13 @@ the same cache directory is retained. Its `revision` label is derived from the
 checkpoint metadata hash because no upstream revision was reported by the local
 directory.
 
+The semantic verifier uses `relive-semantic-v2`: it asks only for a compact
+three-state `status` object. Candidate and frame identities remain in the
+runner-owned evidence provenance, rather than being copied into the model
+completion and risking a truncated JSON response. A complete ` ```json ` fence
+is normalized before strict JSON validation; prose and incomplete fences remain
+technical parse failures.
+
 Copy [`configs/local_hf.example.yaml`](configs/local_hf.example.yaml) outside
 version control and fill every inspected value exactly. `model_class` must be a
 literal entry in `config.json`'s `architectures`; `processor_class`, template
