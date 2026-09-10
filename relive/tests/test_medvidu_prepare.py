@@ -84,6 +84,24 @@ class MedVidUPreparationTests(unittest.TestCase):
         self.assertIn("Temporal action localization", report["qa_types"]["tal"]["reason"])
         self.assertNotIn("SECRET_ASSISTANT_ANSWER", json.dumps(report))
 
+    def test_all_declared_native_task_types_remain_adapterless(self):
+        native_types = (
+            "tal", "stg", "next_action", "region_caption_gemini",
+            "dense_captioning_gpt", "cvs_assessment", "skill_assessment",
+            "video_summary_gemini",
+        )
+        rows = [self.row(f"native-{index}", "/root/data/NurViD/a.png", "/root/data/NurViD/b.jpg")
+                for index, _ in enumerate(native_types)]
+        for row, qa_type in zip(rows, native_types):
+            row["qa_type"] = qa_type
+        source = self.root / "native-types.json"
+        source.write_text(json.dumps(rows), encoding="utf-8")
+        records, source_hash = load_public_records(source)
+        report = medvidu_schema_report(records, source_hash)
+        self.assertEqual(set(report["qa_types"]), set(native_types))
+        self.assertTrue(all(details["runtime_status"] == "UNSUPPORTED_NO_EXPLICIT_ADAPTER"
+                            for details in report["qa_types"].values()))
+
     def test_report_only_audits_public_paths_without_generating_runtime(self):
         output = self.root / "real" / "preparation"
         result = prepare_medvidu(self.raw, self.frame_root, output, path_audit_scope="all", max_samples=1)
@@ -130,6 +148,7 @@ class MedVidUPreparationTests(unittest.TestCase):
         self.assertEqual(sample.frames[1].path, sample.frames[2].path)
         self.assertTrue(all(frame.timestamp is None for frame in sample.frames))
         self.assertEqual(sample.metadata["runtime_adapter"], PUBLIC_ADAPTER)
+        self.assertEqual(sample.metadata["source_qa_type"], "tal")
         combined = "".join(Path(path).read_text() for path in (result["runtime"], result["provenance_sidecar"], result["gt_isolation_audit"]))
         for forbidden in ("SECRET_ASSISTANT_ANSWER", "SECRET_STRUCTURE", "SECRET_METADATA"):
             self.assertNotIn(forbidden, combined)

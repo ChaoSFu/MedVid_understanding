@@ -12,6 +12,7 @@ class PublicRuntimeAdapter(Protocol):
 
 
 def task_support(task: str) -> dict:
+    """Report generic core-runner capability, not dataset-adapter compatibility."""
     return {"task": task, "status": "SUPPORTED" if task in SUPPORTED_TASKS else "UNSUPPORTED",
             "reason": None if task in SUPPORTED_TASKS else "ReliVE-v1 implements claim_verification and action_qa only."}
 

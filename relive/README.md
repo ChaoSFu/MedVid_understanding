@@ -16,7 +16,27 @@ For a source checkout with the bundled dependencies already available, commands 
 
 ## Supported tasks and runtime isolation
 
-Only `claim_verification` and `action_qa` are implemented. `claim_verification` requires a runtime `target_claim`; `action_qa` requires nonempty runtime `required_claims` before any model call. Requirements are frozen for the run: ReliVE never promotes a model-verified proposal into a question requirement after seeing the result. `required_for_question` is not an input field, so a user-supplied `false` cannot be silently rewritten to `true`. `DVC`, `CVS`, `NAP`, `SA`, `VS`, and `stg` return `UNSUPPORTED`; they are never silently converted to `action_qa`. The STG adapter only records the inspected schema boundary and does not load official STG data or hidden labels.
+`claim_verification` is the current ReliVE-v1 core task for any atomic claim
+that can be visually verified. It requires a runtime `target_claim`.
+`action_qa` remains a generic, experimental internal protocol: it requires
+nonempty, pre-inference `required_claims`, which stay frozen for the run. It is
+not a MedVidU native task, has no MedVidU adapter, and is not used for the
+current MedVidU experiments. `required_for_question` is not an input field, so
+a user-supplied `false` cannot be silently rewritten to `true`.
+
+| Task/protocol | Core runner | MedVidU adapter | Current role |
+| --- | --- | --- | --- |
+| `claim_verification` | supported | `user_claim_verification_v1` | GT-isolated custom MedVidU smoke; not an official MedVidU QA result |
+| `action_qa` | supported, experimental | none | internal protocol testing with frozen `required_claims` |
+| native MedVidU `qa_type` values | unsupported | none | future task-specific input/output schemas and evaluators |
+
+`SUPPORTED_TASKS` names generic core-runner capability only; it does not assert
+dataset-adapter compatibility. MedVidU retains its native `qa_type` in
+`source_qa_type`. TAL, STG, next-action, region captioning, dense captioning,
+CVS, skill assessment, and video summary are reported as
+`UNSUPPORTED_NO_EXPLICIT_ADAPTER`; none is converted to `action_qa`. The STG
+adapter only records the inspected schema boundary and does not load official
+data or hidden labels.
 
 Runtime input is JSONL with a mandatory hash-bound sidecar named `<runtime>.provenance.json`. Its fields are a closed whitelist, so answer, temporal-span, bounding-box, mask, and other annotation fields are rejected before inference. The sidecar records allowed provenance for question, claims, frames, and metadata. It makes the source path auditable; it does not prove that a curator never saw hidden labels.
 
@@ -34,7 +54,10 @@ The matching sidecar has exactly this shape:
 
 ## Mock smoke test
 
-The bundled fixture is clearly synthetic and has no medical claim. It includes one declared-exclusive synthetic contrast fixture so the complete protocol can be exercised deterministically.
+The bundled fixture is clearly synthetic and has no medical claim. Its action
+wording is a deterministic protocol-test example, not a claim that ReliVE is
+limited to action questions. It includes one declared-exclusive synthetic
+contrast fixture so the complete protocol can be exercised deterministically.
 
 ```bash
 cd relive
@@ -170,7 +193,8 @@ The native MedVidU question types are retained as unsupported in that report:
 TAL needs time spans; STG and region-caption tasks need boxes; next-action is a
 future prediction; CVS and skill assessment need score vectors; dense captions
 need multiple time-bounded events; summaries need multiple claims. None is
-silently mapped to `action_qa`.
+silently mapped to `action_qa`. Each future native task needs its own
+input/output schema and evaluator; generic core `action_qa` is not a shortcut.
 
 Use `medvidu_public_question_selector.jsonl`, not the source JSON, when
 choosing a record for a user-authored visible claim. Its rows contain only
@@ -181,8 +205,10 @@ masks, or timestamp labels. A claim-verification smoke remains a custom public
 claim protocol, never an official MedVidU QA result.
 
 The only runtime-producing MedVidU adapter is
-`user_claim_verification_v1`. It requires a separate user-authored, public
-claim JSONL. Each line binds an inspected public record to a user claim:
+`user_claim_verification_v1`. It emits `task: claim_verification`, requires a
+separate user-authored public claim JSONL, and is a custom GT-isolated smoke,
+not an official MedVidU QA result. Each line binds an inspected public record
+to a user claim:
 
 ```json
 {"source_record_index":17,"public_record_sha256":"<from medvidu_public_record_index.jsonl>","target_claim":{"claim_id":"claim-17","text":"<user-authored visible claim>"}}

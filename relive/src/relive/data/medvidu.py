@@ -4,8 +4,9 @@ The original MedVidU file contains assistant turns and structured annotations.
 This module intentionally never imports the historical dataset loaders and
 never accesses values from assistant turns, ``struc_info``, ``RC_info``, source
 ``metadata``, or annotation-shaped fields.  Native MedVidU task types are
-reported, not silently converted to ReliVE ``action_qa``.  A runtime can only
-be produced through an explicit user-authored public-claim manifest.
+reported, not silently converted to ReliVE ``action_qa``.  The only
+runtime-producing adapter emits ``claim_verification`` through an explicit
+user-authored public-claim manifest; generic ``action_qa`` has no MedVidU path.
 """
 from __future__ import annotations
 

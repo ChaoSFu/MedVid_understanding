@@ -22,6 +22,8 @@ FIELD_SOURCES = {
     "frames": "public_frames",
     "metadata": "public_metadata",
 }
+# Generic core-runner capability only.  This is intentionally independent of
+# dataset adapters: inclusion here never asserts MedVidU native-task support.
 SUPPORTED_TASKS = frozenset({"claim_verification", "action_qa"})
 _SAMPLE_FIELDS = {"sample_id", "task", "question", "frames", "video_path", "target_claim", "required_claims", "metadata"}
 _FRAME_FIELDS = {"frame_id", "path", "order", "timestamp", "timestamp_source", "source_reference"}
