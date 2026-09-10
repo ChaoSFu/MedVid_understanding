@@ -1,7 +1,7 @@
 {
   "schema_version": "relive-runtime-v1",
   "source_kind": "synthetic",
-  "runtime_sha256": "0f128ede95d91501c35102f53d4fce9001f7cb9bcde00223be84643eb815ab8f",
+  "runtime_sha256": "c3c9711ecea8fd5e4af778f5b887be87b3c8b2e790226bd2c975a18df3c0a683",
   "field_sources": {
     "question": "public_question",
     "target_claim": "user_query",

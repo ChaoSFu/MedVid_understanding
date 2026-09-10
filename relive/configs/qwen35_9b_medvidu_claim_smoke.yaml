@@ -47,10 +47,10 @@ spatial:
   control_count: 1
   control_aggregation: all
   control_version: relive-matched-corners-edges-v1
-  alternate_regions: [[0.1, 0.1, 0.7, 0.7]]
+  alternate_regions: []
   max_area_warning: 0.8
 policy:
-  name: semantic_contrast_spatial
+  name: semantic_spatial
   version: relive-v1-policy-1
   strict_alternatives: true
 adaptation:

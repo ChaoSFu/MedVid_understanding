@@ -53,6 +53,16 @@ class RuntimeSchemaTests(unittest.TestCase):
         self.assertFalse(timing_summary(sample.frames)["seconds_available"])
         self.assertIn("No second-level", timing_summary(sample.frames)["limitation"])
 
+    def test_action_qa_requires_frozen_requirements_and_claim_flag_is_not_accepted(self):
+        with self.assertRaisesRegex(RuntimeInputError, "action_qa requires nonempty required_claims"):
+            load_runtime(self.runtime(self.row("action_qa")))
+        row = self.row("action_qa")
+        row["required_claims"] = [{"claim_id": "required", "text": "A visible action occurs."}]
+        self.assertEqual(load_runtime(self.runtime(row))[0].required_claims[0].claim_id, "required")
+        row["required_claims"][0]["required_for_question"] = False
+        with self.assertRaisesRegex(RuntimeInputError, "non-runtime fields"):
+            load_runtime(self.runtime(row))
+
     def test_gt_and_unknown_fields_cannot_enter_runtime(self):
         for field in ("answer", "bbox", "mask", "ground_truth", "struc_info"):
             row = self.row()

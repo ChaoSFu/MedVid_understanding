@@ -66,7 +66,7 @@ def build_certificate(candidate: EvidenceCandidate, claim: Claim, original: Veri
     binding_conflict = not _bound_to_pair(to_dict(original), candidate, claim.claim_id)
     if binding_conflict:
         reasons.append("ORIGINAL_REFERENCE_BINDING_MISMATCH")
-    if required["spatial"] and spatial_check is not None:
+    if required["spatial"] and spatial_check is not None and "references" in spatial_check:
         references = spatial_check.get("references", {})
         references = references if isinstance(references, dict) else {}
         spatial_results = [references.get(name) for name in ("original", "keep", "drop")]

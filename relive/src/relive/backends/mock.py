@@ -26,6 +26,10 @@ class MockBackend(Backend):
                     # Fixture diagnostics are codes, never arbitrary secret-bearing text.
                     raise BackendError("MOCK_FIXTURE_ERROR", retryable=rule.get("retryable", False))
                 response = rule["response"]
+                if request["stage"] in {"semantic", "verify", "verification"} and isinstance(response, dict):
+                    response = dict(response)
+                    if response.get("status") in {"SUPPORTED", "CONTRADICTED"} and "frame_references" not in response:
+                        response["frame_references"] = list(request.get("frame_ids", []))[:1]
                 return response if isinstance(response, str) else json.dumps(response, ensure_ascii=False, sort_keys=True)
         stage = request["stage"]
         if stage in {"semantic", "verify", "verification"}:

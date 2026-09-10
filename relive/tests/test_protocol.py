@@ -14,7 +14,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from relive.certificate import POLICY_VERSION, build_certificate
 from relive.contrasts import evaluate_contrast
+from relive.claim_aggregation import aggregate_claim
+from relive.claims import parse_claims, parse_contrasts
 from relive.coverage import assess_coverage
+from relive.adaptation import choose_action
 from relive.interventions import apply_intervention, check_spatial, generate_control_regions
 from relive.reasoning import strict_answer
 from relive.spatial import normalized_to_pixel_bbox, parse_proposal, validate_region
@@ -30,9 +33,22 @@ ALTERNATIVE = Claim("claim-b", "The instrument is separated from the tissue.")
 
 
 def verdict(status="SUPPORTED", claim_id=CLAIM.claim_id, candidate_id=CANDIDATE.candidate_id):
-    return parse_verification(json.dumps({"status": status}), "raw-synthetic",
+    payload = {"status": status}
+    if status != "INSUFFICIENT":
+        payload["frame_references"] = ["f0"]
+    return parse_verification(json.dumps(payload), "raw-synthetic",
                               input_references={"candidate_id": candidate_id, "claim_id": claim_id,
                                                 "frame_ids": list(CANDIDATE.frame_ids)})
+
+
+def candidate_verdict(status, candidate, claim=CLAIM):
+    payload = {"status": status}
+    if status != "INSUFFICIENT":
+        payload["frame_references"] = [candidate.frame_ids[0]]
+    return parse_verification(json.dumps(payload), "raw-synthetic",
+                              input_references={"candidate_id": candidate.candidate_id,
+                                                "claim_id": claim.claim_id,
+                                                "frame_ids": list(candidate.frame_ids)})
 
 
 def group(exclusivity=ExclusivityStatus.DECLARED_EXCLUSIVE):
@@ -60,6 +76,7 @@ class VerificationParserTests(unittest.TestCase):
                    '{"status":"NO"}', '{"status":"SUPPORTED","reasoning":"invented"}',
                    '{"status":"SUPPORTED","observation":42}',
                    '{"status":"SUPPORTED","frame_references":[1]}',
+                   '{"status":"SUPPORTED"}', '{"status":"CONTRADICTED","frame_references":[]}',
                    '{"status":"SUPPORTED","status":"CONTRADICTED"}',
                    '{"status":"SUPPORTED","observation":NaN}']
         for raw in invalid:
@@ -81,7 +98,8 @@ class VerificationParserTests(unittest.TestCase):
         self.assertEqual(inputs, {"frame_ids": ["f0", "f1"]})
 
     def test_complete_json_markdown_fence_is_accepted_but_partial_fence_is_not(self):
-        complete = parse_verification("```json\n{\"status\":\"SUPPORTED\"}\n```")
+        complete = parse_verification("```json\n{\"status\":\"SUPPORTED\",\"frame_references\":[\"f0\"]}\n```",
+                                      input_references={"frame_ids": ["f0"]})
         self.assertEqual(complete.execution_status, ExecutionStatus.OK)
         self.assertEqual(complete.semantic_status, SemanticStatus.SUPPORTED)
         partial = parse_verification("```json\n{\"status\":\"SUPPORTED\"}")
@@ -103,6 +121,16 @@ class VerificationParserTests(unittest.TestCase):
         for raw in ('{"outer":{"x":1,"x":2}}', '{"x":Infinity}', '{"x":-Infinity}'):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 strict_json(raw)
+
+    def test_claim_and_contrast_parsers_share_closed_json_rules(self):
+        for raw in ('{"claims":[{"text":"x","text":"y"}]}',
+                    '{"claims":[{"text":NaN}]}',
+                    '{"alternatives":[],"comparison_dimension":"d","extra":true}'):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                if "claims" in raw:
+                    parse_claims(raw, "sample", CANDIDATE, 2)
+                else:
+                    parse_contrasts(raw, CLAIM, CANDIDATE, 2)
 
 
 class ContrastTests(unittest.TestCase):
@@ -253,6 +281,16 @@ class InterventionTests(unittest.TestCase):
                 apply_intervention(image, (0, 0, 1, 1), "KEEP_TARGET", radius)
         with self.assertRaises(ValueError):
             apply_intervention(image, (0, 0, 1, 1), "SHUFFLE", 2)
+
+    def test_uniform_blur_is_a_structured_no_effect_not_an_exception(self):
+        image = Image.new("RGB", (12, 12), "white")
+        for variant in ("KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL"):
+            with self.subTest(variant=variant):
+                output, audit = apply_intervention(image, (0.2, 0.2, 0.8, 0.8), variant, 2.0)
+                self.assertEqual(output.tobytes(), image.tobytes())
+                self.assertFalse(audit["pixel_audit_pass"])
+                self.assertEqual(audit["audit_status"], "INTERVENTION_NO_EFFECT")
+                self.assertFalse(audit["expected_region_changed"])
 
     def test_controls_are_deterministic_matched_and_disjoint(self):
         region = (0.4, 0.4, 0.6, 0.6)
@@ -418,6 +456,51 @@ class CertificateCoverageTests(unittest.TestCase):
         self.assertEqual(answer["certificate_ids"], [certificate.certificate_id])
         self.assertEqual(answer["input_references"][0]["candidate_id"], CANDIDATE.candidate_id)
         self.assertFalse(answer["fallback_used"])
+
+
+class ClaimAggregationTests(unittest.TestCase):
+    SECOND = EvidenceCandidate("candidate-b", "sample-a", ("f2", "f3"), (None, None), 1, "uniform")
+
+    def certificate(self, candidate, status, claim=CLAIM):
+        return build_certificate(candidate, claim, candidate_verdict(status, candidate, claim), "semantic_only")
+
+    def test_rejected_candidate_then_verified_candidate_is_supported(self):
+        certificates = [self.certificate(CANDIDATE, "CONTRADICTED"), self.certificate(self.SECOND, "SUPPORTED")]
+        result = aggregate_claim(CLAIM, certificates)
+        self.assertEqual(result["status"], "SUPPORTED")
+        self.assertEqual(assess_coverage([CLAIM], certificates).status, "COMPLETE")
+
+    def test_rejected_candidate_then_insufficient_candidate_abstains(self):
+        certificates = [self.certificate(CANDIDATE, "CONTRADICTED"), self.certificate(self.SECOND, "INSUFFICIENT")]
+        result = aggregate_claim(CLAIM, certificates)
+        self.assertEqual(result["status"], "INSUFFICIENT")
+        coverage = assess_coverage([CLAIM], certificates)
+        sample = RuntimeSample("sample-a", "claim_verification", "Is it visible?", (), target_claim=CLAIM)
+        self.assertEqual(strict_answer(sample, [CLAIM], certificates, coverage)["judgment"], "UNCERTAIN")
+
+    def test_global_claim_rejection_is_not_global_contradiction(self):
+        result = aggregate_claim(CLAIM, [self.certificate(CANDIDATE, "CONTRADICTED")])
+        self.assertEqual(result["status"], "INSUFFICIENT")
+
+    def test_explicit_exact_scope_can_be_contradicted(self):
+        scoped = Claim("scoped", "The action occurs in these frames.", time_scope={"frame_ids": ["f0", "f1"]})
+        certificate = self.certificate(CANDIDATE, "CONTRADICTED", scoped)
+        self.assertEqual(aggregate_claim(scoped, [certificate])["status"], "CONTRADICTED")
+
+    def test_same_scope_verified_and_rejected_is_conflict(self):
+        certificates = [self.certificate(CANDIDATE, "SUPPORTED"), self.certificate(CANDIDATE, "CONTRADICTED")]
+        self.assertEqual(aggregate_claim(CLAIM, certificates)["status"], "CONFLICT")
+        self.assertEqual(assess_coverage([CLAIM], certificates).status, "INCOMPLETE")
+
+    def test_missing_real_regrounding_is_auditable_stop_not_fixed_box(self):
+        spatial = {"pass": False, "status": "KEEP_SUPPORT_LOST", "reasons": ["KEEP_SUPPORT_LOST"],
+                   "require_controls": True}
+        certificate = build_certificate(CANDIDATE, CLAIM, verdict(), "semantic_spatial", spatial)
+        self.assertEqual(certificate.final_status, FinalStatus.UNCERTAIN)
+        self.assertEqual(choose_action(certificate, enabled=True,
+                                       allowed=["TRY_ALTERNATE_SUPPORT_REGION", "NEXT_CANDIDATE"],
+                                       can_expand=False, can_alternate=False, can_next=True),
+                         ("STOP", "RE_GROUNDING_NOT_IMPLEMENTED"))
 
 
 if __name__ == "__main__":

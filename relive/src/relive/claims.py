@@ -5,10 +5,11 @@ import hashlib
 import json
 from importlib.resources import files
 
+from relive.json_protocol import strict_json
 from relive.types import Claim, ContrastGroup, ExclusivityStatus, EvidenceCandidate
 
 PROMPT_VERSIONS = {
-    "semantic": "relive-semantic-v2",
+    "semantic": "relive-semantic-v3",
     "claims": "relive-claims-v1",
     "contrasts": "relive-contrasts-v1",
     "spatial": "relive-spatial-v1",
@@ -34,7 +35,7 @@ def claim_scope(candidate: EvidenceCandidate) -> dict:
 
 
 def parse_claims(raw: str, sample_id: str, candidate: EvidenceCandidate, maximum: int) -> tuple[Claim, ...]:
-    obj = json.loads(raw)
+    obj = strict_json(raw)
     if not isinstance(obj, dict) or set(obj) != {"claims"} or not isinstance(obj["claims"], list):
         raise ValueError("Expected exactly a claims array")
     if len(obj["claims"]) > maximum:
@@ -77,7 +78,7 @@ def make_contrast(target: Claim, alternatives: list[str], candidate: EvidenceCan
 
 
 def parse_contrasts(raw: str, target: Claim, candidate: EvidenceCandidate, maximum: int):
-    obj = json.loads(raw)
+    obj = strict_json(raw)
     if not isinstance(obj, dict) or set(obj) != {"alternatives", "comparison_dimension"}:
         raise ValueError("Expected alternatives and comparison_dimension only")
     rows = obj["alternatives"]

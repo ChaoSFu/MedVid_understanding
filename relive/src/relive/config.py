@@ -340,6 +340,13 @@ def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("alternate_regions rectangles must have positive area")
     if result["policy"]["name"] not in {"acquisition_only", "semantic_only", "semantic_keep_drop", "semantic_spatial", "semantic_contrast_spatial"}:
         raise ValueError("Unsupported certificate policy")
+    if (result["backend"]["kind"] != "mock"
+            and result["policy"]["name"] == "semantic_contrast_spatial"):
+        raise ValueError(
+            "semantic_contrast_spatial on a real backend requires a task-declared, "
+            "public-option, or ontology-declared exclusivity source with provenance; "
+            "ReliVE-v1 has no such real-runtime adapter. Use semantic_spatial."
+        )
     if result["policy"]["version"] != "relive-v1-policy-1":
         raise ValueError("Only policy version relive-v1-policy-1 is implemented")
     for section, key in (("adaptation", "enabled"), ("policy", "strict_alternatives")):

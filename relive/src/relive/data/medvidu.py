@@ -33,7 +33,7 @@ FORBIDDEN_SOURCE_CATEGORIES = (
     "conversations[from!=human].value", "struc_info", "RC_info", "is_RC", "train", "metadata",
     "answer", "ground_truth", "bbox", "mask", "region", "temporal_span", "timestamp_gt",
 )
-_CLAIM_FIELDS = {"claim_id", "text", "entity", "action", "target", "required_for_question"}
+_CLAIM_FIELDS = {"claim_id", "text", "entity", "action", "target"}
 _MANIFEST_FIELDS = {"source_record_index", "public_record_sha256", "target_claim"}
 
 TASK_COMPATIBILITY = {
@@ -330,8 +330,6 @@ def _manifest_rows(path: str | Path) -> list[dict[str, Any]]:
         for key in ("entity", "action", "target"):
             if key in claim and (not isinstance(claim[key], str) or not claim[key].strip()):
                 raise MedVidUPreparationError(f"manifest target_claim.{key} must be nonempty text")
-        if "required_for_question" in claim and type(claim["required_for_question"]) is not bool:
-            raise MedVidUPreparationError("manifest target_claim.required_for_question must be boolean")
         rows.append({"source_record_index": row["source_record_index"], "public_record_sha256": row["public_record_sha256"],
                      "target_claim": dict(claim)})
     if not rows or len({row["source_record_index"] for row in rows}) != len(rows):

@@ -7,7 +7,7 @@ import math
 from typing import Any, Sequence
 
 from .types import Claim, EvidenceCandidate, ExecutionStatus, SpatialProposal
-from .verification import strict_json
+from .json_protocol import strict_json
 
 COORDINATE_SYSTEM = "normalized_0_1_xyxy"
 COORDINATE_MAPPING_VERSION = "relive-floor-start-ceil-end-v1"

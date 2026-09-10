@@ -138,6 +138,7 @@ class CoverageResult:
     missing_claims: tuple[str, ...]
     unresolved_relations: tuple[str, ...]
     status: str
+    claim_aggregations: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

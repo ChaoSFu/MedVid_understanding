@@ -95,12 +95,10 @@ class SampleRunner:
                                                    "raw_response_ref": prior.raw_response_ref,
                                                    "reason": "SAME_INPUT_REUSED_WITHOUT_NEW_INFERENCE"})
                 return prior
-        # The verifier receives only the claim and images. Its bounded v2 output
-        # cannot cite frame IDs: the candidate/frame binding is retained in
-        # `references` below rather than inviting a model to echo long IDs.
-        # Other proposal stages retain the IDs and any trusted timing in prompt
-        # data because their schemas may use them.
-        data = {} if stage == "semantic" else {"frame_ids": frame_ids, "timing": timing_summary(frames)}
+        # Semantic verdicts must bind SUPPORT/CONTRADICTION to a supplied frame.
+        # The v3 prompt asks for exactly one ID, which is bounded while retaining
+        # a model-visible evidence reference rather than only runner provenance.
+        data = {"frame_ids": frame_ids, "timing": timing_summary(frames)}
         if stage != "semantic" and sample.metadata.get("query_timestamps"):
             # These are an explicitly whitelisted public task query, not a hidden
             # annotated action span. Their timebase is never inferred here.
@@ -220,6 +218,12 @@ class SampleRunner:
                 proposal = replace(proposal, parser_status=ExecutionStatus(response["execution_status"]),
                                    provenance={**proposal.provenance, "failure_reason": response.get("failure_reason")})
         else:
+            if not self.inference.backend.synthetic:
+                return {"pass": False, "status": "RE_GROUNDING_NOT_IMPLEMENTED",
+                        "reasons": ["RE_GROUNDING_NOT_IMPLEMENTED"],
+                        "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
+                        "proposal_count": len(self.proposals),
+                        "interpretation": "No claim-conditioned spatial re-grounding is implemented for real evidence admission."}
             box = self.cfg["spatial"]["alternate_regions"][proposal_index - 1]
             proposal = parse_proposal(json.dumps({"support_region": box}), candidate, claim)
             proposal = replace(proposal, provenance={**proposal.provenance,
@@ -240,17 +244,45 @@ class SampleRunner:
         if controls_required:
             variants += [("DROP_MATCHED_CONTROL", r, i) for i, r in enumerate(controls["regions"])]
         pixel_refs = []
+        # The original image is audited as a no-op baseline.  It is not sent to
+        # the VLM again because `original` already records that inference.
+        original_audits = []
+        for frame in select_frames(sample, candidate):
+            with Image.open(frame.path) as source:
+                _, audit = apply_intervention(source.convert("RGB"), box, "ORIGINAL",
+                                              self.cfg["spatial"]["blur_radius"])
+            original_audits.append(audit)
+            pixel_refs.append(self.record("pixel_audits", {"sample_id": sample.sample_id,
+                    "candidate_id": candidate.candidate_id, "proposal_id": proposal.proposal_id,
+                    "frame_id": frame.frame_id, "output_path": None, "control_index": None, **audit}))
+        if not all(audit["pixel_audit_pass"] for audit in original_audits):
+            return {"pass": False, "status": "INTERVENTION_PIXEL_AUDIT_FAILED",
+                    "reasons": ["INTERVENTION_PIXEL_AUDIT_FAILED"],
+                    "require_controls": controls_required, "proposal": to_dict(proposal),
+                    "controls": controls, "pixel_audit_refs": pixel_refs,
+                    "interpretation": "Spatial intervention response under this protocol; not a causal proof."}
         for variant, region, control_index in variants:
             paths = []
+            audits = []
             for frame in select_frames(sample, candidate):
                 with Image.open(frame.path) as source:
                     altered, audit = apply_intervention(source.convert("RGB"), region, variant,
                                                         self.cfg["spatial"]["blur_radius"])
                 path = _image_file(self.inference.store.root, altered)
                 paths.append(path)
+                audits.append(audit)
                 pixel_refs.append(self.record("pixel_audits", {"sample_id": sample.sample_id,
                         "candidate_id": candidate.candidate_id, "proposal_id": proposal.proposal_id,
                         "frame_id": frame.frame_id, "output_path": path, "control_index": control_index, **audit}))
+            invariants_ok = all(audit["unchanged_region_pass"] and audit["resolution_preserved"] for audit in audits)
+            any_expected_change = any(audit["expected_region_changed"] for audit in audits)
+            if not invariants_ok or not any_expected_change:
+                status = "INTERVENTION_PIXEL_AUDIT_FAILED" if not invariants_ok else "INTERVENTION_NO_EFFECT"
+                return {"pass": False, "status": status, "reasons": [status],
+                        "require_controls": controls_required, "proposal": to_dict(proposal),
+                        "controls": controls, "pixel_audit_refs": pixel_refs,
+                        "intervention_variant": variant,
+                        "interpretation": "Spatial intervention response under this protocol; not a causal proof."}
             verdict = self.infer(sample, candidate, claim, "semantic", variant, paths, region,
                                  proposal_index, control_index)
             if variant == "DROP_MATCHED_CONTROL":
@@ -295,16 +327,8 @@ class SampleRunner:
         return cert
 
     def coverage_and_answer(self, sample):
-        required = list(sample.required_claims)
-        if sample.target_claim and sample.target_claim.claim_id not in {c.claim_id for c in required}:
-            required.insert(0, sample.target_claim)
+        required = ([sample.target_claim] if sample.task == "claim_verification" else list(sample.required_claims))
         relations = sample.metadata.get("unresolved_relations", [])
-        if not required and sample.task == "action_qa":
-            # Single-action MVP: one verified answer claim can cover the question.
-            # Complex questions must supply an explicit requirement list.
-            verified = {c.claim_id for c in self.certificates if c.final_status == FinalStatus.VERIFIED}
-            chosen = next((c for c in self.claims if c.claim_id in verified), self.claims[0] if self.claims else None)
-            required = [chosen] if chosen else ["NO_CANDIDATE_CLAIM"]
         coverage = assess_coverage(required, self.certificates, relations)
         return coverage, strict_answer(sample, self.claims, self.certificates, coverage)
 
@@ -327,17 +351,11 @@ class SampleRunner:
         current_candidate = current_claim = current_certificate = None
         try:
             if not self.claims:
-                response = self.infer(sample, pool[0], None, "claims")
-                if response["execution_status"] != "OK":
-                    termination = "CLAIM_INFERENCE_ERROR"
-                else:
-                    try:
-                        self.claims = list(parse_claims(response["raw_text"], sample.sample_id, pool[0],
-                                                        self.cfg["claims"]["max_claims"]))
-                    except (ValueError, TypeError):
-                        termination = "CLAIM_PARSE_ERROR"
-                if not self.claims and termination == "CANDIDATES_EXHAUSTED":
-                    termination = "NO_CLAIMS"
+                # Runtime validation requires a target/required claim before a
+                # supported task reaches the runner.  Keep this defensive path
+                # model-free so a malformed direct RuntimeSample cannot turn a
+                # result into a post-hoc requirement.
+                termination = "INVALID_INPUT_NO_FROZEN_REQUIREMENTS"
             self.record("claims", {"sample_id": sample.sample_id, "claims": self.claims})
             for claim_index, claim in enumerate(self.claims):
                 current_claim = claim
@@ -382,10 +400,11 @@ class SampleRunner:
                         break
                     expanded = expand_candidate(sample, candidate, self.cfg["adaptation"]["expand_frames"])
                     can_expand = expanded is not None and (tuple(expanded.frame_ids), claim.claim_id, 0) not in seen_inputs
+                    configured_alternate = (len(self.proposals) < self.cfg["budget"]["max_spatial_proposals"]
+                                             and proposal_index + 1 < 1 + len(self.cfg["spatial"]["alternate_regions"]))
                     action, reason = choose_action(cert, enabled=self.cfg["adaptation"]["enabled"],
                               allowed=self.cfg["adaptation"]["actions"], can_expand=can_expand,
-                              can_alternate=(len(self.proposals) < self.cfg["budget"]["max_spatial_proposals"]
-                                  and proposal_index + 1 < 1 + len(self.cfg["spatial"]["alternate_regions"])),
+                              can_alternate=(self.inference.backend.synthetic and configured_alternate),
                               can_next=pool_index + 1 < len(pool))
                     previous = candidate
                     params = {"round_index": self.rounds, "decision_reason": reason}

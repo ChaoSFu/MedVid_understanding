@@ -17,12 +17,16 @@ def choose_action(certificate: EvidenceCertificate, *, enabled: bool, allowed: l
     if certificate.final_status == FinalStatus.VERIFIED:
         return "STOP", "CLAIM_VERIFIED"
     if certificate.final_status == FinalStatus.REJECTED:
-        return "STOP", "ORIGINAL_CONTRADICTED"
+        if can_next and "NEXT_CANDIDATE" in allowed:
+            return "NEXT_CANDIDATE", "PAIR_REJECTED_TRY_NEXT_CANDIDATE"
+        return "STOP", "CANDIDATES_EXHAUSTED_AFTER_PAIR_REJECTION"
     if not enabled:
         return "STOP", "ADAPTATION_DISABLED"
     reasons = " ".join(certificate.failure_reasons)
-    if "KEEP_SUPPORT_LOST" in reasons and can_alternate and "TRY_ALTERNATE_SUPPORT_REGION" in allowed:
-        return "TRY_ALTERNATE_SUPPORT_REGION", "PRECONFIGURED_REGION"
+    if "KEEP_SUPPORT_LOST" in reasons:
+        if can_alternate and "TRY_ALTERNATE_SUPPORT_REGION" in allowed:
+            return "TRY_ALTERNATE_SUPPORT_REGION", "SYNTHETIC_PRECONFIGURED_REGION"
+        return "STOP", "RE_GROUNDING_NOT_IMPLEMENTED"
     # Neither a non-specific response nor missing controls admits the claim.
     if can_expand and "EXPAND_TEMPORAL_CONTEXT" in allowed:
         return "EXPAND_TEMPORAL_CONTEXT", "FIXED_NEIGHBOR_CONTEXT"

@@ -16,7 +16,7 @@ For a source checkout with the bundled dependencies already available, commands 
 
 ## Supported tasks and runtime isolation
 
-Only `claim_verification` and `action_qa` are implemented. `DVC`, `CVS`, `NAP`, `SA`, `VS`, and `stg` return `UNSUPPORTED`; they are never silently converted to `action_qa`. The STG adapter only records the inspected schema boundary and does not load official STG data or hidden labels.
+Only `claim_verification` and `action_qa` are implemented. `claim_verification` requires a runtime `target_claim`; `action_qa` requires nonempty runtime `required_claims` before any model call. Requirements are frozen for the run: ReliVE never promotes a model-verified proposal into a question requirement after seeing the result. `required_for_question` is not an input field, so a user-supplied `false` cannot be silently rewritten to `true`. `DVC`, `CVS`, `NAP`, `SA`, `VS`, and `stg` return `UNSUPPORTED`; they are never silently converted to `action_qa`. The STG adapter only records the inspected schema boundary and does not load official STG data or hidden labels.
 
 Runtime input is JSONL with a mandatory hash-bound sidecar named `<runtime>.provenance.json`. Its fields are a closed whitelist, so answer, temporal-span, bounding-box, mask, and other annotation fields are rejected before inference. The sidecar records allowed provenance for question, claims, frames, and metadata. It makes the source path auditable; it does not prove that a curator never saw hidden labels.
 
@@ -123,12 +123,14 @@ the same cache directory is retained. Its `revision` label is derived from the
 checkpoint metadata hash because no upstream revision was reported by the local
 directory.
 
-The semantic verifier uses `relive-semantic-v2`: it asks only for a compact
-three-state `status` object. Candidate and frame identities remain in the
-runner-owned evidence provenance, rather than being copied into the model
-completion and risking a truncated JSON response. A complete ` ```json ` fence
-is normalized before strict JSON validation; prose and incomplete fences remain
-technical parse failures.
+The semantic verifier uses `relive-semantic-v3`. `SUPPORTED` and
+`CONTRADICTED` must each cite at least one supplied frame ID; missing or unknown
+references are technical `PARSE_ERROR`, never semantic support or contradiction.
+`INSUFFICIENT` may omit a reference. The prompt asks for exactly one ID to keep
+the local Qwen completion bounded. Semantic, claim, contrast, and spatial
+parsers share closed JSON parsing: duplicate keys, `NaN`/`Infinity`, prose, and
+undeclared fields fail technically. A complete ` ```json ` fence is normalized
+before validation.
 
 Copy [`configs/local_hf.example.yaml`](configs/local_hf.example.yaml) outside
 version control and fill every inspected value exactly. `model_class` must be a
@@ -222,7 +224,29 @@ directory to verify zero new calls on a replay of identical inputs.
 | `semantic_spatial` | Semantic plus KEEP/DROP and all planned matched controls |
 | `semantic_contrast_spatial` | Semantic, declared contrast handling, and matched spatial controls |
 
-The spatial protocol preserves source resolution and emits a pixel audit for `ORIGINAL`, `KEEP_TARGET`, `DROP_TARGET`, and `DROP_MATCHED_CONTROL`. The pure Gaussian-blur/hard-mask operation is extracted from the audited H4 script while leaving its historical implementation untouched. Support regions and target bounding boxes are separate fields. Full-frame regions are retained and marked, not silently discarded.
+`semantic_contrast_spatial` is available only for synthetic declared-exclusive
+fixtures in this release. Model-generated alternatives remain `UNRESOLVED` and
+are diagnostic only: they cannot become a contrast admission check. A real
+backend selecting the full contrast policy fails during configuration unless a
+task-declared, public-option, or ontology-declared exclusivity source with
+provenance is implemented and bound. The reviewed real Qwen smoke configs use
+`semantic_spatial`.
+
+The spatial protocol preserves source resolution and emits a pixel audit for
+`ORIGINAL`, `KEEP_TARGET`, `DROP_TARGET`, and `DROP_MATCHED_CONTROL`. `ORIGINAL`
+must change neither region. KEEP must preserve the ROI and change at least one
+pixel outside it across the candidate frames; DROP and matched control must
+preserve the exterior and change at least one interior pixel. No pixel-change
+ratio threshold is used. If every relevant intervention is a no-op, the runner
+returns `INTERVENTION_NO_EFFECT`, makes no variant VLM call, and the certificate
+is `UNCERTAIN` rather than crashing the sample. These are intervention responses,
+not causal proof.
+
+The fixed configured alternate rectangle is synthetic-fixture-only. It has no
+claim-conditioned grounding semantics and cannot admit real evidence. When a
+KEEP failure would require a second support region on a real run, ReliVE records
+`RE_GROUNDING_NOT_IMPLEMENTED` and remains `UNCERTAIN`; constrained re-proposal
+is a later-stage feature.
 
 ## Artifacts, cache, and evaluation
 
@@ -244,4 +268,12 @@ PYTHONPATH=src python -m relive evaluate \
 
 Its task-answer exact match is descriptive and explicitly non-official. It also reports strict coverage, fallback rate, certificate/check status distributions, calls, latency, adaptation snapshots, and spatial/temporal alignment only when matching prediction and annotation types exist. Spatial IoU does not establish semantic truth, and time non-overlap does not establish action absence.
 
-Strict answers cite only `VERIFIED` Evidence–Claim pairs and abstain on incomplete coverage. `benchmark_forced` is a separate, explicitly marked fallback output and is excluded from strict metrics.
+Pair `REJECTED` means only that the current Evidence–Claim pair was contradicted.
+The runner tries the next candidate when available. Claim-level aggregation is
+conservative: an unconflicted `VERIFIED` pair supports a claim; a contradiction
+requires a claim with explicit `time_scope.frame_ids` and a rejected certificate
+bound to exactly that same scope; a local rejection cannot contradict a
+video-global/existential claim; verified and rejected evidence in the same scope
+is a conflict. Strict answers cite only `VERIFIED` Evidence–Claim pairs and
+abstain on incomplete coverage. `benchmark_forced` is a separate, explicitly
+marked fallback output and is excluded from strict metrics.

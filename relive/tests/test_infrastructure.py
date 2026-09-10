@@ -12,7 +12,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from relive.backends.base import Backend, BackendError
-from relive.config import validate_config
+from relive.config import load_config, validate_config
 from relive.storage import ArtifactError, ArtifactStore, Budget, BudgetExceeded, CachedInference
 
 
@@ -133,11 +133,33 @@ class ConfigTests(unittest.TestCase):
             "image_order": "chronological", "frame_encoding": "png", "timeout_seconds": 1,
             "max_retries": 0, "extra": {},
         }
-        self.assertEqual(validate_config({"backend": real})["backend"]["model"], "frozen-model")
+        self.assertEqual(validate_config({"backend": real, "policy": {"name": "semantic_spatial"}})["backend"]["model"],
+                         "frozen-model")
         secret = deepcopy(real)
         secret["api_key"] = "not-permitted"
         with self.assertRaises(ValueError):
             validate_config({"backend": secret})
+
+    def test_real_full_contrast_policy_fails_fast_without_declared_exclusivity(self):
+        real = {
+            "kind": "openai_compatible", "base_url": "https://model.example/v1",
+            "endpoint_path": "/chat/completions", "model": "frozen-model", "revision": "r1",
+            "credential_env": "RELIVE_KEY", "generation": {"temperature": 0.0},
+            "image_order": "chronological", "frame_encoding": "png", "timeout_seconds": 1,
+            "max_retries": 0, "extra": {},
+        }
+        with self.assertRaisesRegex(ValueError, "exclusivity source"):
+            validate_config({"backend": real, "policy": {"name": "semantic_contrast_spatial"}})
+        self.assertEqual(validate_config({"backend": real, "policy": {"name": "semantic_spatial"}})["policy"]["name"],
+                         "semantic_spatial")
+
+    def test_reviewed_qwen_smokes_disable_full_contrast_and_fixed_alternates(self):
+        root = Path(__file__).resolve().parents[1]
+        for name in ("qwen35_9b_medvidu_claim_smoke.yaml", "qwen35_9b_medvidu_claim_smoke_no_thinking.yaml"):
+            config = load_config(root / "configs" / name)
+            self.assertEqual(config["backend"]["kind"], "local_hf")
+            self.assertEqual(config["policy"]["name"], "semantic_spatial")
+            self.assertEqual(config["spatial"]["alternate_regions"], [])
 
     def test_unknown_adaptation_action_is_explicitly_rejected(self):
         with self.assertRaisesRegex(ValueError, "UNSUPPORTED_ACTION"):

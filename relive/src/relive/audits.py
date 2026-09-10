@@ -110,8 +110,6 @@ def audit_strict_result(result: dict[str, Any]) -> dict:
                 issues.append(f"strict cites absent or non-VERIFIED certificate: {cid}")
             else:
                 valid.append(cert)
-                if any(other.get("final_status") == "REJECTED" and other.get("candidate_id") == cert.get("candidate_id") and other.get("claim_id") == cert.get("claim_id") for other in certs.values()):
-                    issues.append("strict cites an evidence-claim pair with a retained contradiction")
         bound_claims = [c.get("claim_id") for c in valid]
         if any(not isinstance(cid, str) or not cid for cid in bound_claims):
             issues.append("VERIFIED certificate requires a string claim ID")

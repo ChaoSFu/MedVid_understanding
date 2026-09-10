@@ -1,27 +1,30 @@
 """Strict answer construction uses only certificate-bound claim text."""
 from __future__ import annotations
 
-from relive.types import FinalStatus, to_dict
+from relive.types import FinalStatus
 
 
 def strict_answer(sample, claims, certificates, coverage):
     by_id = {c.claim_id: c for c in claims}
-    rejected_pairs = {(c.candidate_id, c.claim_id) for c in certificates
-                      if c.final_status == FinalStatus.REJECTED}
-    verified = [c for c in certificates if c.final_status == FinalStatus.VERIFIED
-                and c.claim_id in coverage.supported_claims
-                and (c.candidate_id, c.claim_id) not in rejected_pairs]
-    admitted = [c for c in verified if c.claim_id in by_id]
-    admitted_claim_ids = {c.claim_id for c in admitted}
+    verified_by_claim = {}
+    for claim_id in coverage.supported_claims:
+        certificate = next((c for c in certificates
+                            if c.claim_id == claim_id and c.final_status == FinalStatus.VERIFIED), None)
+        if certificate is not None:
+            verified_by_claim[claim_id] = certificate
+    admitted_claim_ids = set(verified_by_claim)
     covered = (coverage.status == "COMPLETE"
                and set(coverage.required_claims).issubset(admitted_claim_ids))
     if not covered:
-        rejected = any(c.final_status == FinalStatus.REJECTED for c in certificates)
+        target_id = sample.target_claim.claim_id if sample.target_claim else None
+        aggregation = coverage.claim_aggregations.get(target_id, {}) if target_id else {}
+        judgment = "CONTRADICTED" if aggregation.get("status") == "CONTRADICTED" else "UNCERTAIN"
         return {"mode": "strict_reliability", "status": "ABSTAIN", "answer": None,
-                "judgment": "REJECTED" if rejected and sample.task == "claim_verification" else "UNCERTAIN",
+                "judgment": judgment,
                 "claim_ids": [], "certificate_ids": [], "input_references": [],
                 "reason": "COVERAGE_INCOMPLETE", "fallback_used": False}
-    claim_ids = list(dict.fromkeys(c.claim_id for c in admitted))
+    claim_ids = list(coverage.required_claims)
+    admitted = [verified_by_claim[claim_id] for claim_id in claim_ids]
     answer = "SUPPORTED" if sample.task == "claim_verification" else " ".join(by_id[i].text for i in claim_ids)
     return {"mode": "strict_reliability", "status": "ANSWERED", "answer": answer,
             "judgment": "VERIFIED", "claim_ids": claim_ids,

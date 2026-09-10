@@ -1,46 +1,17 @@
 """Strict three-state semantic parsing; technical errors never become verdicts."""
 from __future__ import annotations
 
-import json
 from typing import Any
 
+from .json_protocol import strict_json
 from .types import ExecutionStatus, SemanticStatus, VerificationResult
-
-
-def strict_json(raw: str) -> Any:
-    """Parse direct JSON or one complete, exact Markdown JSON fence.
-
-    A completed `````json`` wrapper is a common rendering convention for local
-    chat models. It is accepted only when it encloses the entire response;
-    prose, partial fences, duplicate keys, and non-finite values remain errors.
-    """
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise ValueError(f"DUPLICATE_JSON_KEY: {key}")
-            result[key] = value
-        return result
-
-    def constant(value):
-        raise ValueError(f"NONFINITE_JSON_CONSTANT: {value}")
-
-    if not isinstance(raw, str):
-        raise ValueError("RESPONSE_MUST_BE_TEXT")
-    payload = raw.strip()
-    if payload.startswith("```"):
-        opening, separator, remainder = payload.partition("\n")
-        if opening not in {"```", "```json"} or not separator or not remainder.endswith("\n```"):
-            raise ValueError("INCOMPLETE_OR_UNSUPPORTED_JSON_FENCE")
-        payload = remainder[:-4].strip()
-    return json.loads(payload, object_pairs_hook=pairs, parse_constant=constant)
 
 
 def execution_failure(
     status: ExecutionStatus,
     reason: str,
     raw_response_ref: str | None = None,
-    prompt_version: str = "relive-semantic-v2",
+    prompt_version: str = "relive-semantic-v3",
     input_references: dict[str, Any] | None = None,
 ) -> VerificationResult:
     if status == ExecutionStatus.OK:
@@ -52,7 +23,7 @@ def execution_failure(
 def parse_verification(
     raw: str,
     raw_response_ref: str | None = None,
-    prompt_version: str = "relive-semantic-v2",
+    prompt_version: str = "relive-semantic-v3",
     input_references: dict[str, Any] | None = None,
 ) -> VerificationResult:
     references = dict(input_references or {})
@@ -78,6 +49,8 @@ def parse_verification(
             raise ValueError("INPUT_FRAME_IDS_MUST_BE_SEQUENCE")
         if not set(frame_refs).issubset(set(supplied_frame_ids)):
             raise ValueError("FRAME_REFERENCE_NOT_IN_INPUT")
+        if status in {SemanticStatus.SUPPORTED, SemanticStatus.CONTRADICTED} and not frame_refs:
+            raise ValueError("EVIDENCE_STATUS_REQUIRES_FRAME_REFERENCE")
     except (ValueError, TypeError) as exc:
         return execution_failure(ExecutionStatus.PARSE_ERROR, str(exc), raw_response_ref,
                                  prompt_version, references)

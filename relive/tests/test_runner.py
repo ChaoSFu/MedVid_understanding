@@ -123,6 +123,48 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(list((output / "events" / "verification_reuse").glob("*.json")))
         self.assertTrue(list((output / "events" / "contrast_reuse").glob("*.json")))
 
+    def test_pair_rejection_advances_to_next_candidate(self):
+        config = deepcopy(self.config())
+        config["backend"]["rules"].append({
+            "match": {"stage": "semantic", "claim_text": "The instrument moves toward the visible tissue.",
+                      "variant": "ORIGINAL"},
+            "response": {"status": "CONTRADICTED"},
+        })
+        config["budget"]["max_rounds"] = 2
+        config = validate_config(config)
+        output = self.root / "pair-rejected-next"
+        run(config, RUNTIME, output, max_samples=1)
+        record = json.loads(next((output / "samples").glob("*.json")).read_text())
+        self.assertTrue(any(event["action"] == "NEXT_CANDIDATE"
+                            and event["parameters"]["decision_reason"] == "PAIR_REJECTED_TRY_NEXT_CANDIDATE"
+                            for event in record["adaptation_events"]))
+
+    def test_uniform_images_produce_no_effect_spatial_failure_without_variant_inference(self):
+        image = self.root / "uniform.png"
+        Image.new("RGB", (12, 12), "white").save(image)
+        runtime = self.root / "uniform.runtime.jsonl"
+        row = {"sample_id": "uniform", "task": "claim_verification", "question": "What is visible?",
+               "frames": [{"frame_id": "f0", "path": str(image), "order": 0}],
+               "target_claim": {"claim_id": "claim", "text": "A visible action occurs."}}
+        payload = json.dumps(row, separators=(",", ":")) + "\n"
+        runtime.write_text(payload, encoding="utf-8")
+        Path(str(runtime) + ".provenance.json").write_text(json.dumps({
+            "schema_version": "relive-runtime-v1", "source_kind": "synthetic",
+            "runtime_sha256": hashlib.sha256(payload.encode()).hexdigest(), "field_sources": FIELD_SOURCES,
+        }), encoding="utf-8")
+        config = self.config()
+        config["policy"]["name"] = "semantic_spatial"
+        config["acquisition"].update(window_size=1, stride=1, max_candidates=1)
+        config["budget"].update(max_candidates=1, max_rounds=1)
+        config = validate_config(config)
+        output = self.root / "no-effect"
+        summary = run(config, runtime, output, max_samples=1)
+        record = json.loads(next((output / "samples").glob("*.json")).read_text())
+        self.assertEqual(summary["certificate_distribution"], {"UNCERTAIN": 1})
+        self.assertEqual(record["certificates"][0]["checks"]["spatial"]["status"], "INTERVENTION_NO_EFFECT")
+        semantic_events = list((output / "events" / "verification").glob("*.json"))
+        self.assertEqual(len(semantic_events), 1)
+
     def test_forced_fallback_is_kept_separate_from_strict_output(self):
         config = deepcopy(self.config())
         config["budget"]["max_calls"] = 1

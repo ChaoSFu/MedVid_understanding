@@ -25,7 +25,7 @@ FIELD_SOURCES = {
 SUPPORTED_TASKS = frozenset({"claim_verification", "action_qa"})
 _SAMPLE_FIELDS = {"sample_id", "task", "question", "frames", "video_path", "target_claim", "required_claims", "metadata"}
 _FRAME_FIELDS = {"frame_id", "path", "order", "timestamp", "timestamp_source", "source_reference"}
-_CLAIM_FIELDS = {"claim_id", "text", "entity", "action", "target", "time_scope", "required_for_question"}
+_CLAIM_FIELDS = {"claim_id", "text", "entity", "action", "target", "time_scope"}
 _METADATA_FIELDS = {
     "dataset_name", "query_timestamps", "unresolved_relations", "question_scope",
     "runtime_adapter", "source_qa_type", "source_record_sha256", "nonofficial_protocol",
@@ -96,8 +96,6 @@ def _claim(value: Any, default_id: str, frame_ids: set[str]) -> Claim:
     for key in ("entity", "action", "target"):
         if obj.get(key) is not None:
             _text(obj[key], f"claim.{key}")
-    if "required_for_question" in obj and not isinstance(obj["required_for_question"], bool):
-        raise RuntimeInputError("claim.required_for_question must be boolean")
     return Claim(
         claim_id=_text(obj.get("claim_id", default_id), "claim_id"), text=_text(obj.get("text"), "claim.text"),
         entity=obj.get("entity"), action=obj.get("action"), target=obj.get("target"), time_scope=dict(scope),
@@ -185,6 +183,8 @@ def _parse_sample(value: Any, base: Path, provenance: dict) -> RuntimeSample:
         raise RuntimeInputError("target and required claim IDs cannot identify different claims")
     if task == "claim_verification" and target is None:
         raise RuntimeInputError("claim_verification requires target_claim")
+    if task == "action_qa" and not required:
+        raise RuntimeInputError("action_qa requires nonempty required_claims before inference")
     if meta.get("question_scope") == "required_claims" and not required:
         raise RuntimeInputError("required_claims question scope requires explicit claims")
     return RuntimeSample(sample_id, task, question, tuple(frames), target, required, dict(meta), dict(provenance))

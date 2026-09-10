@@ -72,8 +72,12 @@ def _pixel_stats(original: Image.Image, altered: Image.Image, box) -> dict[str, 
         changed = ImageChops.lighter(changed, band)
     inside = ImageChops.multiply(changed, mask)
     outside = ImageChops.multiply(changed, ImageChops.invert(mask))
-    return {"inside_unchanged": inside.getbbox() is None,
-            "outside_unchanged": outside.getbbox() is None,
+    inside_unchanged = inside.getbbox() is None
+    outside_unchanged = outside.getbbox() is None
+    return {"inside_unchanged": inside_unchanged,
+            "outside_unchanged": outside_unchanged,
+            "inside_changed": not inside_unchanged,
+            "outside_changed": not outside_unchanged,
             "inside_max_channel_delta": inside.getextrema()[1],
             "outside_max_channel_delta": outside.getextrema()[1],
             "any_pixel_changed": changed.getbbox() is not None}
@@ -96,16 +100,27 @@ def apply_intervention(image: Image.Image, region: Sequence[float], variant: str
         mask.paste(255, box=box)
         altered = Image.composite(image, blurred, mask) if variant == "KEEP_TARGET" else Image.composite(blurred, image, mask)
     stats = _pixel_stats(image, altered, box)
-    expected = "both" if variant == "ORIGINAL" else "inside" if variant == "KEEP_TARGET" else "outside"
-    passed = ((stats["inside_unchanged"] and stats["outside_unchanged"]) if expected == "both" else stats[f"{expected}_unchanged"])
+    unchanged_region = "both" if variant == "ORIGINAL" else "inside" if variant == "KEEP_TARGET" else "outside"
+    changed_region = None if variant == "ORIGINAL" else "outside" if variant == "KEEP_TARGET" else "inside"
+    unchanged_region_pass = ((stats["inside_unchanged"] and stats["outside_unchanged"])
+                             if unchanged_region == "both" else stats[f"{unchanged_region}_unchanged"])
+    expected_region_changed = (False if changed_region is None else stats[f"{changed_region}_changed"])
+    passed = unchanged_region_pass and (changed_region is None or expected_region_changed)
+    if not unchanged_region_pass or altered.size != image.size:
+        audit_status = "INTERVENTION_PIXEL_AUDIT_FAILED"
+    elif changed_region is not None and not expected_region_changed:
+        audit_status = "INTERVENTION_NO_EFFECT"
+    else:
+        audit_status = "PASS"
     audit = {"version": INTERVENTION_VERSION, "variant": variant, "region": list(region),
              "pixel_bbox": list(box), "pixel_bbox_convention": "half_open_xyxy",
              "mapping_version": COORDINATE_MAPPING_VERSION, "blur_radius": float(blur_radius),
              "original_size": list(image.size), "output_size": list(altered.size),
              "resolution_preserved": altered.size == image.size,
-             "unchanged_region": expected, "pixel_audit_pass": bool(passed), **stats}
-    if not passed or altered.size != image.size:
-        raise RuntimeError("INTERVENTION_PIXEL_AUDIT_FAILED")
+             "unchanged_region": unchanged_region, "expected_changed_region": changed_region,
+             "unchanged_region_pass": bool(unchanged_region_pass),
+             "expected_region_changed": bool(expected_region_changed), "pixel_audit_pass": bool(passed),
+             "audit_status": audit_status, **stats}
     return altered, audit
 
 
