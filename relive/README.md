@@ -181,6 +181,10 @@ verifier, certificate rules, prompts, thresholds, or benchmark artifacts.
 
 Use the contact sheets only to choose an operator/setting before a *new*
 manifest is frozen. A setting must never be selected from Qwen verdicts.
+The fixed-ROI calibration runner accepts opaque gray only when that new frozen
+manifest binds its exact operator version, RGB value `[127, 127, 127]`, and
+`human_visual_review_pre_inference` selection basis; this calibration-only
+identity is included in its cache request context.
 
 ```bash
 PYTHONPATH=src python scripts/calibration_intervention_sweep.py \

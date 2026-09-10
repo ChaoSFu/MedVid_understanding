@@ -79,6 +79,7 @@ class FixedRoiCalibrationTests(unittest.TestCase):
             self.assertEqual(plan["planned_unique_semantic_calls"], 12)
             self.assertEqual(plan["fixed_roi_support"], "ISOLATED_CALIBRATION_ONLY_ADAPTER")
             self.assertEqual(plan["commit_relation"], "FROZEN_COMMIT_ANCESTOR_OF_EXECUTION_HEAD")
+            self.assertEqual(plan["calibration_intervention"]["operator"], "gaussian_blur")
             runtime = load_runtime(output / "calibration.runtime.jsonl")
             self.assertEqual(len(runtime), 3)
             self.assertTrue(all(len(sample.frames) == 1 for sample in runtime))

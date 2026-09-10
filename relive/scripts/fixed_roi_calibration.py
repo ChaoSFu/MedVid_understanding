@@ -21,9 +21,10 @@ from PIL import Image
 
 from relive.audits import audit_runtime_imports
 from relive.backends import make_backend
+from relive.calibration_interventions import apply_calibration_intervention, calibration_intervention_spec
 from relive.claims import PROMPT_VERSIONS, prompt
 from relive.config import load_config
-from relive.interventions import CONTROL_VERSION, INTERVENTION_VERSION, apply_intervention
+from relive.interventions import CONTROL_VERSION
 from relive.storage.artifacts import ArtifactStore
 from relive.storage.cache import Budget, CachedInference
 from relive.types import ExecutionStatus, SemanticStatus, to_dict
@@ -155,7 +156,7 @@ def _runtime_rows(controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _write_preflight(manifest_path: Path, manifest: dict[str, Any], controls: list[dict[str, Any]],
                      config: dict[str, Any], output: Path, cache_dir: Path, git_commit: str,
-                     commit_relation: str) -> dict[str, Any]:
+                     commit_relation: str, intervention: dict[str, Any]) -> dict[str, Any]:
     if config["backend"]["kind"] != "local_hf":
         raise CalibrationError("fixed-ROI calibration requires the reviewed local_hf backend")
     output.mkdir(parents=True, exist_ok=False)
@@ -184,6 +185,7 @@ def _write_preflight(manifest_path: Path, manifest: dict[str, Any], controls: li
             "runtime": str(runtime_path), "runtime_sha256": runtime_sha, "provenance": str(Path(str(runtime_path) + ".provenance.json")),
             "gt_isolation_audit": str(audit_path), "output_directory": str(output), "cache_directory": str(cache_dir),
             "backend": {key: config["backend"].get(key) for key in ("kind", "model", "revision", "model_path", "dtype", "device", "device_map", "input_device", "generation", "frame_encoding")},
+            "calibration_intervention": intervention,
             "fixed_roi_support": "ISOLATED_CALIBRATION_ONLY_ADAPTER", "formal_certificate_created": False,
             "planned_unique_semantic_calls": len(controls) * len(VARIANTS),
             "planned_call_derivation": "3 frozen controls x ORIGINAL, KEEP_TARGET, DROP_TARGET, DROP_MATCHED_CONTROL",
@@ -205,7 +207,8 @@ def _image_file(root: Path, image: Image.Image) -> str:
 
 
 def _semantic(inference: CachedInference, budget: Budget, control: dict[str, Any], variant: str,
-              image_paths: list[str], region: tuple[float, float, float, float] | None) -> dict[str, Any]:
+              image_paths: list[str], region: tuple[float, float, float, float] | None,
+              intervention: dict[str, Any]) -> dict[str, Any]:
     ids = control["frame_ids"]
     request = {"stage": "semantic", "prompt": prompt("semantic", {"frame_count": len(ids),
                                                              "claim": {"text": control["atomic_claim_en"]}}),
@@ -213,7 +216,8 @@ def _semantic(inference: CachedInference, budget: Budget, control: dict[str, Any
                "context": {"calibration_only": True, "calibration_control_id": control["candidate_id"],
                            "claim_text": control["atomic_claim_en"], "variant": variant,
                            "fixed_roi": list(region) if region else None,
-                           "intervention_version": INTERVENTION_VERSION, "control_version": CONTROL_VERSION}}
+                           "calibration_intervention": intervention,
+                           "intervention_version": intervention["operator_version"], "control_version": CONTROL_VERSION}}
     raw = inference.call(request, budget)
     refs = {"sample_id": f"calibration:{control['candidate_id']}", "candidate_id": control["candidate_id"],
             "claim_id": f"calibration:{control['candidate_id']}:claim", "frame_ids": ids, "image_paths": image_paths,
@@ -225,7 +229,7 @@ def _semantic(inference: CachedInference, budget: Budget, control: dict[str, Any
 
 
 def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[str, Any], output: Path, cache_dir: Path,
-         git_commit: str, preflight: dict[str, Any], commit_relation: str) -> dict[str, Any]:
+         git_commit: str, preflight: dict[str, Any], commit_relation: str, intervention: dict[str, Any]) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=False)
     store, cache = ArtifactStore(output), ArtifactStore(cache_dir)
     backend = make_backend(config["backend"])
@@ -243,12 +247,12 @@ def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[
             for variant, (paths, region, _) in list(variants.items()):
                 if variant == "ORIGINAL":
                     for frame_id, source_path in zip(control["frame_ids"], control["frame_paths"]):
-                        with Image.open(source_path) as image: _, audit = apply_intervention(image.convert("RGB"), target, "ORIGINAL", config["spatial"]["blur_radius"])
+                        with Image.open(source_path) as image: _, audit = apply_calibration_intervention(image.convert("RGB"), target, "ORIGINAL", intervention)
                         pixel_audits.append({"frame_id": frame_id, "variant": variant, "output_path": None, **audit})
                 else:
                     altered_paths = []
                     for frame_id, source_path in zip(control["frame_ids"], control["frame_paths"]):
-                        with Image.open(source_path) as image: altered, audit = apply_intervention(image.convert("RGB"), region, variant, config["spatial"]["blur_radius"])
+                        with Image.open(source_path) as image: altered, audit = apply_calibration_intervention(image.convert("RGB"), region, variant, intervention)
                         path = _image_file(cache.root, altered); altered_paths.append(path)
                         pixel_audits.append({"frame_id": frame_id, "variant": variant, "output_path": path, **audit})
                     variants[variant] = (altered_paths, region, [])
@@ -256,7 +260,7 @@ def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[
             outputs = {}
             for variant in VARIANTS:
                 paths, region, _ = variants[variant]
-                result = _semantic(inference, budget, control, variant, paths, region)
+                result = _semantic(inference, budget, control, variant, paths, region, intervention)
                 outputs[variant] = result
                 store.append_event("verification", {"calibration_only": True, "candidate_id": control["candidate_id"], "variant": variant, **result})
             statuses = {variant: outputs[variant]["result"]["semantic_status"] for variant in VARIANTS}
@@ -278,6 +282,7 @@ def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[
         report = {"status": "PASS", "calibration_only": True, "formal_certificate_created": False,
                   "git_commit": git_commit, "frozen_manifest_git_commit": manifest["git_commit"],
                   "commit_relation": commit_relation, "manifest_sha256": manifest["frozen_manifest_sha256"], "preflight": preflight,
+                  "calibration_intervention": intervention,
                   "backend": backend.fingerprint(), "usage": budget.snapshot(), "controls": all_rows,
                   "termination_reason": "FIXED_FROZEN_CONTROLS_COMPLETE", "model_parameters_updated": False,
                   "prohibited_inputs_not_opened": manifest["prohibited_inputs_not_opened"]}
@@ -296,13 +301,16 @@ def main() -> int:
         manifest_path, output, cache_dir = Path(args.manifest).resolve(), Path(args.output_dir).resolve(), Path(args.cache_dir).resolve()
         manifest, controls, commit_relation = _manifest(manifest_path, git_commit)
         config = load_config(args.config)
-        if args.mode == "preflight": report = _write_preflight(manifest_path, manifest, controls, config, output, cache_dir, git_commit, commit_relation)
+        intervention = calibration_intervention_spec(manifest, config["spatial"]["blur_radius"])
+        if args.mode == "preflight": report = _write_preflight(manifest_path, manifest, controls, config, output, cache_dir, git_commit, commit_relation, intervention)
         else:
             preflight_path = output.parent / "preflight" / "calibration_preflight.json"
             preflight = _json(preflight_path)
-            if preflight.get("manifest_sha256") != manifest.get("frozen_manifest_sha256") or preflight.get("planned_unique_semantic_calls") != 12:
+            if (preflight.get("manifest_sha256") != manifest.get("frozen_manifest_sha256")
+                    or preflight.get("planned_unique_semantic_calls") != 12
+                    or preflight.get("calibration_intervention") != intervention):
                 raise CalibrationError("missing or incompatible zero-call preflight")
-            report = _run(manifest, controls, config, output, cache_dir, git_commit, preflight, commit_relation)
+            report = _run(manifest, controls, config, output, cache_dir, git_commit, preflight, commit_relation, intervention)
         print(json.dumps(report if args.mode == "preflight" else {"status": report["status"], "usage": report["usage"], "termination_reason": report["termination_reason"], "output_directory": str(output)}, ensure_ascii=False, indent=2))
         return 0
     except (OSError, ValueError, RuntimeError, CalibrationError) as exc:
