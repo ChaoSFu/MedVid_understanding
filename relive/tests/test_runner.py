@@ -31,6 +31,16 @@ class RealLikeMockBackend(MockBackend):
     synthetic = False
 
 
+class CapturingMockBackend(MockBackend):
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.requests = []
+
+    def infer(self, request):
+        self.requests.append(request)
+        return super().infer(request)
+
+
 class RunnerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -57,6 +67,15 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(all(sample["strict"]["status"] == "ANSWERED" for sample in samples))
         self.assertTrue(all(sample["strict"]["input_references"][0]["frame_ids"] for sample in samples))
         self.assertTrue(all(sample["usage"]["calls"] <= sample["usage"]["max_calls"] for sample in samples))
+
+    def test_semantic_request_uses_frame_count_not_runtime_ids_or_claim_scope(self):
+        backend = CapturingMockBackend(self.config()["backend"])
+        run(self.config(), RUNTIME, self.root / "compact-semantic", max_samples=1, backend=backend)
+        semantic = next(request for request in backend.requests if request["stage"] == "semantic")
+        self.assertIn('"frame_count": 3', semantic["prompt"])
+        self.assertNotIn('"frame_ids"', semantic["prompt"])
+        self.assertNotIn('"time_scope"', semantic["prompt"])
+        self.assertEqual(semantic["frame_ids"], ["f0", "f1", "f2"])
 
     def test_policy_recalculation_reuses_raw_cache_without_model_calls(self):
         shared_cache = self.root / "shared-cache"

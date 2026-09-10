@@ -111,7 +111,8 @@ class VerificationParserTests(unittest.TestCase):
                                  ExecutionStatus.PARSE_ERROR)
 
     def test_semantic_prompt_uses_compact_frame_indices(self):
-        rendered = prompt("semantic", {"frame_count": 2})
+        rendered = prompt("semantic", {"frame_count": 2,
+                                         "claim": {"text": "A visible instrument contacts tissue.", "entity": None}})
         self.assertIn('"frame_index":0', rendered)
         self.assertIn('"frame_count": 2', rendered)
         self.assertNotIn("frame_references", rendered)

@@ -108,8 +108,9 @@ class SampleRunner:
         if stage in {"claims"}:
             data.update(question=sample.question, max_claims=self.cfg["claims"]["max_claims"])
         elif claim is not None:
-            data["claim"] = {"text": claim.text, "entity": claim.entity,
-                             "time_scope": claim.time_scope}
+            data["claim"] = {"text": claim.text, "entity": claim.entity}
+            if stage != "semantic":
+                data["claim"]["time_scope"] = claim.time_scope
         if stage == "contrasts":
             data["max_alternatives"] = self.cfg["claims"]["max_alternatives"]
         context = {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
