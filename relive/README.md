@@ -146,11 +146,15 @@ the same cache directory is retained. Its `revision` label is derived from the
 checkpoint metadata hash because no upstream revision was reported by the local
 directory.
 
-The semantic verifier uses `relive-semantic-v3`. `SUPPORTED` and
-`CONTRADICTED` must each cite at least one supplied frame ID; missing or unknown
-references are technical `PARSE_ERROR`, never semantic support or contradiction.
-`INSUFFICIENT` may omit a reference. The prompt asks for exactly one ID to keep
-the local Qwen completion bounded. Semantic, claim, contrast, and spatial
+The semantic verifier uses `relive-semantic-v4`. `SUPPORTED` and
+`CONTRADICTED` must each cite one supplied frame through a zero-based image
+index. The parser resolves that index to the immutable runtime frame ID before
+certification; missing or out-of-range references are technical `PARSE_ERROR`,
+never semantic support or contradiction. `INSUFFICIENT` may omit a reference.
+The compact index avoids requiring a local model to reproduce long runtime IDs.
+The spatial proposer uses `relive-spatial-v2`: it accepts explicitly declared
+`normalized_0_1_xyxy` or `normalized_0_1000_xyxy` coordinates and records every
+0–1000 to 0–1 conversion in proposal provenance. Semantic, claim, contrast, and spatial
 parsers share closed JSON parsing: duplicate keys, `NaN`/`Infinity`, prose, and
 undeclared fields fail technically. A complete ` ```json ` fence is normalized
 before validation.

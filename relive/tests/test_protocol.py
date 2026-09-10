@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from relive.certificate import POLICY_VERSION, build_certificate
 from relive.contrasts import evaluate_contrast
 from relive.claim_aggregation import aggregate_claim
-from relive.claims import parse_claims, parse_contrasts
+from relive.claims import parse_claims, parse_contrasts, prompt
 from relive.coverage import assess_coverage
 from relive.adaptation import choose_action
 from relive.interventions import apply_intervention, check_spatial, generate_control_regions
@@ -96,6 +96,25 @@ class VerificationParserTests(unittest.TestCase):
                                         input_references=inputs)
             self.assertEqual(result.execution_status, ExecutionStatus.PARSE_ERROR)
         self.assertEqual(inputs, {"frame_ids": ["f0", "f1"]})
+
+    def test_compact_frame_index_resolves_to_a_supplied_runtime_id(self):
+        inputs = {"frame_ids": ["a-very-long-runtime-frame-id-0", "a-very-long-runtime-frame-id-1"]}
+        result = parse_verification('{"status":"SUPPORTED","frame_index":1}', input_references=inputs)
+        self.assertEqual(result.execution_status, ExecutionStatus.OK)
+        self.assertEqual(result.frame_references, ("a-very-long-runtime-frame-id-1",))
+        for raw in ('{"status":"SUPPORTED","frame_index":-1}',
+                    '{"status":"SUPPORTED","frame_index":2}',
+                    '{"status":"SUPPORTED","frame_index":true}',
+                    '{"status":"SUPPORTED","frame_index":0,"frame_references":["a-very-long-runtime-frame-id-0"]}'):
+            with self.subTest(raw=raw):
+                self.assertEqual(parse_verification(raw, input_references=inputs).execution_status,
+                                 ExecutionStatus.PARSE_ERROR)
+
+    def test_semantic_prompt_uses_compact_frame_indices(self):
+        rendered = prompt("semantic", {"frame_count": 2})
+        self.assertIn('"frame_index":0', rendered)
+        self.assertIn('"frame_count": 2', rendered)
+        self.assertNotIn("frame_references", rendered)
 
     def test_complete_json_markdown_fence_is_accepted_but_partial_fence_is_not(self):
         complete = parse_verification("```json\n{\"status\":\"SUPPORTED\",\"frame_references\":[\"f0\"]}\n```",
@@ -217,6 +236,17 @@ class SpatialProposalTests(unittest.TestCase):
         self.assertEqual(result.support_region, (0.0, 0.0, 1.0, 1.0))
         self.assertTrue(result.provenance["large_region"])
         self.assertTrue(result.provenance["full_frame_region"])
+
+    def test_declared_1000_coordinate_system_is_converted_and_audited(self):
+        raw = json.dumps({"support_region": [382, 400, 900, 999], "target_bbox": None,
+                          "coordinate_system": "normalized_0_1000_xyxy"})
+        result = parse_proposal(raw, CANDIDATE, CLAIM)
+        self.assertEqual(result.parser_status, ExecutionStatus.OK)
+        self.assertEqual(result.support_region, (0.382, 0.4, 0.9, 0.999))
+        self.assertEqual(result.coordinate_system, "normalized_0_1_xyxy")
+        self.assertEqual(result.provenance["original_coordinates"], [382, 400, 900, 999])
+        self.assertEqual(result.provenance["source_coordinate_system"], "normalized_0_1000_xyxy")
+        self.assertEqual(result.provenance["coordinate_conversion"], "divide_by_1000")
 
     def test_malformed_proposal_is_technical_error(self):
         for raw in ('{"support_region":[0,0,1000,1000]}',

@@ -3,7 +3,8 @@ Find one static rectangle covering visual evidence needed to assess the specific
 claim across this short window; this may include an instrument and tissue.
 support_region is distinct from target_bbox, which is only an object localization
 box. Do not assume the claim was previously supported. Return only
-{"support_region":[x1,y1,x2,y2],"target_bbox":null}, using normalized coordinates
-0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1. target_bbox may instead be a separate valid
-box if an object box is explicitly required. Full-frame regions are allowed and
-will be retained for audit. No rationale or chain of thought.
+{"support_region":[x1,y1,x2,y2],"target_bbox":null,"coordinate_system":"normalized_0_1000_xyxy"},
+using integer normalized coordinates 0 <= x1 < x2 <= 1000 and 0 <= y1 < y2 <=
+1000. target_bbox may instead be a separate valid box in the same coordinate
+system if an object box is explicitly required. Full-frame regions are allowed
+and will be retained for audit. No rationale or chain of thought.

@@ -95,10 +95,12 @@ class SampleRunner:
                                                    "raw_response_ref": prior.raw_response_ref,
                                                    "reason": "SAME_INPUT_REUSED_WITHOUT_NEW_INFERENCE"})
                 return prior
-        # Semantic verdicts must bind SUPPORT/CONTRADICTION to a supplied frame.
-        # The v3 prompt asks for exactly one ID, which is bounded while retaining
-        # a model-visible evidence reference rather than only runner provenance.
-        data = {"frame_ids": frame_ids, "timing": timing_summary(frames)}
+        # Semantic verdicts bind SUPPORT/CONTRADICTION to one supplied frame.
+        # v4 exposes the chronological zero-based index instead of long runtime
+        # IDs; the strict parser resolves that index back to an immutable supplied
+        # frame ID before certification.
+        data = ({"frame_count": len(frame_ids)} if stage == "semantic"
+                else {"frame_ids": frame_ids, "timing": timing_summary(frames)})
         if stage != "semantic" and sample.metadata.get("query_timestamps"):
             # These are an explicitly whitelisted public task query, not a hidden
             # annotated action span. Their timebase is never inferred here.

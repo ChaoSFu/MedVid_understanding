@@ -9,10 +9,10 @@ from relive.json_protocol import strict_json
 from relive.types import Claim, ContrastGroup, ExclusivityStatus, EvidenceCandidate
 
 PROMPT_VERSIONS = {
-    "semantic": "relive-semantic-v3",
+    "semantic": "relive-semantic-v4",
     "claims": "relive-claims-v1",
     "contrasts": "relive-contrasts-v1",
-    "spatial": "relive-spatial-v1",
+    "spatial": "relive-spatial-v2",
 }
 
 

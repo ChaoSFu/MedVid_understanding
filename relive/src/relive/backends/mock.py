@@ -28,14 +28,15 @@ class MockBackend(Backend):
                 response = rule["response"]
                 if request["stage"] in {"semantic", "verify", "verification"} and isinstance(response, dict):
                     response = dict(response)
-                    if response.get("status") in {"SUPPORTED", "CONTRADICTED"} and "frame_references" not in response:
-                        response["frame_references"] = list(request.get("frame_ids", []))[:1]
+                    if (response.get("status") in {"SUPPORTED", "CONTRADICTED"}
+                            and "frame_references" not in response and "frame_index" not in response):
+                        response["frame_index"] = 0
                 return response if isinstance(response, str) else json.dumps(response, ensure_ascii=False, sort_keys=True)
         stage = request["stage"]
         if stage in {"semantic", "verify", "verification"}:
             status = "INSUFFICIENT" if context.get("variant") == "DROP_TARGET" else "SUPPORTED"
             response = {"status": status, "observation": "Synthetic preset; not a medical observation.",
-                        "frame_references": list(request.get("frame_ids", []))}
+                        "frame_index": 0}
         elif stage in {"spatial", "spatial_proposal", "proposal"}:
             response = {"support_region": [0.1, 0.1, 0.4, 0.4],
                         "coordinate_system": "normalized_0_1_xyxy"}
