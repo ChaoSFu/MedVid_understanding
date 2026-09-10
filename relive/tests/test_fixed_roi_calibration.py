@@ -47,7 +47,7 @@ class FixedRoiCalibrationTests(unittest.TestCase):
                                  "expected_outcomes_frozen_pre_inference": expected})
                 controls[-1]["claim_sha256"] = hashlib.sha256(controls[-1]["atomic_claim_en"].encode()).hexdigest()
             manifest = {"format": "relive-calibration-manifest-frozen-v1", "calibration_only": True,
-                        "selection_status": "FROZEN_PRE_INFERENCE", "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                        "selection_status": "FROZEN_PRE_INFERENCE", "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD~1"], cwd=ROOT, text=True).strip(),
                         "runtime_path": "/public/runtime.jsonl", "runtime_sha256": "0" * 64,
                         "phase16a_preparation_directory": "/public/phase16", "prohibited_inputs_not_opened": ["reference_answer"],
                         "selected_positive_control": controls[0], "ancillary_controls": controls[1:]}
@@ -78,6 +78,7 @@ class FixedRoiCalibrationTests(unittest.TestCase):
             self.assertEqual(plan["model_calls_made"], 0)
             self.assertEqual(plan["planned_unique_semantic_calls"], 12)
             self.assertEqual(plan["fixed_roi_support"], "ISOLATED_CALIBRATION_ONLY_ADAPTER")
+            self.assertEqual(plan["commit_relation"], "FROZEN_COMMIT_ANCESTOR_OF_EXECUTION_HEAD")
             runtime = load_runtime(output / "calibration.runtime.jsonl")
             self.assertEqual(len(runtime), 3)
             self.assertTrue(all(len(sample.frames) == 1 for sample in runtime))

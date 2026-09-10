@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -68,14 +69,26 @@ def _intersection(a: tuple[float, float, float, float], b: tuple[float, float, f
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
 
 
-def _manifest(path: Path, git_commit: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _manifest(path: Path, git_commit: str) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     manifest = _json(path)
     if manifest.get("format") != "relive-calibration-manifest-frozen-v1":
         raise CalibrationError("requires relive-calibration-manifest-frozen-v1")
     if manifest.get("calibration_only") is not True or manifest.get("selection_status") != "FROZEN_PRE_INFERENCE":
         raise CalibrationError("manifest is not frozen calibration-only input")
-    if manifest.get("git_commit") != git_commit:
-        raise CalibrationError("frozen manifest git commit does not match current HEAD")
+    manifest_commit = manifest.get("git_commit")
+    if not isinstance(manifest_commit, str) or len(manifest_commit) != 40:
+        raise CalibrationError("frozen manifest must bind a full git commit")
+    if manifest_commit == git_commit:
+        commit_relation = "EXACT_EXECUTION_HEAD"
+    else:
+        # The runner may be added after an operator freezes inputs.  The frozen
+        # source commit must still be in this execution history; immutable
+        # manifest, frame, claim, and ROI hashes remain independently checked.
+        relation = subprocess.run(["git", "merge-base", "--is-ancestor", manifest_commit, git_commit],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if relation.returncode != 0:
+            raise CalibrationError("frozen manifest commit is not an ancestor of current HEAD")
+        commit_relation = "FROZEN_COMMIT_ANCESTOR_OF_EXECUTION_HEAD"
     supplied_hash = manifest.get("frozen_manifest_sha256")
     without_hash = dict(manifest)
     without_hash.pop("frozen_manifest_sha256", None)
@@ -93,7 +106,7 @@ def _manifest(path: Path, git_commit: str) -> tuple[dict[str, Any], list[dict[st
         raise CalibrationError("calibration control IDs must be unique")
     for row in controls:
         _validate_control(row)
-    return manifest, controls
+    return manifest, controls, commit_relation
 
 
 def _validate_control(row: dict[str, Any]) -> None:
@@ -141,7 +154,8 @@ def _runtime_rows(controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _write_preflight(manifest_path: Path, manifest: dict[str, Any], controls: list[dict[str, Any]],
-                     config: dict[str, Any], output: Path, cache_dir: Path, git_commit: str) -> dict[str, Any]:
+                     config: dict[str, Any], output: Path, cache_dir: Path, git_commit: str,
+                     commit_relation: str) -> dict[str, Any]:
     if config["backend"]["kind"] != "local_hf":
         raise CalibrationError("fixed-ROI calibration requires the reviewed local_hf backend")
     output.mkdir(parents=True, exist_ok=False)
@@ -165,7 +179,8 @@ def _write_preflight(manifest_path: Path, manifest: dict[str, Any], controls: li
     audit_path.write_text(json.dumps(isolation, ensure_ascii=False, indent=2) + "\n")
     source_audit = audit_runtime_imports()
     plan = {"status": "PASS", "mode": "preflight", "model_calls_made": 0, "cache_mutated": False,
-            "git_commit": git_commit, "manifest_sha256": manifest["frozen_manifest_sha256"],
+            "git_commit": git_commit, "frozen_manifest_git_commit": manifest["git_commit"],
+            "commit_relation": commit_relation, "manifest_sha256": manifest["frozen_manifest_sha256"],
             "runtime": str(runtime_path), "runtime_sha256": runtime_sha, "provenance": str(Path(str(runtime_path) + ".provenance.json")),
             "gt_isolation_audit": str(audit_path), "output_directory": str(output), "cache_directory": str(cache_dir),
             "backend": {key: config["backend"].get(key) for key in ("kind", "model", "revision", "model_path", "dtype", "device", "device_map", "input_device", "generation", "frame_encoding")},
@@ -210,7 +225,7 @@ def _semantic(inference: CachedInference, budget: Budget, control: dict[str, Any
 
 
 def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[str, Any], output: Path, cache_dir: Path,
-         git_commit: str, preflight: dict[str, Any]) -> dict[str, Any]:
+         git_commit: str, preflight: dict[str, Any], commit_relation: str) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=False)
     store, cache = ArtifactStore(output), ArtifactStore(cache_dir)
     backend = make_backend(config["backend"])
@@ -261,7 +276,8 @@ def _run(manifest: dict[str, Any], controls: list[dict[str, Any]], config: dict[
                              "calibration_verdict": verdict, "formal_certificate": None,
                              "not_benchmark_evidence": True})
         report = {"status": "PASS", "calibration_only": True, "formal_certificate_created": False,
-                  "git_commit": git_commit, "manifest_sha256": manifest["frozen_manifest_sha256"], "preflight": preflight,
+                  "git_commit": git_commit, "frozen_manifest_git_commit": manifest["git_commit"],
+                  "commit_relation": commit_relation, "manifest_sha256": manifest["frozen_manifest_sha256"], "preflight": preflight,
                   "backend": backend.fingerprint(), "usage": budget.snapshot(), "controls": all_rows,
                   "termination_reason": "FIXED_FROZEN_CONTROLS_COMPLETE", "model_parameters_updated": False,
                   "prohibited_inputs_not_opened": manifest["prohibited_inputs_not_opened"]}
@@ -276,17 +292,17 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True); parser.add_argument("--cache-dir", required=True)
     args = parser.parse_args()
     try:
-        import subprocess
         git_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
         manifest_path, output, cache_dir = Path(args.manifest).resolve(), Path(args.output_dir).resolve(), Path(args.cache_dir).resolve()
-        manifest, controls, config = *_manifest(manifest_path, git_commit), load_config(args.config)
-        if args.mode == "preflight": report = _write_preflight(manifest_path, manifest, controls, config, output, cache_dir, git_commit)
+        manifest, controls, commit_relation = _manifest(manifest_path, git_commit)
+        config = load_config(args.config)
+        if args.mode == "preflight": report = _write_preflight(manifest_path, manifest, controls, config, output, cache_dir, git_commit, commit_relation)
         else:
             preflight_path = output.parent / "preflight" / "calibration_preflight.json"
             preflight = _json(preflight_path)
             if preflight.get("manifest_sha256") != manifest.get("frozen_manifest_sha256") or preflight.get("planned_unique_semantic_calls") != 12:
                 raise CalibrationError("missing or incompatible zero-call preflight")
-            report = _run(manifest, controls, config, output, cache_dir, git_commit, preflight)
+            report = _run(manifest, controls, config, output, cache_dir, git_commit, preflight, commit_relation)
         print(json.dumps(report if args.mode == "preflight" else {"status": report["status"], "usage": report["usage"], "termination_reason": report["termination_reason"], "output_directory": str(output)}, ensure_ascii=False, indent=2))
         return 0
     except (OSError, ValueError, RuntimeError, CalibrationError) as exc:
