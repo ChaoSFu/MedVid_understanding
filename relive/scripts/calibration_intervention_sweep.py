@@ -176,12 +176,14 @@ def _diff_stats(original: Image.Image, altered: Image.Image, box: tuple[int, int
     }
 
 
-def _effect_class(stats: dict[str, Any], box: tuple[int, int, int, int]) -> str:
+def _effect_class(stats: dict[str, Any], box: tuple[int, int, int, int], variant: str) -> str:
     if box[0] == box[2] or box[1] == box[3]:
         return "CLIPPED_TO_ZERO_AREA"
     if stats["changed_pixel_count"] == 0:
         return "UNIFORM_REGION"
-    if stats["roi_changed_pixel_count"] == 0:
+    expected_changed = (stats["outside_changed_pixel_count"] if variant == "KEEP_TARGET"
+                        else stats["roi_changed_pixel_count"])
+    if expected_changed == 0:
         return "ARTIFACT_NOT_APPLIED"
     return "EFFECTIVE_PIXEL_CHANGE"
 
@@ -266,7 +268,7 @@ def main() -> int:
                     altered, audit = _alter(original, region, variant, family, radius, name)
                     stats = _diff_stats(original, altered, pixel_box)
                     record = {"variant": variant, "region": list(region), "pixel_bbox": list(pixel_box),
-                              "effect_class": _effect_class(stats, pixel_box), "audit": audit, "pixel_metrics": stats}
+                              "effect_class": _effect_class(stats, pixel_box, variant), "audit": audit, "pixel_metrics": stats}
                     record["output_path"] = _save(altered, output / "images" / identifier / f"{name}__{variant.lower()}.png")
                     variants[variant] = altered
                     variant_records.append(record)

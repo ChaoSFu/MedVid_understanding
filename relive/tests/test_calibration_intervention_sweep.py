@@ -68,8 +68,12 @@ class CalibrationInterventionSweepTests(unittest.TestCase):
                                 for control in report["controls"] for row in control["operator_sweeps"]))
             drop = report["controls"][0]["operator_sweeps"][0]["variants"][1]
             self.assertEqual(drop["variant"], "DROP_TARGET")
+            self.assertEqual(drop["effect_class"], "EFFECTIVE_PIXEL_CHANGE")
             self.assertGreater(drop["pixel_metrics"]["roi_changed_pixel_count"], 0)
             self.assertEqual(drop["pixel_metrics"]["outside_changed_pixel_count"], 0)
+            keep = report["controls"][0]["operator_sweeps"][0]["variants"][0]
+            self.assertEqual(keep["effect_class"], "EFFECTIVE_PIXEL_CHANGE")
+            self.assertGreater(keep["pixel_metrics"]["outside_changed_pixel_count"], 0)
 
 
 if __name__ == "__main__":
