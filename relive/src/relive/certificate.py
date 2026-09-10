@@ -72,7 +72,7 @@ def build_certificate(candidate: EvidenceCandidate, claim: Claim, original: Veri
         spatial_results = [references.get(name) for name in ("original", "keep", "drop")]
         if required["controls"]:
             controls = references.get("controls", [])
-            if not isinstance(controls, (tuple, list)) or not controls:
+            if not isinstance(controls, (tuple, list)):
                 spatial_results.append(None)
             else:
                 spatial_results.extend(controls)

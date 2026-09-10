@@ -441,6 +441,15 @@ class CertificateCoverageTests(unittest.TestCase):
         certificate = build_certificate(CANDIDATE, CLAIM, verdict(), "semantic_contrast_spatial", spatial_pass(), contrast)
         self.assertIn("CONTRAST_REFERENCE_BINDING_MISMATCH", certificate.failure_reasons)
 
+    def test_missing_controls_fail_availability_without_inventing_a_binding_mismatch(self):
+        spatial = check_spatial(verdict(), verdict(), verdict("INSUFFICIENT"), [], False,
+                                expected_control_count=1)
+        certificate = build_certificate(CANDIDATE, CLAIM, verdict(), "semantic_spatial", spatial)
+        self.assertEqual(certificate.final_status, FinalStatus.UNCERTAIN)
+        self.assertIn("CONTROL_UNAVAILABLE", certificate.failure_reasons)
+        self.assertIn("CONTROL_RESULT_COUNT_MISMATCH", certificate.failure_reasons)
+        self.assertNotIn("SPATIAL_REFERENCE_BINDING_MISMATCH", certificate.failure_reasons)
+
     def test_acquisition_only_has_no_reliability_certificate(self):
         certificate = build_certificate(CANDIDATE, CLAIM, verdict(), "acquisition_only")
         self.assertEqual(certificate.final_status, FinalStatus.UNCERTAIN)
