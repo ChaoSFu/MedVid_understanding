@@ -644,3 +644,26 @@ closed runtime containing only the frozen public frames, while the human
 confirmation remains in the external immutable source manifest. It makes zero
 model calls and must finish before any spatial proposal, refinement, or
 certificate run.
+
+### Selecting fresh public records for human review
+
+Before authoring a fresh claim, export a deterministic batch of records from a
+public selector. The exporter excludes the five Phase 2 development records,
+deduplicates public-record hashes and sample IDs, maps only public frames, and
+renders **every** public frame in continuous original order across paginated
+contact sheets. It writes no claim, visual confirmation, ROI, or model output.
+
+```bash
+PYTHONPATH=src python scripts/phase35_export_public_record_candidates.py \
+  --public-selector /path/to/medvidu_public_question_selector.jsonl \
+  --source-json /path/to/medvidu_source.json \
+  --frame-root /path/to/public_frames \
+  --output-dir /path/to/new_phase35_public_record_candidates \
+  --batch-size 10
+```
+
+`fresh_source_record_candidates.jsonl` contains each selected
+`source_record_index`, `public_record_sha256`, every original public frame
+order, and its contact-sheet page paths. It is a selection aid only: human
+review must create the specific `LOCAL_ATOMIC` claim and frozen 1–3 frame
+window later, before any model call.
