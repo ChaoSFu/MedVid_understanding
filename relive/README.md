@@ -609,3 +609,38 @@ Both runtime files require their hash-bound GT-isolation audit sidecars. The
 prospective runtime must contain only sample IDs absent from the Phase 2
 development candidate manifest; otherwise the command stops before producing
 an artifact.
+
+### Freezing a fresh public LOCAL_ATOMIC window
+
+For Phase 3.5/3-v3 spatial-mechanism development, use the separate public
+window preparer. Its claim input has exactly the three public selector fields:
+
+```json
+{"source_record_index":123,"public_record_sha256":"<selector sha256>","target_claim":{"claim_id":"phase35-local-001","text":"The jaws of the forceps are contacting the tissue."}}
+```
+
+Its accompanying human-confirmation JSONL binds each `claim_id` to one to three
+consecutive **public frame orders** and a short observation note. It has no
+bbox, mask, ROI, pixel coordinate, GT, or answer field:
+
+```json
+{"claim_id":"phase35-local-001","frozen_frame_orders":[40,41,42],"human_public_visual_confirmation":true,"human_public_visual_confirmation_note":"Forceps jaws visibly contact tissue in the frozen public frames."}
+```
+
+```bash
+PYTHONPATH=src python scripts/phase35_prepare_fresh_runtime.py \
+  --source-json /path/to/medvidu_source.json \
+  --frame-root /path/to/public_frames \
+  --fresh-claims /path/to/fresh_claims.jsonl \
+  --window-confirmations /path/to/frozen_public_windows.jsonl \
+  --config /path/to/frozen_phase2_config.json \
+  --output-dir /path/to/new_fresh_phase35_runtime
+```
+
+The preparer rejects the five Phase 2 development source indices, duplicate
+record hashes/claims, non-consecutive or non-public frame orders, non-local
+claim scope, and any ROI/GT language in the confirmation artifact. It writes a
+closed runtime containing only the frozen public frames, while the human
+confirmation remains in the external immutable source manifest. It makes zero
+model calls and must finish before any spatial proposal, refinement, or
+certificate run.
