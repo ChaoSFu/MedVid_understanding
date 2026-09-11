@@ -152,6 +152,10 @@ def _checkpoint_preflight(config: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _write_preflight(root: Path, manifest_path: Path, source_config: Path, manifest: dict[str, Any], control: dict[str, Any], head: str) -> dict[str, Any]:
+    # Validate the reviewed checkpoint before creating any preflight artifact.
+    # This is metadata-only and makes an invalid model path a clean failure.
+    config = _core_config(source_config, len(control["frame_ids"]))
+    checkpoint = _checkpoint_preflight(config)
     preflight = root / "preflight"
     if root.exists():
         raise VerticalSliceError("output root must not already exist")
@@ -171,8 +175,6 @@ def _write_preflight(root: Path, manifest_path: Path, source_config: Path, manif
                  "prohibited_inputs_not_opened": ["reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt", "struc_info", "RC_info", "evaluation_artifacts"],
                  "human_diagnostic_roi_policy": "excluded from runtime, config, proposal input, and certificate input; post-run comparison only"}
     Path(str(runtime) + ".gt_isolation_audit.json").write_text(json.dumps(isolation, ensure_ascii=False, indent=2) + "\n")
-    config = _core_config(source_config, len(control["frame_ids"]))
-    checkpoint = _checkpoint_preflight(config)
     config_path = preflight / "formal_fixed_window.config.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n")
     plan = {"status": "PASS", "mode": "preflight", "model_calls_made": 0, "cache_mutated": False,
