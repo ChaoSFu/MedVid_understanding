@@ -82,7 +82,7 @@ class SpatialAdaptationTests(unittest.TestCase):
             frame = Frame("frame-1", str(image), 0)
             sample = RuntimeSample("sample-1", "claim_verification", "q", (frame,), target_claim=self.claim)
             row = {"sample_id": "sample-1", "candidate_id": "candidate-1", "candidate_rank": 0,
-                   "frame_ids": ["frame-1"], "source_frame_paths": [str(image)]}
+                   "frame_ids": ["frame-1"], "source_frame_paths": [str(image)], "window_length": 3}
             recovered = candidate_from_manifest(row, sample)
             self.assertEqual(recovered.frame_ids, ("frame-1",))
             with self.assertRaisesRegex(SpatialAdaptationError, "GT_SHAPED"):

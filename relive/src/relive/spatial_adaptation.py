@@ -149,8 +149,11 @@ def geometry_change(previous: list[float] | tuple[float, ...], current: list[flo
 
 def candidate_from_manifest(row: dict[str, Any], sample) -> EvidenceCandidate:
     """Reconstruct only a frozen candidate; no acquisition function is called."""
-    prohibited = {"reference_answer", "assistant_answer", "temporal_gt", "bbox", "mask", "struc_info", "rc_info", "gt_iou"}
-    if any(str(key).lower() in prohibited or "gt" in str(key).lower() for key in row):
+    prohibited = {"reference_answer", "assistant_answer", "temporal_gt", "bbox", "mask", "struc_info", "rc_info", "gt_iou", "true_support", "spurious_support", "evaluation_artifact"}
+    # Reject declared annotation fields only.  A substring test would wrongly
+    # reject legitimate fixed-pool fields such as ``window_length``.
+    if any(str(key).lower() in prohibited or str(key).lower().startswith("gt_")
+           or str(key).lower().endswith("_gt") for key in row):
         raise SpatialAdaptationError("PHASE3_CANDIDATE_MANIFEST_CONTAINS_GT_SHAPED_FIELD")
     if row.get("sample_id") != sample.sample_id or not isinstance(row.get("candidate_id"), str):
         raise SpatialAdaptationError("PHASE3_CANDIDATE_MANIFEST_BINDING_MISMATCH")
