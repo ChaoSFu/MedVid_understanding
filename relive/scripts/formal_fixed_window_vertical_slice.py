@@ -19,6 +19,7 @@ from typing import Any
 from relive.audits import audit_run, audit_runtime_imports
 from relive.config import load_config
 from relive.data.schemas import FIELD_SOURCES
+from relive.backends.inspection import CheckpointInspectionError, checkpoint_metadata
 from relive.interventions import OPAQUE_GRAY_OPERATOR, OPAQUE_GRAY_VERSION
 from relive.runner import run
 from relive.storage.artifacts import stable_hash
@@ -126,6 +127,30 @@ def _core_config(source_config: Path, frame_count: int) -> dict[str, Any]:
     return config
 
 
+def _checkpoint_preflight(config: dict[str, Any]) -> dict[str, Any] | None:
+    """Read small checkpoint metadata only; never load a model or call Qwen."""
+    backend = config["backend"]
+    if backend["kind"] != "local_hf":
+        return None
+    try:
+        metadata = checkpoint_metadata(backend["model_path"])
+    except CheckpointInspectionError as exc:
+        raise VerticalSliceError("LOCAL_HF_CHECKPOINT_METADATA_FAILURE") from exc
+    if metadata["checkpoint_metadata_sha256"] != backend["checkpoint_metadata_sha256"]:
+        raise VerticalSliceError("LOCAL_HF_CHECKPOINT_METADATA_MISMATCH")
+    if backend["model_class"] not in metadata["architectures"]:
+        raise VerticalSliceError("LOCAL_HF_MODEL_CLASS_NOT_DECLARED")
+    matches = [candidate for candidate in metadata["chat_template_candidates"]
+               if candidate["source"] == backend["chat_template_source"]
+               and candidate["sha256"] == backend["chat_template_sha256"]]
+    if len(matches) != 1:
+        raise VerticalSliceError("LOCAL_HF_CHAT_TEMPLATE_MISMATCH")
+    return {"model_path": backend["model_path"],
+            "checkpoint_metadata_sha256": metadata["checkpoint_metadata_sha256"],
+            "model_class": backend["model_class"], "chat_template_source": backend["chat_template_source"],
+            "chat_template_sha256": backend["chat_template_sha256"], "model_weights_loaded": False}
+
+
 def _write_preflight(root: Path, manifest_path: Path, source_config: Path, manifest: dict[str, Any], control: dict[str, Any], head: str) -> dict[str, Any]:
     preflight = root / "preflight"
     if root.exists():
@@ -147,6 +172,7 @@ def _write_preflight(root: Path, manifest_path: Path, source_config: Path, manif
                  "human_diagnostic_roi_policy": "excluded from runtime, config, proposal input, and certificate input; post-run comparison only"}
     Path(str(runtime) + ".gt_isolation_audit.json").write_text(json.dumps(isolation, ensure_ascii=False, indent=2) + "\n")
     config = _core_config(source_config, len(control["frame_ids"]))
+    checkpoint = _checkpoint_preflight(config)
     config_path = preflight / "formal_fixed_window.config.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n")
     plan = {"status": "PASS", "mode": "preflight", "model_calls_made": 0, "cache_mutated": False,
@@ -160,7 +186,7 @@ def _write_preflight(root: Path, manifest_path: Path, source_config: Path, manif
             "planned_max_model_calls": 5,
             "planned_call_derivation": "ORIGINAL semantic + automatic spatial proposal + KEEP + DROP + one matched control; later stages are conditional on earlier formal results",
             "human_roi_not_in_core_inputs": True, "gt_isolation_audit": isolation,
-            "runtime_source_audit": audit_runtime_imports()}
+            "runtime_source_audit": audit_runtime_imports(), "checkpoint_preflight": checkpoint}
     (preflight / "formal_vertical_slice_preflight.json").write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n")
     return plan
 
