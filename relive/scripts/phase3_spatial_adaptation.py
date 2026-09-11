@@ -290,10 +290,25 @@ def _execute(root: Path, config_path: Path, runtime: Path, phase2_run: Path, dia
         for transition, count in sorted(values.items()):
             failure_lines.append(f"| {reason} | {transition} | {count} |")
     (output / "phase3_failure_reason_summary.md").write_text("\n".join(failure_lines) + "\n", encoding="utf-8")
-    audit = {"status": "PASS", "mode": mode, "phase": "Phase 3-v1", "candidate_manifest_hash": inputs["manifest_hash"],
+    proposal_valid = all(row["refinement_execution_status"] == ExecutionStatus.OK.value
+                         and row["parsed_new_bbox"] is not None
+                         and row["bbox_geometry_change"] is not None for row in traces)
+    formal_variants_complete = all(row["round1"]["original"] is not None
+                                   and row["round1"]["keep"] is not None
+                                   and row["round1"]["drop"] is not None
+                                   and (not row["round1"]["control_available"] or bool(row["round1"]["control"]))
+                                   for row in traces)
+    pixel_audit_pass = all(row["round1"]["pixel_audit_status"] == "PASS" for row in traces)
+    engineering_pass = (proposal_valid and formal_variants_complete and pixel_audit_pass
+                        and summary["operator_unchanged"] and summary["certificate_builder_unchanged"])
+    audit = {"status": "PASS" if engineering_pass else "FAIL", "mode": mode, "phase": "Phase 3-v1",
+             "engineering_pass": engineering_pass, "candidate_manifest_hash": inputs["manifest_hash"],
              "frozen_temporal_candidates_unchanged": all(row["candidate_manifest_hash"] == inputs["manifest_hash"] for row in traces),
              "max_spatial_refinement_rounds": MAX_SPATIAL_REFINEMENT_ROUNDS,
              "all_rounds_are_one": all(row["spatial_round"] == 1 for row in traces),
+             "all_refined_proposals_valid_and_changed": proposal_valid,
+             "all_formal_variants_complete_when_constructible": formal_variants_complete,
+             "all_executed_pixel_audits_pass": pixel_audit_pass,
              "gt_isolation": preflight["runtime_gt_isolation_audit"], "operator_unchanged": summary["operator_unchanged"],
              "certificate_builder_unchanged": summary["certificate_builder_unchanged"],
              "pixel_audits": Counter(row["round1"]["pixel_audit_status"] for row in traces),
