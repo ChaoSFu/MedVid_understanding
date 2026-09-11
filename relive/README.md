@@ -182,9 +182,10 @@ verifier, certificate rules, prompts, thresholds, or benchmark artifacts.
 Use the contact sheets only to choose an operator/setting before a *new*
 manifest is frozen. A setting must never be selected from Qwen verdicts.
 The fixed-ROI calibration runner accepts opaque gray only when that new frozen
-manifest binds its exact operator version, RGB value `[127, 127, 127]`, and
-`human_visual_review_pre_inference` selection basis; this calibration-only
-identity is included in its cache request context.
+manifest binds its exact historical calibration version, RGB value `[127, 127,
+127]`, and `human_visual_review_pre_inference` selection basis. The runner maps
+that frozen declaration to the same registered core implementation used by the
+formal protocol; it does not maintain a second image-transform implementation.
 
 ```bash
 PYTHONPATH=src python scripts/calibration_intervention_sweep.py \
@@ -192,6 +193,54 @@ PYTHONPATH=src python scripts/calibration_intervention_sweep.py \
   --output-dir /path/to/calibration/intervention_sweep \
   --blur-radii 4,8,16,32
 ```
+
+## Versioned spatial intervention operators
+
+`spatial.intervention` is a closed, cache-bound protocol declaration with an
+operator name, implementation version, and parameters. The historical default
+remains `gaussian_blur` / `relive-h4-pure-gaussian-hard-mask-v1`; configs that
+only declare `blur_radius` are normalized to that explicit declaration for
+backward compatibility. The registered `opaque_gray` /
+`relive-opaque-gray-hard-mask-v1` operator accepts only RGB `[127,127,127]`.
+Unknown operators, versions, and fill values fail configuration validation.
+
+Opaque occlusion is a VLM sensitivity check. It is not a reconstruction of
+anatomy, medical truth, or a causal proof. It leaves certificate admission,
+semantic schema, prompts, thresholds, and KEEP/DROP/CONTROL policy conditions
+unchanged. The complete operator declaration is recorded in the run manifest,
+inference request/cache identity, spatial result, pixel audit, and certificate
+provenance; Gaussian and opaque requests therefore cannot share a cache entry.
+
+After a fixed-ROI calibration has been frozen and independently repeated, the
+following *formal* vertical slice uses only its public atomic claim and public
+frames. It never supplies the calibration's human ROI to the core runner. The
+normal spatial proposer supplies the ROI, and the human ROI is compared only
+after the run for diagnosis:
+
+```bash
+PYTHONPATH=src python scripts/formal_fixed_window_vertical_slice.py \
+  --mode preflight \
+  --manifest /path/to/calibration_manifest.opaque_gray.frozen.json \
+  --config configs/qwen35_9b_medvidu_claim_smoke_no_thinking.yaml \
+  --output-dir /path/to/new_formal_vertical_slice
+
+PYTHONPATH=src python scripts/formal_fixed_window_vertical_slice.py \
+  --mode run \
+  --manifest /path/to/calibration_manifest.opaque_gray.frozen.json \
+  --config configs/qwen35_9b_medvidu_claim_smoke_no_thinking.yaml \
+  --output-dir /path/to/new_formal_vertical_slice
+
+PYTHONPATH=src python scripts/formal_fixed_window_vertical_slice.py \
+  --mode replay \
+  --manifest /path/to/calibration_manifest.opaque_gray.frozen.json \
+  --config configs/qwen35_9b_medvidu_claim_smoke_no_thinking.yaml \
+  --output-dir /path/to/new_formal_vertical_slice
+```
+
+`preflight` makes no model call. `run` has a five-call upper bound (original
+semantic result, automatic spatial proposal, KEEP, DROP, one matched control),
+with later calls conditional on the formal path reaching them. `replay` uses the
+same content-addressed cache and should report zero new model calls.
 
 ## MedVidU public-runtime preparation
 

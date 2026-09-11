@@ -17,8 +17,60 @@ from .spatial import COORDINATE_MAPPING_VERSION, normalized_to_pixel_bbox, valid
 from .types import ExecutionStatus, SemanticStatus, VerificationResult, to_dict
 
 INTERVENTION_VERSION = "relive-h4-pure-gaussian-hard-mask-v1"
+"""Version of the historical Gaussian implementation retained for compatibility."""
+
+# The protocol is separate from certificate policy.  It identifies exactly how
+# pixels were transformed, without changing what semantic_spatial requires.
+INTERVENTION_PROTOCOL_VERSION = "relive-spatial-intervention-protocol-v2"
+GAUSSIAN_OPERATOR = "gaussian_blur"
+OPAQUE_GRAY_OPERATOR = "opaque_gray"
+OPAQUE_GRAY_VERSION = "relive-opaque-gray-hard-mask-v1"
 CONTROL_VERSION = "relive-matched-corners-edges-v1"
 VARIANTS = ("ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL")
+
+
+def resolve_intervention_spec(spec: dict[str, Any] | None, blur_radius: float) -> dict[str, Any]:
+    """Validate and canonicalize a closed core spatial-operator declaration.
+
+    ``blur_radius`` remains the compatibility input for old Gaussian configs.
+    The normalized result always contains an explicit operator, immutable
+    implementation version, and closed parameters, so it can be bound to cache
+    identity and certificate provenance.
+    """
+    if isinstance(blur_radius, bool) or not isinstance(blur_radius, (int, float)) or not math.isfinite(blur_radius) or blur_radius <= 0:
+        raise ValueError("BLUR_RADIUS_MUST_BE_FINITE_POSITIVE")
+    if spec is None:
+        return {"protocol_version": INTERVENTION_PROTOCOL_VERSION, "operator": GAUSSIAN_OPERATOR,
+                "operator_version": INTERVENTION_VERSION, "parameters": {"blur_radius": float(blur_radius)}}
+    if not isinstance(spec, dict):
+        raise ValueError("SPATIAL_INTERVENTION_REQUIRES_OPERATOR_VERSION_AND_PARAMETERS")
+    # validate_config stores the canonical result, so a second validation pass
+    # must accept its protocol marker while still rejecting any other field.
+    if set(spec) == {"protocol_version", "operator", "operator_version", "parameters"}:
+        if spec.get("protocol_version") != INTERVENTION_PROTOCOL_VERSION:
+            raise ValueError("UNSUPPORTED_SPATIAL_INTERVENTION_PROTOCOL_VERSION")
+        spec = {key: spec[key] for key in ("operator", "operator_version", "parameters")}
+    if set(spec) != {"operator", "operator_version", "parameters"}:
+        raise ValueError("SPATIAL_INTERVENTION_REQUIRES_OPERATOR_VERSION_AND_PARAMETERS")
+    operator, version, parameters = spec.get("operator"), spec.get("operator_version"), spec.get("parameters")
+    if not isinstance(parameters, dict):
+        raise ValueError("SPATIAL_INTERVENTION_PARAMETERS_MUST_BE_OBJECT")
+    if operator == GAUSSIAN_OPERATOR:
+        if version != INTERVENTION_VERSION or set(parameters) != {"blur_radius"}:
+            raise ValueError("UNSUPPORTED_GAUSSIAN_INTERVENTION_SPEC")
+        radius = parameters["blur_radius"]
+        if isinstance(radius, bool) or not isinstance(radius, (int, float)) or not math.isfinite(radius) or radius <= 0:
+            raise ValueError("BLUR_RADIUS_MUST_BE_FINITE_POSITIVE")
+        if float(radius) != float(blur_radius):
+            raise ValueError("SPATIAL_INTERVENTION_BLUR_RADIUS_MISMATCH")
+        return {"protocol_version": INTERVENTION_PROTOCOL_VERSION, "operator": operator,
+                "operator_version": version, "parameters": {"blur_radius": float(radius)}}
+    if operator == OPAQUE_GRAY_OPERATOR:
+        if version != OPAQUE_GRAY_VERSION or set(parameters) != {"fill_rgb"} or parameters.get("fill_rgb") != [127, 127, 127]:
+            raise ValueError("UNSUPPORTED_OPAQUE_GRAY_INTERVENTION_SPEC")
+        return {"protocol_version": INTERVENTION_PROTOCOL_VERSION, "operator": operator,
+                "operator_version": version, "parameters": {"fill_rgb": [127, 127, 127]}}
+    raise ValueError("UNSUPPORTED_SPATIAL_INTERVENTION_OPERATOR")
 
 
 def _intersection_area(a, b) -> float:
@@ -83,8 +135,34 @@ def _pixel_stats(original: Image.Image, altered: Image.Image, box) -> dict[str, 
             "any_pixel_changed": changed.getbbox() is not None}
 
 
+def _audit(image: Image.Image, altered: Image.Image, box, region: Sequence[float], variant: str,
+           operator_spec: dict[str, Any], extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    stats = _pixel_stats(image, altered, box)
+    unchanged_region = "both" if variant == "ORIGINAL" else "inside" if variant == "KEEP_TARGET" else "outside"
+    changed_region = None if variant == "ORIGINAL" else "outside" if variant == "KEEP_TARGET" else "inside"
+    unchanged_region_pass = ((stats["inside_unchanged"] and stats["outside_unchanged"])
+                             if unchanged_region == "both" else stats[f"{unchanged_region}_unchanged"])
+    expected_region_changed = (False if changed_region is None else stats[f"{changed_region}_changed"])
+    passed = unchanged_region_pass and (changed_region is None or expected_region_changed)
+    if not unchanged_region_pass or altered.size != image.size:
+        audit_status = "INTERVENTION_PIXEL_AUDIT_FAILED"
+    elif changed_region is not None and not expected_region_changed:
+        audit_status = "INTERVENTION_NO_EFFECT"
+    else:
+        audit_status = "PASS"
+    return {"version": operator_spec["operator_version"], "intervention_protocol": operator_spec,
+            "variant": variant, "region": list(region), "pixel_bbox": list(box),
+            "pixel_bbox_convention": "half_open_xyxy", "mapping_version": COORDINATE_MAPPING_VERSION,
+            "original_size": list(image.size), "output_size": list(altered.size),
+            "resolution_preserved": altered.size == image.size, "unchanged_region": unchanged_region,
+            "expected_changed_region": changed_region, "unchanged_region_pass": bool(unchanged_region_pass),
+            "expected_region_changed": bool(expected_region_changed), "pixel_audit_pass": bool(passed),
+            "audit_status": audit_status, **(extra or {}), **stats}
+
+
 def apply_intervention(image: Image.Image, region: Sequence[float], variant: str,
                        blur_radius: float) -> tuple[Image.Image, dict[str, Any]]:
+    """Historical Gaussian operation, preserved byte-for-byte for old callers."""
     if variant not in VARIANTS:
         raise ValueError(f"UNSUPPORTED_INTERVENTION: {variant}")
     if isinstance(blur_radius, bool) or not isinstance(blur_radius, (int, float)) or not math.isfinite(blur_radius) or blur_radius <= 0:
@@ -99,29 +177,37 @@ def apply_intervention(image: Image.Image, region: Sequence[float], variant: str
         mask = Image.new("L", image.size, 0)
         mask.paste(255, box=box)
         altered = Image.composite(image, blurred, mask) if variant == "KEEP_TARGET" else Image.composite(blurred, image, mask)
-    stats = _pixel_stats(image, altered, box)
-    unchanged_region = "both" if variant == "ORIGINAL" else "inside" if variant == "KEEP_TARGET" else "outside"
-    changed_region = None if variant == "ORIGINAL" else "outside" if variant == "KEEP_TARGET" else "inside"
-    unchanged_region_pass = ((stats["inside_unchanged"] and stats["outside_unchanged"])
-                             if unchanged_region == "both" else stats[f"{unchanged_region}_unchanged"])
-    expected_region_changed = (False if changed_region is None else stats[f"{changed_region}_changed"])
-    passed = unchanged_region_pass and (changed_region is None or expected_region_changed)
-    if not unchanged_region_pass or altered.size != image.size:
-        audit_status = "INTERVENTION_PIXEL_AUDIT_FAILED"
-    elif changed_region is not None and not expected_region_changed:
-        audit_status = "INTERVENTION_NO_EFFECT"
-    else:
-        audit_status = "PASS"
-    audit = {"version": INTERVENTION_VERSION, "variant": variant, "region": list(region),
-             "pixel_bbox": list(box), "pixel_bbox_convention": "half_open_xyxy",
-             "mapping_version": COORDINATE_MAPPING_VERSION, "blur_radius": float(blur_radius),
-             "original_size": list(image.size), "output_size": list(altered.size),
-             "resolution_preserved": altered.size == image.size,
-             "unchanged_region": unchanged_region, "expected_changed_region": changed_region,
-             "unchanged_region_pass": bool(unchanged_region_pass),
-             "expected_region_changed": bool(expected_region_changed), "pixel_audit_pass": bool(passed),
-             "audit_status": audit_status, **stats}
+    operator_spec = resolve_intervention_spec(None, float(blur_radius))
+    audit = _audit(image, altered, box, region, variant, operator_spec, {"blur_radius": float(blur_radius)})
     return altered, audit
+
+
+def apply_spatial_intervention(image: Image.Image, region: Sequence[float], variant: str,
+                               operator_spec: dict[str, Any]) -> tuple[Image.Image, dict[str, Any]]:
+    """Apply a registered, version-bound core spatial operator.
+
+    Opaque gray is intentionally closed to RGB 127.  It is a VLM sensitivity
+    intervention, not a medical reconstruction or causal proof.
+    """
+    canonical = resolve_intervention_spec(operator_spec, float(operator_spec.get("parameters", {}).get("blur_radius", 1.0)))
+    if canonical["operator"] == GAUSSIAN_OPERATOR:
+        return apply_intervention(image, region, variant, canonical["parameters"]["blur_radius"])
+    if variant not in VARIANTS:
+        raise ValueError(f"UNSUPPORTED_INTERVENTION: {variant}")
+    if image.mode not in {"RGB", "RGBA", "L"}:
+        raise ValueError("INTERVENTION_IMAGE_MODE_MUST_BE_RGB_RGBA_OR_L")
+    source = image.convert("RGB")
+    box = normalized_to_pixel_bbox(region, *source.size)
+    fill = tuple(canonical["parameters"]["fill_rgb"])
+    if variant == "ORIGINAL":
+        altered = source.copy()
+    elif variant == "KEEP_TARGET":
+        altered = Image.new("RGB", source.size, fill)
+        altered.paste(source.crop(box), box)
+    else:
+        altered = source.copy()
+        altered.paste(fill, box)
+    return altered, _audit(source, altered, box, region, variant, canonical, {"fill_rgb": list(fill)})
 
 
 def check_spatial(original: VerificationResult, keep: VerificationResult | None,

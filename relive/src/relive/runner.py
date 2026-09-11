@@ -28,7 +28,8 @@ from relive.contrasts import evaluate_contrast
 from relive.coverage import assess_coverage
 from relive.data.frames import select_frames, timing_summary
 from relive.data.schemas import load_runtime, SUPPORTED_TASKS
-from relive.interventions import apply_intervention, check_spatial, generate_control_regions, INTERVENTION_VERSION, CONTROL_VERSION
+from relive.interventions import (apply_spatial_intervention, check_spatial, generate_control_regions,
+                                  INTERVENTION_VERSION, CONTROL_VERSION, INTERVENTION_PROTOCOL_VERSION)
 from relive.reasoning import forced_answer, strict_answer
 from relive.spatial import parse_proposal
 from relive.storage.artifacts import ArtifactError, ArtifactStore, stable_hash
@@ -67,6 +68,7 @@ def _image_file(root: Path, image: Image.Image) -> str:
 class SampleRunner:
     def __init__(self, config, store, inference):
         self.cfg, self.store, self.inference = config, store, inference
+        self.intervention = config["spatial"]["intervention"]
         self.budget = Budget(config["budget"]["max_calls"])
         self.events, self.certificates, self.claims, self.candidates, self.proposals = [], [], [], [], []
         self.seen_candidates = set()
@@ -85,7 +87,8 @@ class SampleRunner:
         memo_key = None
         if stage == "semantic":
             memo_key = (candidate.candidate_id, claim.claim_id if claim else None, variant,
-                        tuple(actual_paths), tuple(region) if region is not None else None, control_index)
+                        tuple(actual_paths), tuple(region) if region is not None else None, control_index,
+                        json.dumps(self.intervention, sort_keys=True, separators=(",", ":")))
             prior = self.verification_memo.get(memo_key)
             if prior is not None:
                 self.record("verification_reuse", {"sample_id": sample.sample_id,
@@ -118,8 +121,8 @@ class SampleRunner:
                    "variant": variant, "round_index": candidate.round_index,
                    "proposal_index": proposal_index, "region": list(region) if region is not None else None,
                    "control_index": control_index,
-                   "intervention_version": INTERVENTION_VERSION, "control_version": CONTROL_VERSION,
-                   "blur_radius": self.cfg["spatial"]["blur_radius"] if variant != "ORIGINAL" else None,
+                   "intervention_version": self.intervention["operator_version"],
+                   "intervention_protocol": self.intervention, "control_version": CONTROL_VERSION,
                    "preprocessing": {"decode": "Pillow_RGB", "resize": False, "pillow": pillow_version}}
         request = {"stage": stage, "prompt": prompt(stage, data), "prompt_version": PROMPT_VERSIONS[stage],
                    "image_paths": actual_paths, "frame_ids": frame_ids,
@@ -212,7 +215,7 @@ class SampleRunner:
             return {"pass": False, "status": "MAX_SPATIAL_PROPOSALS",
                     "reasons": ["MAX_SPATIAL_PROPOSALS"],
                     "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
-                    "proposal_count": len(self.proposals)}
+                    "proposal_count": len(self.proposals), "intervention_protocol": self.intervention}
         if proposal_index == 0:
             response = self.infer(sample, candidate, claim, "spatial")
             proposal = parse_proposal(response["raw_text"] or "", candidate, claim,
@@ -226,6 +229,7 @@ class SampleRunner:
                         "reasons": ["RE_GROUNDING_NOT_IMPLEMENTED"],
                         "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
                         "proposal_count": len(self.proposals),
+                        "intervention_protocol": self.intervention,
                         "interpretation": "No claim-conditioned spatial re-grounding is implemented for real evidence admission."}
             box = self.cfg["spatial"]["alternate_regions"][proposal_index - 1]
             proposal = parse_proposal(json.dumps({"support_region": box}), candidate, claim)
@@ -233,14 +237,17 @@ class SampleRunner:
                       "source": "preconfigured_alternate_region", "proposal_index": proposal_index},
                       proposal_id=stable_id("region", [candidate.candidate_id, claim.claim_id, box]))
         self.proposals.append(proposal)
-        self.record("spatial_proposals", {"sample_id": sample.sample_id, "proposal": proposal})
+        self.record("spatial_proposals", {"sample_id": sample.sample_id, "proposal": proposal,
+                                          "intervention_protocol": self.intervention})
         if proposal.parser_status != ExecutionStatus.OK:
             return {"pass": False, "status": "SPATIAL_PROPOSAL_FAILURE", "reasons": ["SPATIAL_PROPOSAL_FAILURE"],
-                    "proposal": to_dict(proposal), "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"]}
+                    "proposal": to_dict(proposal), "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
+                    "intervention_protocol": self.intervention}
         box = proposal.support_region
         controls_required = POLICIES[self.cfg["policy"]["name"]]["controls"]
         controls = generate_control_regions(box, self.cfg["spatial"]["control_count"] if controls_required else 0)
-        self.record("controls", {"sample_id": sample.sample_id, "proposal_id": proposal.proposal_id, **controls})
+        self.record("controls", {"sample_id": sample.sample_id, "proposal_id": proposal.proposal_id,
+                                 "intervention_protocol": self.intervention, **controls})
         verdicts = {}
         control_verdicts = []
         variants = [("KEEP_TARGET", box, None), ("DROP_TARGET", box, None)]
@@ -252,8 +259,7 @@ class SampleRunner:
         original_audits = []
         for frame in select_frames(sample, candidate):
             with Image.open(frame.path) as source:
-                _, audit = apply_intervention(source.convert("RGB"), box, "ORIGINAL",
-                                              self.cfg["spatial"]["blur_radius"])
+                _, audit = apply_spatial_intervention(source.convert("RGB"), box, "ORIGINAL", self.intervention)
             original_audits.append(audit)
             pixel_refs.append(self.record("pixel_audits", {"sample_id": sample.sample_id,
                     "candidate_id": candidate.candidate_id, "proposal_id": proposal.proposal_id,
@@ -263,14 +269,14 @@ class SampleRunner:
                     "reasons": ["INTERVENTION_PIXEL_AUDIT_FAILED"],
                     "require_controls": controls_required, "proposal": to_dict(proposal),
                     "controls": controls, "pixel_audit_refs": pixel_refs,
+                    "intervention_protocol": self.intervention,
                     "interpretation": "Spatial intervention response under this protocol; not a causal proof."}
         for variant, region, control_index in variants:
             paths = []
             audits = []
             for frame in select_frames(sample, candidate):
                 with Image.open(frame.path) as source:
-                    altered, audit = apply_intervention(source.convert("RGB"), region, variant,
-                                                        self.cfg["spatial"]["blur_radius"])
+                    altered, audit = apply_spatial_intervention(source.convert("RGB"), region, variant, self.intervention)
                 path = _image_file(self.inference.store.root, altered)
                 paths.append(path)
                 audits.append(audit)
@@ -284,7 +290,7 @@ class SampleRunner:
                 return {"pass": False, "status": status, "reasons": [status],
                         "require_controls": controls_required, "proposal": to_dict(proposal),
                         "controls": controls, "pixel_audit_refs": pixel_refs,
-                        "intervention_variant": variant,
+                        "intervention_variant": variant, "intervention_protocol": self.intervention,
                         "interpretation": "Spatial intervention response under this protocol; not a causal proof."}
             verdict = self.infer(sample, candidate, claim, "semantic", variant, paths, region,
                                  proposal_index, control_index)
@@ -297,6 +303,7 @@ class SampleRunner:
                                expected_control_count=self.cfg["spatial"]["control_count"] if controls_required else 0)
         area = (box[2] - box[0]) * (box[3] - box[1])
         result.update(proposal=to_dict(proposal), controls=controls, pixel_audit_refs=pixel_refs,
+                      intervention_protocol=self.intervention,
                       support_area_fraction=area, large_region_warning=area >= self.cfg["spatial"]["max_area_warning"])
         return result
 
@@ -325,7 +332,8 @@ class SampleRunner:
         cert = build_certificate(candidate, claim, original, self.cfg["policy"]["name"], spatial, contrast,
                 {"synthetic": self.inference.backend.synthetic, "frame_ids": list(candidate.frame_ids),
                  "source_runtime_sha256": sample.provenance["runtime_sha256"],
-                 "config_policy": self.cfg["policy"], "frozen_model": self.inference.backend.fingerprint()})
+                 "config_policy": self.cfg["policy"], "frozen_model": self.inference.backend.fingerprint(),
+                 "intervention_protocol": self.intervention})
         self.record("certificates", cert)
         return cert
 
@@ -512,6 +520,8 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
                 "frame_sha256": frame_hashes, "backend": backend.fingerprint(), "synthetic": backend.synthetic,
                 "prompt_versions": PROMPT_VERSIONS, "prompt_hashes": {k: stable_hash(prompt(k, {})) for k in PROMPT_VERSIONS},
                 "policy_version": POLICY_VERSION, "intervention_version": INTERVENTION_VERSION,
+                "intervention_protocol_version": INTERVENTION_PROTOCOL_VERSION,
+                "spatial_intervention": config["spatial"]["intervention"],
                 "control_version": CONTROL_VERSION, "git_commit": commit, "python": sys.version,
                 "platform": platform.platform(), "pillow": pillow_version, "cache_dir": str(cache.root),
                 "runtime_source_audit": source_audit, "model_parameters_updated": False,

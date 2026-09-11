@@ -28,6 +28,11 @@ claims:
   contrast_fixtures: []
 spatial:
   blur_radius: 4.0
+  intervention:
+    operator: gaussian_blur
+    operator_version: relive-h4-pure-gaussian-hard-mask-v1
+    parameters:
+      blur_radius: 4.0
   control_count: 1
   control_aggregation: all
   control_version: relive-matched-corners-edges-v1

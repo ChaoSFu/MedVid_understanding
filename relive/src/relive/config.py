@@ -7,6 +7,8 @@ import math
 from pathlib import Path
 import re
 from typing import Any
+
+from .interventions import resolve_intervention_spec
 from urllib.parse import urlsplit
 
 
@@ -17,7 +19,7 @@ DEFAULTS = {
                 "timeout_seconds": 30, "max_retries": 0, "extra": {}},
     "acquisition": {"method": "sliding_windows", "window_size": 3, "stride": 2, "max_candidates": 4},
     "claims": {"max_claims": 3, "max_alternatives": 2, "contrast_fixtures": []},
-    "spatial": {"blur_radius": 4.0, "control_count": 1, "control_aggregation": "all",
+    "spatial": {"blur_radius": 4.0, "intervention": None, "control_count": 1, "control_aggregation": "all",
                 "control_version": "relive-matched-corners-edges-v1", "alternate_regions": [[0.1, 0.1, 0.7, 0.7]],
                 "max_area_warning": 0.8},
     "policy": {"name": "semantic_contrast_spatial", "version": "relive-v1-policy-1", "strict_alternatives": True},
@@ -322,6 +324,10 @@ def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
     _integer(result["adaptation"]["expand_frames"], "expand_frames")
     _integer(result["spatial"]["control_count"], "control_count")
     _number(result["spatial"]["blur_radius"], "blur_radius", minimum=0.001)
+    # A legacy blur_radius-only config is normalized into an explicit Gaussian
+    # protocol declaration. New operators must be fully closed and registered.
+    result["spatial"]["intervention"] = resolve_intervention_spec(
+        result["spatial"].get("intervention"), result["spatial"]["blur_radius"])
     _number(result["spatial"]["max_area_warning"], "max_area_warning", minimum=0, maximum=1)
     if result["spatial"]["control_aggregation"] != "all":
         raise ValueError("Only the predeclared all-controls aggregation is supported")
