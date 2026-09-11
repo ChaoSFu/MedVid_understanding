@@ -124,6 +124,7 @@ def _preflight(root: Path, config_path: Path, runtime: Path, phase2_run: Path, d
         raise Phase3Error("Phase 3 output directory must not exist before zero-call preflight")
     config = load_config(config_path)
     _verify_config(config)
+    intervention = config["spatial"]["intervention"]
     samples = load_runtime(runtime)
     gt = _gt_audit(runtime, samples)
     manifest, diagnoses, _, inputs = _phase2_inputs(phase2_run, diagnostics, runtime)
