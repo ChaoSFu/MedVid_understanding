@@ -573,3 +573,39 @@ The v2 transition summary separates proposal-contract outcomes from formal
 certificate transitions. `RESIDUAL_SUPPORT_OR_SEMANTIC_INSENSITIVITY` is a
 diagnostic label for valid R1 cases with ORIGINAL and DROP both SUPPORTED; it
 does not alter any certificate reason or trigger another round.
+
+## Phase 3.5: claim-scope applicability routing
+
+The GT-free `relive-claim-scope-router-v1` runs before spatial refinement and
+before certificate outcomes. It accepts only public claim text, `qa_type`, and
+closed runtime metadata. It rejects GT, ROI, model-result, and certificate
+fields. Its deterministic taxonomy is:
+
+- `LOCAL_ATOMIC`: one localized object, state, contact, or relation; eligible
+  for the existing single-ROI KEEP/DROP/matched-control protocol.
+- `MULTI_SUPPORT_POSSIBLE`: an existential or count-insensitive claim with
+  potentially independent witnesses; defer to a future support-set verifier.
+- `GLOBAL_DISTRIBUTED`: scene, procedure, environment, or viewpoint claim;
+  defer to a future global/temporal verifier.
+- `UNRESOLVED_SCOPE`: abstain from the single-ROI protocol.
+
+This is an applicability decision, never a `VERIFIED` decision. The command
+retrospectively audits the frozen Phase 2 development candidates without
+reading certificate values for routing, then freezes a fresh, non-overlapping
+`LOCAL_ATOMIC` cohort in public-runtime input order. It does not run Phase
+3-v3 or any model inference.
+
+```bash
+PYTHONPATH=src python scripts/phase35_claim_scope_audit.py \
+  --development-runtime /path/to/phase2_development_runtime.jsonl \
+  --phase2-run-dir /path/to/phase2/run \
+  --phase25-diagnostics /path/to/phase25_failure_diagnostics.jsonl \
+  --prospective-runtime /path/to/fresh_public_runtime.jsonl \
+  --output-dir /path/to/new_phase35_output \
+  --max-prospective-samples 5
+```
+
+Both runtime files require their hash-bound GT-isolation audit sidecars. The
+prospective runtime must contain only sample IDs absent from the Phase 2
+development candidate manifest; otherwise the command stops before producing
+an artifact.
