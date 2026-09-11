@@ -34,6 +34,10 @@ from relive.reasoning import forced_answer, strict_answer
 from relive.spatial import parse_proposal
 from relive.storage.artifacts import ArtifactError, ArtifactStore, stable_hash
 from relive.storage.cache import Budget, BudgetExceeded, CachedInference
+from relive.traversal import (TRAVERSAL_MODE, FixedCandidateTraversalController,
+                              audit_candidate_frames, audit_traversal_results, build_fixed_candidate_pool,
+                              failure_reason_distribution, failure_reason_markdown,
+                              write_fixed_candidate_pool, write_jsonl_immutable)
 from relive.types import Claim, ExecutionStatus, ExclusivityStatus, FinalStatus, SemanticStatus, VerificationResult, to_dict
 from relive.verification import parse_verification
 
@@ -343,6 +347,34 @@ class SampleRunner:
         coverage = assess_coverage(required, self.certificates, relations)
         return coverage, strict_answer(sample, self.claims, self.certificates, coverage)
 
+    def run_fixed_candidate_pool(self, sample, candidates, candidate_manifest_hash):
+        """Phase 2 outer loop; inner evidence verification stays unchanged."""
+        controller = FixedCandidateTraversalController(self, sample, candidates, candidate_manifest_hash)
+        traversal = controller.run()
+        result = {"sample_id": sample.sample_id, "task": sample.task,
+                  "synthetic": self.inference.backend.synthetic, "status": "COMPLETE",
+                  "claims": self.claims, "candidates": self.candidates,
+                  "spatial_proposals": self.proposals, "certificates": self.certificates,
+                  "coverage": traversal["coverage"], "strict": traversal["strict"],
+                  "before_adaptation_strict": traversal["strict"], "adaptation_events": [],
+                  "candidate_traversal": {"mode": TRAVERSAL_MODE,
+                                          "version": "relive-fixed-sliding-window-traversal-v1",
+                                          **traversal},
+                  "termination_reason": traversal["termination_reason"],
+                  "usage": self.budget.snapshot(), "timing": timing_summary(sample.frames),
+                  "provenance": {**sample.provenance,
+                                 "source_qa_type": sample.metadata.get("source_qa_type"),
+                                 "dataset_name": sample.metadata.get("dataset_name")}}
+        if self.cfg["reasoning"]["mode"] == "benchmark_forced":
+            # This remains explicitly outside strict reliability.  It receives
+            # the fixed pool only after strict admission has already abstained.
+            result["benchmark_forced"] = forced_answer(sample, self.claims, candidates, traversal["strict"])
+        result = to_dict(result)
+        audit = audit_strict_result(result)
+        if audit["status"] != "PASS":
+            raise RuntimeError("strict result audit failed")
+        return result
+
     def run(self, sample):
         if sample.task not in SUPPORTED_TASKS:
             return {"sample_id": sample.sample_id, "task": sample.task, "synthetic": self.inference.backend.synthetic,
@@ -513,6 +545,14 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
     except (subprocess.SubprocessError, OSError):
         commit = None
+    fixed_pools = pool_rows = pool_hash = pool_manifest = frame_audit = None
+    if config["traversal"]["mode"] == TRAVERSAL_MODE:
+        # This is deliberately before inference construction and before the
+        # first sample.  Candidate rows are then immutable for the whole run.
+        fixed_pools, pool_rows, pool_hash = build_fixed_candidate_pool(samples, config)
+        frame_audit = audit_candidate_frames(samples, pool_rows)
+        if frame_audit["status"] != "PASS":
+            raise ValueError("fixed candidate frame audit failed")
     frame_hashes = {f.path: hashlib.sha256(Path(f.path).read_bytes()).hexdigest() for s in samples for f in s.frames}
     manifest = {"framework": "ReliVE-v1", "config": config, "config_sha256": stable_hash(config),
                 "runtime_path": str(Path(runtime_path).resolve()), "samples": [s.sample_id for s in samples],
@@ -522,6 +562,11 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
                 "policy_version": POLICY_VERSION, "intervention_version": INTERVENTION_VERSION,
                 "intervention_protocol_version": INTERVENTION_PROTOCOL_VERSION,
                 "spatial_intervention": config["spatial"]["intervention"],
+                "candidate_traversal": ({"mode": TRAVERSAL_MODE,
+                                         "version": "relive-fixed-sliding-window-traversal-v1",
+                                         "candidate_manifest_hash": pool_hash,
+                                         "frame_audit": frame_audit}
+                                        if pool_hash is not None else {"mode": "legacy_adaptation"}),
                 "control_version": CONTROL_VERSION, "git_commit": commit, "python": sys.version,
                 "platform": platform.platform(), "pillow": pillow_version, "cache_dir": str(cache.root),
                 "runtime_source_audit": source_audit, "model_parameters_updated": False,
@@ -532,6 +577,8 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
     started = time.monotonic()
     with store.run_lock():
         store.put_json("manifest", "run", manifest)
+        if pool_rows is not None and pool_hash is not None:
+            pool_manifest = write_fixed_candidate_pool(store, pool_rows, pool_hash)
         for sample in samples:
             key = stable_id("sample", sample.sample_id)
             path = store.path("samples", key)
@@ -542,17 +589,43 @@ def run(config, runtime_path, output_dir, *, cache_dir=None, max_samples=5, phas
                 cached_samples += 1
             else:
                 engine = SampleRunner(config, store, inference)
-                result = engine.run(sample)
+                result = (engine.run_fixed_candidate_pool(sample, fixed_pools[sample.sample_id], pool_hash)
+                          if fixed_pools is not None else engine.run(sample))
                 new_calls += engine.budget.new_calls
                 store.put_json("samples", key, result)
             results.append(result)
+        traversal_audit = None
+        if pool_rows is not None and pool_hash is not None:
+            trace_rows = [row for result in results for row in result.get("candidate_traversal", {}).get("trace", [])]
+            write_jsonl_immutable(store.root / "candidate_traversal_trace.jsonl", trace_rows)
+            distribution = failure_reason_distribution(results)
+            distribution_ref = store.put_json("analysis", "failure_reason_distribution", distribution)
+            summary_path = store.root / "analysis" / "failure_reason_summary.md"
+            summary_body = failure_reason_markdown(distribution)
+            if summary_path.exists() and summary_path.read_text(encoding="utf-8") != summary_body:
+                raise ArtifactError(f"Immutable artifact collision: {summary_path}")
+            if not summary_path.exists():
+                summary_path.write_text(summary_body, encoding="utf-8")
+            traversal_audit = audit_traversal_results(results, pool_rows, pool_hash)
+            if traversal_audit["status"] != "PASS":
+                raise RuntimeError("fixed candidate traversal audit failed")
+            traversal_audit = {**traversal_audit, "candidate_manifest": pool_manifest,
+                               "frame_audit": frame_audit,
+                               "trace_path": str(store.root / "candidate_traversal_trace.jsonl"),
+                               "failure_reason_distribution": distribution_ref,
+                               "failure_reason_summary": str(summary_path)}
+            store.put_json("analysis", "phase2_traversal_audit", traversal_audit)
         summary = {"framework": "ReliVE-v1", "synthetic": backend.synthetic, "n_samples": len(results),
                    "strict_answered": sum(r["strict"]["status"] == "ANSWERED" for r in results),
                    "certificate_distribution": dict(Counter(c["final_status"] for r in results for c in r["certificates"])),
                    "termination_distribution": dict(Counter(r["termination_reason"] for r in results)),
                    "logical_model_calls": sum(r["usage"]["calls"] for r in results),
                    "new_model_calls": new_calls, "resumed_completed_samples": cached_samples,
+                   "cache_hits": sum(r["usage"].get("cache_hits", 0) for r in results),
                    "output_dir": str(store.root), "cache_dir": str(cache.root)}
+        if traversal_audit is not None:
+            summary["candidate_traversal"] = {"mode": TRAVERSAL_MODE, "audit_status": traversal_audit["status"],
+                                              "candidate_manifest_hash": pool_hash}
         store.append_event("invocations", {**summary, "invocation_id": uuid.uuid4().hex,
                                            "elapsed_seconds": time.monotonic() - started})
     return summary

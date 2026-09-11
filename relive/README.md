@@ -242,6 +242,78 @@ semantic result, automatic spatial proposal, KEEP, DROP, one matched control),
 with later calls conditional on the formal path reaching them. `replay` uses the
 same content-addressed cache and should report zero new model calls.
 
+## Phase 2: fixed sliding-window candidate-pool traversal
+
+Phase 2 adds only a GT-free outer temporal loop. It keeps the spatial proposer,
+registered intervention operator, semantic verifier, and certificate builder
+unchanged. Before inference, `relive.acquisition.acquire(...,
+method="sliding_windows")` emits the entire chronological candidate pool and
+binds it to an immutable `fixed_candidate_pool.jsonl` hash. The controller then
+runs each candidate once, in rank order, and stops at the first formal
+`VERIFIED` certificate. A failed candidate is recorded in
+`candidate_traversal_trace.jsonl`; it is never re-proposed, re-sized, or
+re-ranked in this phase.
+
+The Phase 2 engineering smoke is deliberately frozen to its confirmed local
+settings: window length 3 frames, stride 2 frames, at most 4 candidates, and
+the existing retained final short-window behavior. These are smoke parameters,
+not a benchmark or publication window protocol. The historical H2/H3/H4 window
+code is not imported because its alignment analysis is outside the ReliVE
+runtime isolation boundary.
+
+Prepare a new config from the actual five-sample smoke's recorded config on the
+GPU host. This preserves its Qwen checkpoint and generation settings verbatim;
+only the explicit Phase 2 traversal and its already-calibrated opaque operator
+are selected. The `max_spatial_proposals: 4` setting is a traversal resource
+budget for one unchanged, one-shot proposal at each of the four frozen
+candidates. It does not enable spatial refinement.
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+
+SOURCE_RUN=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/smoke_5_qwen35_gpu0_smoke5_v4_v2_20260910_113056
+RUNTIME=/path/to/the_existing_five_sample_public_runtime.jsonl
+OUT=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/phase2_fixed_sliding_window_$(date +%Y%m%d_%H%M%S)
+PHASE2_CONFIG="${OUT}.config.json"
+
+python - "$SOURCE_RUN/manifest/run.json" "$PHASE2_CONFIG" <<'PY'
+import json, sys
+source, destination = map(__import__('pathlib').Path, sys.argv[1:])
+config = json.loads(source.read_text())['config']
+expected = {'method': 'sliding_windows', 'window_size': 3, 'stride': 2, 'max_candidates': 4}
+if {key: config['acquisition'][key] for key in expected} != expected:
+    raise SystemExit('source smoke config does not match the frozen Phase 2 window protocol')
+config['traversal'] = {'mode': 'fixed_sliding_window_pool'}
+config['adaptation']['enabled'] = False
+config['spatial']['intervention'] = {
+    'operator': 'opaque_gray',
+    'operator_version': 'relive-opaque-gray-hard-mask-v1',
+    'parameters': {'fill_rgb': [127, 127, 127]},
+}
+config['budget']['max_candidates'] = max(config['budget']['max_candidates'], 4)
+config['budget']['max_spatial_proposals'] = 4
+destination.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
+PY
+
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase2_fixed_sliding_window_smoke.py \
+  --mode preflight --config "$PHASE2_CONFIG" --runtime "$RUNTIME" --output-dir "$OUT"
+
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase2_fixed_sliding_window_smoke.py \
+  --mode run --config "$PHASE2_CONFIG" --runtime "$RUNTIME" --output-dir "$OUT" \
+  --baseline-run "$SOURCE_RUN"
+
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase2_fixed_sliding_window_smoke.py \
+  --mode replay --config "$PHASE2_CONFIG" --runtime "$RUNTIME" --output-dir "$OUT"
+```
+
+The run writes `analysis/failure_reason_distribution.json`,
+`analysis/failure_reason_summary.md`, `analysis/phase2_traversal_audit.json`,
+and the frozen-pool and trace artifacts. A replay must report
+`new_model_calls: 0`; its cache-hit count covers the candidate-level requests
+actually replayed. These diagnostics identify temporal acquisition versus
+proposal/intervention/verifier bottlenecks. They do not support a benchmark
+performance claim and do not change certificate admission.
+
 ## MedVidU public-runtime preparation
 
 `prepare-medvidu` does not use the original assistant turn, `struc_info`,

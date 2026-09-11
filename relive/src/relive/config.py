@@ -25,6 +25,10 @@ DEFAULTS = {
     "policy": {"name": "semantic_contrast_spatial", "version": "relive-v1-policy-1", "strict_alternatives": True},
     "adaptation": {"enabled": True, "actions": ["EXPAND_TEMPORAL_CONTEXT", "TRY_ALTERNATE_SUPPORT_REGION",
                     "NEXT_CANDIDATE", "ACQUIRE_MISSING_CLAIM"], "expand_frames": 2},
+    # The legacy runner remains the default.  Phase 2 opts into a frozen,
+    # chronological outer loop explicitly so it cannot silently change an
+    # existing run's adaptation behavior.
+    "traversal": {"mode": "legacy_adaptation"},
     "budget": {"max_calls": 60, "max_candidates": 6, "max_spatial_proposals": 2, "max_rounds": 4},
     "reasoning": {"mode": "strict_reliability", "max_answer_tokens": 128},
 }
@@ -282,6 +286,13 @@ def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Only ReliVE-v1 is implemented")
     if result["acquisition"]["method"] not in {"uniform", "sliding_windows"}:
         raise ValueError("Unsupported acquisition method")
+    if result["traversal"]["mode"] not in {"legacy_adaptation", "fixed_sliding_window_pool"}:
+        raise ValueError("Unsupported traversal mode")
+    if result["traversal"]["mode"] == "fixed_sliding_window_pool":
+        if result["acquisition"]["method"] != "sliding_windows":
+            raise ValueError("fixed_sliding_window_pool requires acquisition.method=sliding_windows")
+        if result["adaptation"]["enabled"] is not False:
+            raise ValueError("fixed_sliding_window_pool requires adaptation.enabled=false")
     for section, names in {
         "acquisition": ("window_size", "stride", "max_candidates"),
         "claims": ("max_claims",),
@@ -290,6 +301,9 @@ def validate_config(raw: dict[str, Any]) -> dict[str, Any]:
     }.items():
         for name in names:
             _integer(result[section][name], f"{section}.{name}")
+    if (result["traversal"]["mode"] == "fixed_sliding_window_pool"
+            and result["budget"]["max_spatial_proposals"] < result["acquisition"]["max_candidates"]):
+        raise ValueError("fixed_sliding_window_pool needs one spatial-proposal budget slot per frozen candidate")
     _integer(result["claims"]["max_alternatives"], "max_alternatives", minimum=0)
     fixtures = result["claims"]["contrast_fixtures"]
     if not isinstance(fixtures, list):
