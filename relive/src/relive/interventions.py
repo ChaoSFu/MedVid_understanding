@@ -77,6 +77,60 @@ def _intersection_area(a, b) -> float:
     return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
 
 
+def _control_placements(box: Sequence[float]) -> list[tuple[float, float]]:
+    """Return the closed, ordered placement list used by the core protocol."""
+    x1, y1, x2, y2 = box
+    width, height = x2 - x1, y2 - y1
+    return [(0.0, 0.0), (1.0 - width, 0.0), (0.0, 1.0 - height),
+            (1.0 - width, 1.0 - height), ((1.0 - width) / 2, 0.0),
+            ((1.0 - width) / 2, 1.0 - height), (0.0, (1.0 - height) / 2),
+            (1.0 - width, (1.0 - height) / 2),
+            (x1 - width, y1), (x2, y1), (x1, y1 - height), (x1, y2)]
+
+
+def audit_control_geometry(region: Sequence[float], count: int) -> dict[str, Any]:
+    """Explain the deterministic control-placement result without changing it.
+
+    This is a diagnostic view of the existing fixed corner/edge/adjacent
+    protocol.  It neither selects a different control nor considers image
+    content, model output, or annotations.  ``generate_control_regions`` uses
+    this function so its existing placement behaviour remains the one source
+    of truth.
+    """
+    box = validate_region(region)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError("CONTROL_COUNT_MUST_BE_NONNEGATIVE_INTEGER")
+    x1, y1, x2, y2 = box
+    width, height = x2 - x1, y2 - y1
+    selected: list[tuple[float, float, float, float]] = []
+    candidates = []
+    for placement_index, (x, y) in enumerate(_control_placements(box)):
+        proposal = (x, y, x + width, y + height)
+        if len(selected) >= count:
+            state = "NOT_EVALUATED_AFTER_REQUEST_SATISFIED"
+        elif not (0 <= x < x + width <= 1 and 0 <= y < y + height <= 1):
+            state = "OUT_OF_BOUNDS"
+        elif _intersection_area(box, proposal) > 0:
+            state = "OVERLAPS_TARGET"
+        elif any(_intersection_area(old, proposal) > 0 for old in selected):
+            state = "OVERLAPS_PREVIOUS_CONTROL"
+        elif proposal in selected:
+            state = "DUPLICATE_PLACEMENT"
+        else:
+            selected.append(proposal)
+            state = "SELECTED"
+        candidates.append({"placement_index": placement_index, "region": list(proposal), "state": state})
+    available = len(selected) == count
+    return {"status": "CONTROL_AVAILABLE" if available else "CONTROL_UNAVAILABLE",
+            "available": available, "regions": [list(item) for item in selected],
+            "requested_count": count, "valid_count": len(selected),
+            "target_region": list(box), "target_area_fraction": width * height,
+            "candidate_placements": candidates,
+            "geometry_rule": "fixed_corners_then_edge_centers_then_target_adjacent; target/control pairwise disjoint",
+            "matching": "identical_normalized_width_and_height",
+            "version": CONTROL_VERSION}
+
+
 def generate_control_regions(region: Sequence[float], count: int) -> dict[str, Any]:
     """Predeclared corner/edge/adjacent placements, disjoint from target and each other.
 
@@ -84,31 +138,10 @@ def generate_control_regions(region: Sequence[float], count: int) -> dict[str, A
     yields CONTROL_UNAVAILABLE; partial positions remain in the audit. Positions
     never depend on image content, model responses, or hidden annotations.
     """
-    box = validate_region(region)
-    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-        raise ValueError("CONTROL_COUNT_MUST_BE_NONNEGATIVE_INTEGER")
-    x1, y1, x2, y2 = box
-    width, height = x2 - x1, y2 - y1
-    placements = [(0.0, 0.0), (1.0 - width, 0.0), (0.0, 1.0 - height),
-                  (1.0 - width, 1.0 - height), ((1.0 - width) / 2, 0.0),
-                  ((1.0 - width) / 2, 1.0 - height), (0.0, (1.0 - height) / 2),
-                  (1.0 - width, (1.0 - height) / 2),
-                  (x1 - width, y1), (x2, y1), (x1, y1 - height), (x1, y2)]
-    selected = []
-    for x, y in placements:
-        if len(selected) >= count:
-            break
-        proposal = (x, y, x + width, y + height)
-        if not (0 <= x < x + width <= 1 and 0 <= y < y + height <= 1):
-            continue
-        if _intersection_area(box, proposal) > 0 or any(_intersection_area(old, proposal) > 0 for old in selected):
-            continue
-        if proposal not in selected:
-            selected.append(proposal)
-    available = len(selected) == count
-    return {"status": "CONTROL_AVAILABLE" if available else "CONTROL_UNAVAILABLE",
-            "available": available, "regions": selected, "requested_count": count,
-            "valid_count": len(selected), "version": CONTROL_VERSION,
+    diagnostic = audit_control_geometry(region, count)
+    return {"status": diagnostic["status"], "available": diagnostic["available"],
+            "regions": diagnostic["regions"], "requested_count": diagnostic["requested_count"],
+            "valid_count": diagnostic["valid_count"], "version": CONTROL_VERSION,
             "geometry_rule": "fixed_corners_then_edge_centers_then_target_adjacent; target/control pairwise disjoint",
             "matching": "identical_normalized_width_and_height",
             "limitation": "Controls may contain other evidence; rasterization can change pixel area by one row/column."}

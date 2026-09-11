@@ -452,3 +452,27 @@ video-global/existential claim; verified and rejected evidence in the same scope
 is a conflict. Strict answers cite only `VERIFIED` Evidence–Claim pairs and
 abstain on incomplete coverage. `benchmark_forced` is a separate, explicitly
 marked fallback output and is excluded from strict metrics.
+
+## Phase 2.5 failure-mode audit
+
+A completed Phase 2 run can be diagnosed without another model call. The audit
+reads only completed runtime certificates, control-generation events, pixel
+audits, and the existing raw-inference cache. It never opens evaluation or GT
+artifacts and cannot change the candidate manifest, cache, operator, verifier,
+or certificate policy.
+
+```bash
+PYTHONPATH=src python scripts/phase25_failure_mode_audit.py \
+  --run-dir /path/to/phase2/run \
+  --cache-dir /path/to/phase2/cache \
+  --output-dir /path/to/new_phase25_diagnostics
+```
+
+It writes immutable `phase2_failure_diagnostics.jsonl`, a JSON summary, and a
+Markdown report. A `CONTROL_RESULT_COUNT_MISMATCH` is classified as an
+implementation/artifact discrepancy, a documented protocol-unavailable state,
+or unresolved. It remains in technical-diagnostic status until resolved; the
+audit never performs spatial refinement. `ORIGINAL_INSUFFICIENT` recommends
+only temporal reacquisition, while spatial refinement is merely eligible (not
+executed) for diagnosed dependence/sufficiency and eligible ROI-geometry
+failures.
