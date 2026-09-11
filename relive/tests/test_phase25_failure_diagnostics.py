@@ -7,9 +7,12 @@ import sys
 import tempfile
 import unittest
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from relive.failure_diagnostics import (classify_control_count_mismatch,
+                                        classify_intervention_no_effect,
                                         diagnose_phase2_failures,
                                         refinement_eligibility)
 from relive.interventions import audit_control_geometry, generate_control_regions
@@ -36,9 +39,25 @@ class Phase25FailureDiagnosticsTests(unittest.TestCase):
         self.assertTrue(any(row["state"] == "SELECTED" for row in audit["candidate_placements"]))
 
     def test_original_insufficient_prohibits_spatial_refinement(self):
-        result = refinement_eligibility(["ORIGINAL_INSUFFICIENT"])
+        result = refinement_eligibility(["ORIGINAL_INSUFFICIENT", "REQUIRED_CHECK_NOT_RUN"])
         self.assertEqual(result["recommended_action"], "TEMPORAL_REACQUIRE")
         self.assertFalse(result["refinement_eligible"])
+
+    def test_full_frame_keep_no_effect_is_proposal_geometry_not_missing_artifact(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = root / "original.png"
+            altered = root / "altered.png"
+            Image.new("RGB", (10, 8), (20, 30, 40)).save(original)
+            Image.new("RGB", (10, 8), (20, 30, 40)).save(altered)
+            kind, _, details = classify_intervention_no_effect([{
+                "variant": "KEEP_TARGET", "frame_id": "f0", "pixel_bbox": [0, 0, 10, 8],
+                "original_size": [10, 8], "output_path": str(altered), "source_path": str(original),
+            }], [str(original)])
+            self.assertEqual(kind, "FULL_FRAME_OR_NO_COMPLEMENT_ROI")
+            self.assertEqual(details[0]["classification"], kind)
+            decision = refinement_eligibility(["INTERVENTION_NO_EFFECT"], no_effect_class=kind)
+            self.assertTrue(decision["refinement_eligible"])
 
     def test_dependence_unresolved_allows_spatial_refinement(self):
         result = refinement_eligibility(["DEPENDENCE_UNRESOLVED"])

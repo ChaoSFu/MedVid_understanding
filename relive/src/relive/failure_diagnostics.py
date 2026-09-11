@@ -119,6 +119,15 @@ def classify_intervention_no_effect(audits: list[dict[str, Any]], original_paths
         if not isinstance(bbox, list) or len(bbox) != 4 or bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
             row["classification"] = "CLIPPED_TO_ZERO_AREA"
             causes.append("CLIPPED_TO_ZERO_AREA")
+        elif (audit.get("variant") == "KEEP_TARGET" and isinstance(audit.get("original_size"), list)
+              and len(audit["original_size"]) == 2
+              and bbox == [0, 0, audit["original_size"][0], audit["original_size"][1]]):
+            # KEEP is defined as retaining the ROI while changing its
+            # complement.  A full-frame ROI has an empty complement, so a
+            # no-effect result is a proposal-geometry failure, not a missing
+            # artifact or a broken opaque-gray operator.
+            row["classification"] = "FULL_FRAME_OR_NO_COMPLEMENT_ROI"
+            causes.append("FULL_FRAME_OR_NO_COMPLEMENT_ROI")
         elif output is None or not output.is_file() or source_path is None or not source_path.is_file():
             row["classification"] = "UNRESOLVED_ARTIFACT_NOT_READABLE"
             causes.append("UNRESOLVED_ARTIFACT_NOT_READABLE")
@@ -132,7 +141,7 @@ def classify_intervention_no_effect(audits: list[dict[str, Any]], original_paths
             row["classification"] = "OPERATOR_OR_AUDIT_BUG"
             causes.append("OPERATOR_OR_AUDIT_BUG")
         detail.append(row)
-    for preferred in ("CLIPPED_TO_ZERO_AREA", "ARTIFACT_NOT_APPLIED", "OPERATOR_OR_AUDIT_BUG",
+    for preferred in ("CLIPPED_TO_ZERO_AREA", "FULL_FRAME_OR_NO_COMPLEMENT_ROI", "ARTIFACT_NOT_APPLIED", "OPERATOR_OR_AUDIT_BUG",
                       "UNIFORM_REGION", "UNRESOLVED_ARTIFACT_NOT_READABLE"):
         if preferred in causes:
             return preferred, "PIXEL_AUDIT_AND_IMAGE_COMPARISON", detail
@@ -144,7 +153,7 @@ def refinement_eligibility(failure_reasons: list[str], *, control_mismatch_class
                            control_geometry_refinable: bool = False) -> dict[str, Any]:
     """Apply the frozen Phase 2.5 policy; this function never performs refinement."""
     reasons = set(failure_reasons)
-    technical_reasons = {"TECHNICAL_FAILURE", "REQUIRED_CHECK_NOT_RUN", "SPATIAL_PROPOSAL_FAILURE",
+    technical_reasons = {"TECHNICAL_FAILURE", "SPATIAL_PROPOSAL_FAILURE",
                          "INTERVENTION_PIXEL_AUDIT_FAILED", "SPATIAL_REFERENCE_BINDING_MISMATCH"}
     if "CONTROL_RESULT_COUNT_MISMATCH" in reasons:
         return {"root_cause_class": "TECHNICAL_DIAGNOSTIC", "refinement_eligible": False,
@@ -157,7 +166,7 @@ def refinement_eligibility(failure_reasons: list[str], *, control_mismatch_class
         return {"root_cause_class": "TEMPORAL_OR_SEMANTIC_INSUFFICIENT", "refinement_eligible": False,
                 "recommended_action": "TEMPORAL_REACQUIRE", "policy_reason": "ORIGINAL_INSUFFICIENT"}
     if "INTERVENTION_NO_EFFECT" in reasons:
-        if no_effect_class in {"CLIPPED_TO_ZERO_AREA", "UNIFORM_REGION"}:
+        if no_effect_class in {"CLIPPED_TO_ZERO_AREA", "FULL_FRAME_OR_NO_COMPLEMENT_ROI", "UNIFORM_REGION"}:
             return {"root_cause_class": "SPATIAL_PROPOSAL_OR_ROI_FAILURE", "refinement_eligible": True,
                     "recommended_action": "SPATIAL_REFINE", "policy_reason": no_effect_class}
         if no_effect_class in {"ARTIFACT_NOT_APPLIED", "OPERATOR_OR_AUDIT_BUG"}:
@@ -216,7 +225,7 @@ def _audits_for(audits: list[tuple[Path, dict[str, Any]]], sample_id: str, candi
 
 
 def _candidate_diagnostic(sample: dict[str, Any], certificate: dict[str, Any], controls_events,
-                          pixel_events, cache_dir: Path | None) -> dict[str, Any]:
+                          pixel_events, certificate_events: dict[str, Path], cache_dir: Path | None) -> dict[str, Any]:
     sample_id, candidate_id = sample.get("sample_id"), certificate.get("candidate_id")
     reasons = list(certificate.get("failure_reasons", []))
     spatial = certificate.get("checks", {}).get("spatial", {})
@@ -322,7 +331,7 @@ def _candidate_diagnostic(sample: dict[str, Any], certificate: dict[str, Any], c
             "details": no_effect_detail,
         },
         "supporting_artifact_references": {
-            "certificate": None,
+            "certificate": _ref(certificate_events[certificate.get("certificate_id")]) if certificate.get("certificate_id") in certificate_events else None,
             "spatial_proposal_id": proposal_id,
             "pixel_audits": [_ref(path) for path, _ in candidate_audits],
             "controls": _ref(control_path) if control_path else None,
@@ -368,11 +377,13 @@ def diagnose_phase2_failures(run_dir: Path, output_dir: Path, cache_dir: Path | 
         raise FailureDiagnosticError("run directory has no completed samples")
     controls = _json_files(run_dir / "events" / "controls")
     pixels = _json_files(run_dir / "events" / "pixel_audits")
+    certificate_events = {event.get("certificate_id"): path for path, event in _json_files(run_dir / "events" / "certificates")
+                          if isinstance(event.get("certificate_id"), str)}
     rows = []
     for sample in samples:
         for certificate in sample.get("certificates", []):
             if isinstance(certificate, dict):
-                rows.append(_candidate_diagnostic(sample, certificate, controls, pixels, cache_dir))
+                rows.append(_candidate_diagnostic(sample, certificate, controls, pixels, certificate_events, cache_dir))
     if not rows:
         raise FailureDiagnosticError("run samples have no certificate artifacts")
     rows.sort(key=lambda row: (row["qa_id"], row["candidate_rank"] if row["candidate_rank"] is not None else -1, row["candidate_id"]))
