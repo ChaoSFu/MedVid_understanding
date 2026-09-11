@@ -13,6 +13,10 @@ PROMPT_VERSIONS = {
     "claims": "relive-claims-v1",
     "contrasts": "relive-contrasts-v1",
     "spatial": "relive-spatial-v2",
+    "spatial_refine_dependence": "relive-spatial-refine-dependence-v1",
+    "spatial_refine_sufficiency": "relive-spatial-refine-sufficiency-v1",
+    "spatial_refine_control_geometry": "relive-spatial-refine-control-geometry-v1",
+    "spatial_refine_intervention_effect": "relive-spatial-refine-intervention-effect-v1",
 }
 
 

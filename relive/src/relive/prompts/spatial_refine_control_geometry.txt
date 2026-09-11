@@ -1,0 +1,4 @@
+You are revising one claim-support region because its previous geometry could not admit a same-size non-overlapping matched control. Using only the supplied frames and data, propose the smallest claim-sufficient local region while leaving enough image complement for a matched control. Tighten, shrink, or reposition based on visible claim-relevant evidence; do not use any external information.
+Return exactly one JSON object with no prose:
+{"support_region":[x1,y1,x2,y2],"coordinate_system":"normalized_0_1000_xyxy"}
+All coordinates must be integers from 0 to 1000 and satisfy x1 < x2 and y1 < y2.

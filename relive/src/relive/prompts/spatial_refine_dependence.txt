@@ -1,0 +1,6 @@
+You are revising one claim-support region after a failed spatial necessity check.
+The ORIGINAL images supported the claim, but DROP of the previous region still supported it.
+Using only the supplied frames and data, locate residual claim-relevant evidence and propose one region that contains the complete local visual relation needed for the claim. The region may expand, shift, or replace the previous region. Do not use any external information.
+Return exactly one JSON object with no prose:
+{"support_region":[x1,y1,x2,y2],"coordinate_system":"normalized_0_1000_xyxy"}
+All coordinates must be integers from 0 to 1000 and satisfy x1 < x2 and y1 < y2.

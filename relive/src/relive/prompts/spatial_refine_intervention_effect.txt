@@ -1,0 +1,4 @@
+You are revising one claim-support region because the previous region was too spatially broad or degenerate to isolate evidence under an intervention. Using only the supplied frames and data, propose one visibly grounded, non-degenerate region containing actual claim-relevant pixels. The prior region may be replaced, shifted, or tightened. Do not use any external information.
+Return exactly one JSON object with no prose:
+{"support_region":[x1,y1,x2,y2],"coordinate_system":"normalized_0_1000_xyxy"}
+All coordinates must be integers from 0 to 1000 and satisfy x1 < x2 and y1 < y2.

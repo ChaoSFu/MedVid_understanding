@@ -242,6 +242,59 @@ semantic result, automatic spatial proposal, KEEP, DROP, one matched control),
 with later calls conditional on the formal path reaching them. `replay` uses the
 same content-addressed cache and should report zero new model calls.
 
+
+## Phase 3: failure-aware spatial evidence adaptation
+
+Phase 3 is a GT-free, within-candidate R0→R1 engineering loop. It consumes an
+immutable Phase 2 `fixed_candidate_pool.jsonl` and a Phase 2.5 diagnostic JSONL,
+then admits only rows whose frozen `refinement_eligible` is `true` (the current
+engineering cohort has nine rows). It does not call acquisition or alter a
+candidate's frames, rank, window parameters, semantic verifier, opaque-gray
+operator, or certificate rules.
+
+`SpatialEvidenceAdaptationController` maps only documented failure states to
+one versioned R1 prompt: residual support for `DEPENDENCE_UNRESOLVED`, claim
+components for sufficiency failures, a tight claim-sufficient region for a
+Phase 2.5-confirmed `B_LEGITIMATE_PROTOCOL_UNAVAILABLE` control geometry, and
+a visibly grounded region for a confirmed proposal/ROI no-effect failure.
+Unresolved control mismatches, original insufficiency, and technical failures
+are excluded. The controller parses one integer `[0,1000]` rectangle and has no
+certificate authority: every R1 rectangle goes through the existing
+ORIGINAL/KEEP/DROP/matched-control pixel and semantic checks and the existing
+`build_certificate()` function.
+
+Use new output and cache directories; preflight makes no model call, `run`
+uses the frozen local-HF configuration, and `replay` must report zero new
+calls. This does not run Phase 4 or a larger experiment.
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+OUT=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/phase3_spatial_adaptation_$(date +%Y%m%d_%H%M%S)
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase3_spatial_adaptation.py \
+  --mode preflight --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/frozen_five_sample_public_runtime.jsonl \
+  --phase2-run-dir /path/to/completed_phase2_run \
+  --phase25-diagnostics /path/to/phase2_failure_diagnostics.jsonl \
+  --output-dir "$OUT"
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase3_spatial_adaptation.py \
+  --mode run --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/frozen_five_sample_public_runtime.jsonl \
+  --phase2-run-dir /path/to/completed_phase2_run \
+  --phase25-diagnostics /path/to/phase2_failure_diagnostics.jsonl \
+  --output-dir "$OUT"
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/phase3_spatial_adaptation.py \
+  --mode replay --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/frozen_five_sample_public_runtime.jsonl \
+  --phase2-run-dir /path/to/completed_phase2_run \
+  --phase25-diagnostics /path/to/phase2_failure_diagnostics.jsonl \
+  --output-dir "$OUT"
+```
+
+The immutable outputs are `phase3_spatial_adaptation_trace.jsonl`,
+`phase3_candidate_transition_summary.json`, `phase3_failure_reason_summary.md`,
+and `phase3_audit.json`. Opaque occlusion remains a model-sensitivity
+intervention, not medical truth or causal proof.
+
 ## Phase 2: fixed sliding-window candidate-pool traversal
 
 Phase 2 adds only a GT-free outer temporal loop. It keeps the spatial proposer,

@@ -1,0 +1,5 @@
+You are revising one claim-support region after a failed sufficiency check.
+The ORIGINAL images supported the claim, but KEEP of the previous region did not. Using only the supplied frames and data, propose one region containing all visually necessary components for the claim. For an action or interaction, consider the instrument, target, contact or interaction, relation, and relevant local context. The region may expand, shift, or recenter. Do not use any external information.
+Return exactly one JSON object with no prose:
+{"support_region":[x1,y1,x2,y2],"coordinate_system":"normalized_0_1000_xyxy"}
+All coordinates must be integers from 0 to 1000 and satisfy x1 < x2 and y1 < y2.

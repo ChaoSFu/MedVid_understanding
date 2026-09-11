@@ -84,7 +84,7 @@ class SampleRunner:
         return self.store.append_event(stage, to_dict(payload))
 
     def infer(self, sample, candidate, claim, stage, variant="ORIGINAL", image_paths=None,
-              region=None, proposal_index=0, control_index=None):
+              region=None, proposal_index=0, control_index=None, stage_data=None):
         frames = select_frames(sample, candidate)
         frame_ids = list(candidate.frame_ids)
         actual_paths = image_paths or [f.path for f in frames]
@@ -120,6 +120,15 @@ class SampleRunner:
                 data["claim"]["time_scope"] = claim.time_scope
         if stage == "contrasts":
             data["max_alternatives"] = self.cfg["claims"]["max_alternatives"]
+        if stage_data is not None:
+            if not isinstance(stage_data, dict):
+                raise ValueError("stage_data must be an object")
+            # Phase-specific public diagnostic context is an inference input,
+            # so it is rendered into the prompt and therefore bound to cache
+            # identity.  Reserved base fields cannot be overwritten.
+            if set(stage_data) & set(data):
+                raise ValueError("stage_data cannot overwrite standard prompt data")
+            data.update(stage_data)
         context = {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
                    "claim_id": claim.claim_id if claim else None, "claim_text": claim.text if claim else None,
                    "variant": variant, "round_index": candidate.round_index,
@@ -214,32 +223,18 @@ class SampleRunner:
         self.contrast_memo[memo_key] = outcome
         return outcome
 
-    def spatial(self, sample, candidate, claim, original, proposal_index):
+    def spatial_with_proposal(self, sample, candidate, claim, original, proposal, proposal_index=0):
+        """Apply the existing formal spatial protocol to one supplied proposal.
+
+        This is the common downstream path for the normal proposer and the
+        isolated Phase 3 controller.  It does not decide whether a proposal is
+        good, alter its coordinates, or change certificate admission.
+        """
         if len(self.proposals) >= self.cfg["budget"]["max_spatial_proposals"]:
             return {"pass": False, "status": "MAX_SPATIAL_PROPOSALS",
                     "reasons": ["MAX_SPATIAL_PROPOSALS"],
                     "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
                     "proposal_count": len(self.proposals), "intervention_protocol": self.intervention}
-        if proposal_index == 0:
-            response = self.infer(sample, candidate, claim, "spatial")
-            proposal = parse_proposal(response["raw_text"] or "", candidate, claim,
-                                      raw_response_ref=response["raw_response_ref"])
-            if response["execution_status"] != "OK":
-                proposal = replace(proposal, parser_status=ExecutionStatus(response["execution_status"]),
-                                   provenance={**proposal.provenance, "failure_reason": response.get("failure_reason")})
-        else:
-            if not self.inference.backend.synthetic:
-                return {"pass": False, "status": "RE_GROUNDING_NOT_IMPLEMENTED",
-                        "reasons": ["RE_GROUNDING_NOT_IMPLEMENTED"],
-                        "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
-                        "proposal_count": len(self.proposals),
-                        "intervention_protocol": self.intervention,
-                        "interpretation": "No claim-conditioned spatial re-grounding is implemented for real evidence admission."}
-            box = self.cfg["spatial"]["alternate_regions"][proposal_index - 1]
-            proposal = parse_proposal(json.dumps({"support_region": box}), candidate, claim)
-            proposal = replace(proposal, provenance={**proposal.provenance,
-                      "source": "preconfigured_alternate_region", "proposal_index": proposal_index},
-                      proposal_id=stable_id("region", [candidate.candidate_id, claim.claim_id, box]))
         self.proposals.append(proposal)
         self.record("spatial_proposals", {"sample_id": sample.sample_id, "proposal": proposal,
                                           "intervention_protocol": self.intervention})
@@ -310,6 +305,36 @@ class SampleRunner:
                       intervention_protocol=self.intervention,
                       support_area_fraction=area, large_region_warning=area >= self.cfg["spatial"]["max_area_warning"])
         return result
+
+    def spatial(self, sample, candidate, claim, original, proposal_index):
+        # Preserve the historical budget check before the spatial proposer
+        # itself is invoked; Phase 3 calls ``spatial_with_proposal`` directly.
+        if len(self.proposals) >= self.cfg["budget"]["max_spatial_proposals"]:
+            return {"pass": False, "status": "MAX_SPATIAL_PROPOSALS",
+                    "reasons": ["MAX_SPATIAL_PROPOSALS"],
+                    "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
+                    "proposal_count": len(self.proposals), "intervention_protocol": self.intervention}
+        if proposal_index == 0:
+            response = self.infer(sample, candidate, claim, "spatial")
+            proposal = parse_proposal(response["raw_text"] or "", candidate, claim,
+                                      raw_response_ref=response["raw_response_ref"])
+            if response["execution_status"] != "OK":
+                proposal = replace(proposal, parser_status=ExecutionStatus(response["execution_status"]),
+                                   provenance={**proposal.provenance, "failure_reason": response.get("failure_reason")})
+        else:
+            if not self.inference.backend.synthetic:
+                return {"pass": False, "status": "RE_GROUNDING_NOT_IMPLEMENTED",
+                        "reasons": ["RE_GROUNDING_NOT_IMPLEMENTED"],
+                        "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
+                        "proposal_count": len(self.proposals),
+                        "intervention_protocol": self.intervention,
+                        "interpretation": "No claim-conditioned spatial re-grounding is implemented for real evidence admission."}
+            box = self.cfg["spatial"]["alternate_regions"][proposal_index - 1]
+            proposal = parse_proposal(json.dumps({"support_region": box}), candidate, claim)
+            proposal = replace(proposal, provenance={**proposal.provenance,
+                      "source": "preconfigured_alternate_region", "proposal_index": proposal_index},
+                      proposal_id=stable_id("region", [candidate.candidate_id, claim.claim_id, box]))
+        return self.spatial_with_proposal(sample, candidate, claim, original, proposal, proposal_index=proposal_index)
 
     def pair(self, sample, candidate, claim, proposal_index):
         policy = self.cfg["policy"]["name"]
