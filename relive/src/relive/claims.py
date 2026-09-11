@@ -17,6 +17,10 @@ PROMPT_VERSIONS = {
     "spatial_refine_sufficiency": "relive-spatial-refine-sufficiency-v1",
     "spatial_refine_control_geometry": "relive-spatial-refine-control-geometry-v1",
     "spatial_refine_intervention_effect": "relive-spatial-refine-intervention-effect-v1",
+    "spatial_refine_dependence_v2": "relive-spatial-refine-dependence-v2",
+    "spatial_refine_sufficiency_v2": "relive-spatial-refine-sufficiency-v2",
+    "spatial_refine_control_geometry_v2": "relive-spatial-refine-control-geometry-v2",
+    "spatial_refine_intervention_effect_v2": "relive-spatial-refine-intervention-effect-v2",
 }
 
 

@@ -529,3 +529,47 @@ audit never performs spatial refinement. `ORIGINAL_INSUFFICIENT` recommends
 only temporal reacquisition, while spatial refinement is merely eligible (not
 executed) for diagnosed dependence/sufficiency and eligible ROI-geometry
 failures.
+
+## Phase 3-v2: refiner contract repair
+
+Phase 3-v2 preserves all Phase 3-v1 artifacts and uses a new cache identity.
+It canonicalizes the historical R0 rectangle to integer 0–1000 xyxy before it
+is shown to the refiner; input and output therefore share one coordinate
+system. The refiner must return a closed object with either a changed proposed
+rectangle or explicit `UNRESOLVED`. An unchanged proposal is recorded as
+`REFINEMENT_NO_OP`; it never enters the formal intervention or certificate
+path. `UNRESOLVED` is also not a certificate outcome.
+
+The required first command is a five-candidate contract preflight selected
+only from Phase 3-v1 proposal-contract failures. It calls the refiner but not
+the formal verifier. Full v2 execution is rejected unless it has zero parse
+failures, zero coordinate violations, and zero silent R0 copies. A legitimate
+`UNRESOLVED` is allowed. The nine-candidate run then uses the same frozen
+Phase 2/2.5 cohort and performs formal verification only for valid, changed R1
+proposals.
+
+```bash
+OUT=/path/to/new_phase3_v2_output
+PYTHONPATH=src python scripts/phase3_v2_spatial_adaptation.py \
+  --mode contract-preflight --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/public_runtime.jsonl --phase2-run-dir /path/to/phase2/run \
+  --phase25-diagnostics /path/to/phase25_failure_diagnostics.jsonl \
+  --phase3-v1-run-dir /path/to/phase3_v1/run --output-dir "$OUT"
+
+PYTHONPATH=src python scripts/phase3_v2_spatial_adaptation.py \
+  --mode run --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/public_runtime.jsonl --phase2-run-dir /path/to/phase2/run \
+  --phase25-diagnostics /path/to/phase25_failure_diagnostics.jsonl \
+  --phase3-v1-run-dir /path/to/phase3_v1/run --output-dir "$OUT"
+
+PYTHONPATH=src python scripts/phase3_v2_spatial_adaptation.py \
+  --mode replay --config /path/to/frozen_phase2_config.json \
+  --runtime /path/to/public_runtime.jsonl --phase2-run-dir /path/to/phase2/run \
+  --phase25-diagnostics /path/to/phase25_failure_diagnostics.jsonl \
+  --phase3-v1-run-dir /path/to/phase3_v1/run --output-dir "$OUT"
+```
+
+The v2 transition summary separates proposal-contract outcomes from formal
+certificate transitions. `RESIDUAL_SUPPORT_OR_SEMANTIC_INSENSITIVITY` is a
+diagnostic label for valid R1 cases with ORIGINAL and DROP both SUPPORTED; it
+does not alter any certificate reason or trigger another round.

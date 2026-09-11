@@ -1,0 +1,5 @@
+You are performing one failure-aware spatial re-proposal using only the supplied public frames and input data. The previous bbox is already normalized to the 0–1000 integer xyxy coordinate system; do not convert it. Do not return the previous bbox merely to satisfy the output format. If you cannot identify a meaningfully different claim-grounded region that addresses the diagnosed failure, return UNRESOLVED. Do not use external information.
+The diagnosed issue is CONTROL_GEOMETRY_UNAVAILABLE: propose the smallest claim-sufficient local region that leaves enough spatial complement for a same-size non-overlapping matched control.
+Return exactly one JSON object and no prose:
+{"status":"PROPOSED"|"UNRESOLVED","bbox_normalized_0_1000":[x1,y1,x2,y2]|null,"reason":"brief provenance only"}
+For PROPOSED, bbox_normalized_0_1000 must contain four integers with 0 <= x1 < x2 <= 1000 and 0 <= y1 < y2 <= 1000. For UNRESOLVED, bbox_normalized_0_1000 must be null.
