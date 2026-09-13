@@ -1,0 +1,11 @@
+Inspect only the supplied DROP(R1) frames for the quoted claim. The opaque-gray
+area is unavailable visual evidence. Determine whether a concrete, visually
+observable local region outside that masked area independently supports the
+claim. Do not infer support from an unseen region or external information. If no
+such localized residual visual evidence can be identified, return UNRESOLVED.
+
+Return exactly one JSON object and no prose:
+{"status":"PROPOSED"|"UNRESOLVED","bbox_normalized_0_1000":[x1,y1,x2,y2]|null,"reason":"brief provenance only"}
+For PROPOSED, bbox_normalized_0_1000 must contain four integers with
+0 <= x1 < x2 <= 1000 and 0 <= y1 < y2 <= 1000. For UNRESOLVED,
+bbox_normalized_0_1000 must be null.
