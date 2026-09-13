@@ -23,6 +23,7 @@ class ClaimScopeTests(unittest.TestCase):
     def test_clear_scope_taxonomy_is_deterministic(self):
         cases = {
             "A dark metallic forceps jaw is visibly contacting tissue at the center-left.": LOCAL_ATOMIC,
+            "A hand is holding a white rectangular pad against the exposed skin of the abdomen.": LOCAL_ATOMIC,
             "At least one laparoscopic surgical instrument is visibly present in the supplied frames.": MULTI_SUPPORT_POSSIBLE,
             "The supplied frames visibly depict an open surgical procedure from an egocentric viewpoint.": GLOBAL_DISTRIBUTED,
             "The procedure is underway.": UNRESOLVED_SCOPE,

@@ -131,8 +131,8 @@ def route_claim_scope(claim_text: str, *, qa_type: str | None = None,
     # A named object/state/relation with a localized predicate is a valid input
     # to the present protocol. This does not say that the claim is true.
     local_patterns = (
-        r"\b(?:contact(?:s|ing)?|touch(?:es|ing)?|press(?:es|ing)?|grasp(?:s|ing)?|cut(?:s|ting)?|enter(?:s|ing)?)\b",
-        r"\b(?:inside|within|centered|attached|secured|open)\b",
+        r"\b(?:contact(?:s|ing)?|touch(?:es|ing)?|press(?:es|ing)?|grasp(?:s|ing)?|hold(?:s|ing)?|cut(?:s|ting)?|enter(?:s|ing)?)\b",
+        r"\b(?:inside|within|centered|attached|secured|open|against)\b",
         r"\b(?:forceps|jaw|baseplate|stoma|specimen-retrieval bag|retrieval bag|catheter|tubular structure)\b.*\b(?:visible|identifiable|contact(?:s|ing)?|inside|enter(?:s|ing)|open)\b",
     )
     if any(re.search(pattern, text) for pattern in local_patterns):
