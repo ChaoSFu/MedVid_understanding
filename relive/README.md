@@ -684,3 +684,20 @@ confirmation prose and any human ROI are excluded from runtime and model
 inputs. Phase 3-v3 does not call the Phase 3 reason-specific refiner; a fresh
 cohort has no historical failure outcome to route on before its first formal
 certificate attempt.
+
+### Phase 3.6: failure-conditioned automatic ROI re-grounding
+
+`phase36_roi_regrounding.py` is restricted to the two Phase 3-v3 fresh claims
+whose ORIGINAL result was `SUPPORTED` and whose frozen artifact identifies an
+automatic ROI geometry failure. `phase35-local-001` receives the versioned
+`OVERBROAD_OR_MISLOCALIZED_INTERACTION_ROI` prompt; `phase35-local-002`
+receives `INCOMPLETE_INTERACTION_EVIDENCE`. The prior R0 is supplied only as
+canonical 0–1000 integer xyxy coordinates. Each candidate gets one R1 attempt;
+`UNRESOLVED`, invalid, or unchanged R1 proposals never enter formal
+intervention. The ORIGINAL-insufficient third claim is recorded as excluded.
+
+A valid changed R1 uses the existing semantic verifier, opaque-gray operator,
+matched-control generator, pixel audit, and certificate builder without any
+policy, threshold, or manual-ROI change. A retained DROP `SUPPORTED` result is
+reported only as `RESIDUAL_SUPPORT_OR_SEMANTIC_INSENSITIVITY`; it does not
+trigger another refinement round.

@@ -21,6 +21,8 @@ PROMPT_VERSIONS = {
     "spatial_refine_sufficiency_v2": "relive-spatial-refine-sufficiency-v2",
     "spatial_refine_control_geometry_v2": "relive-spatial-refine-control-geometry-v2",
     "spatial_refine_intervention_effect_v2": "relive-spatial-refine-intervention-effect-v2",
+    "reground_local_interaction_overbroad": "relive-reground-local-interaction-overbroad-v1",
+    "reground_local_interaction_incomplete": "relive-reground-local-interaction-incomplete-v1",
 }
 
 

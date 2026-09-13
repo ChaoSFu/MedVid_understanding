@@ -45,7 +45,8 @@ def _failure(code: str, *, raw: str | None, raw_response_ref: str | None,
 
 
 def parse_refinement_v2(raw: str, candidate: EvidenceCandidate, claim, *, parent: SpatialProposal,
-                        route: dict[str, Any], raw_response_ref: str | None) -> dict[str, Any]:
+                        route: dict[str, Any], raw_response_ref: str | None,
+                        protocol_format: str = PHASE3_V2_FORMAT, proposal_id_prefix: str = "refinement-v2") -> dict[str, Any]:
     """Parse the closed v2 contract without inventing a fallback rectangle."""
     previous = canonicalize_region_1000(parent.support_region)
     try:
@@ -82,9 +83,9 @@ def parse_refinement_v2(raw: str, candidate: EvidenceCandidate, claim, *, parent
     proposal = parse_proposal(json.dumps({"support_region": bbox,
                                           "coordinate_system": "normalized_0_1000_xyxy"}), candidate, claim,
                               raw_response_ref=raw_response_ref)
-    proposal = replace(proposal, proposal_id=stable_id("refinement-v2", [candidate.candidate_id, claim.claim_id,
+    proposal = replace(proposal, proposal_id=stable_id(proposal_id_prefix, [candidate.candidate_id, claim.claim_id,
                        parent.proposal_id, route["prompt_version"], 1, bbox]),
-                       provenance={**proposal.provenance, "phase3_format": PHASE3_V2_FORMAT,
+                       provenance={**proposal.provenance, "phase3_format": protocol_format,
                                    "parent_proposal_id": parent.proposal_id,
                                    "previous_bbox_normalized_0_1_xyxy": list(parent.support_region),
                                    "previous_bbox_normalized_0_1000": previous,
