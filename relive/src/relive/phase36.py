@@ -297,7 +297,9 @@ def execute(*, config_path: Path, runtime_path: Path, prospective_manifest_path:
                "logical_model_calls": sum(row["logical_model_calls"] for row in traces), "latency_seconds": time.monotonic() - started,
                "cache_dir": str(cache.root), "output_dir": str(store.root), "operator_unchanged": config["spatial"]["intervention"] == plan["spatial_intervention"],
                "certificate_builder_unchanged": hashlib.sha256(inspect.getsource(build_certificate).encode()).hexdigest() == plan["certificate_builder_source_sha256"],
-               "one_round_only": all(row["r1_normalized_0_1000_xyxy"] is None or row["geometry"] is not None for row in traces),
+               "max_regrounding_rounds": MAX_REGROUNDING_ROUNDS,
+               "regrounding_attempt_count": len(traces),
+               "one_round_only": MAX_REGROUNDING_ROUNDS == 1 and len(traces) == len(ROUTES),
                "reason_specific_refinement_called": True, "gt_used": False}
     strict = audit_run(target)
     audit = {"status": "PASS" if strict["status"] == "PASS" else "FAIL", "mode": mode, "zero_call_preflight_bound": True,

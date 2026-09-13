@@ -47,7 +47,7 @@ class Phase36Tests(unittest.TestCase):
   self.assertEqual(plan['cohort_claim_ids'],list(ROUTES)); self.assertEqual(plan['excluded']['claim_id'],'phase35-local-003'); self.assertEqual(plan['model_calls_made'],0)
   first=execute(config_path=self.config,runtime_path=self.runtime,prospective_manifest_path=self.manifest,phase35_v3_run_dir=self.v3/'run',output_dir=out,mode='run',require_real=False)
   replay=execute(config_path=self.config,runtime_path=self.runtime,prospective_manifest_path=self.manifest,phase35_v3_run_dir=self.v3/'run',output_dir=out,mode='replay',require_real=False)
-  self.assertEqual(first['status'],'PASS'); self.assertGreater(first['summary']['new_model_calls'],0); self.assertEqual(replay['summary']['new_model_calls'],0); self.assertGreater(replay['summary']['cache_hits'],0); self.assertTrue((out/'phase36_summary.md').is_file()); self.assertEqual(len((out/'run'/'phase36_formal_verification.jsonl').read_text().splitlines()),2)
+  self.assertEqual(first['status'],'PASS'); self.assertTrue(first['summary']['one_round_only']); self.assertGreater(first['summary']['new_model_calls'],0); self.assertEqual(replay['summary']['new_model_calls'],0); self.assertGreater(replay['summary']['cache_hits'],0); self.assertTrue((out/'phase36_summary.md').is_file()); self.assertEqual(len((out/'run'/'phase36_formal_verification.jsonl').read_text().splitlines()),2)
  def test_rejects_noop_and_no_second_round(self):
   # Parser-level no-op is already strict; Phase 3.6 freezes its single route table.
   self.assertEqual(set(ROUTES),{'phase35-local-001','phase35-local-002'})
