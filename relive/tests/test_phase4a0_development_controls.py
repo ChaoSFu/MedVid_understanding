@@ -115,7 +115,7 @@ class DevelopmentControlPreparationTests(unittest.TestCase):
         controls = self.root / "controls.jsonl"
         controls.write_text("\n".join(json.dumps({"format": MATCHED_CONTROL_OVERRIDE_FORMAT, "development_case_id": case,
                                                     "matched_control_roi_normalized_0_1_xyxy": region})
-                                        for case, region in (("dev-001", [.5,.2,.9,.6]), ("dev-002", [.0,.2,.4,.6]))) + "\n")
+                                        for case, region in (("dev-001", [.5,.2,.9,.6]), ("dev-002", [.3,.6,.7,1.0]))) + "\n")
         result = apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
                                                  matched_control_overrides_path=controls,
                                                  output_path=self.root / "ready.jsonl")
