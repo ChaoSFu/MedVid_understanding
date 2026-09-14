@@ -17,6 +17,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from .data.medvidu import load_public_records, audit_frame_mapping
+from .interventions import resolve_intervention_spec
 from .phase4a0 import SPEC_FORMAT, claim_sha256
 from .spatial import validate_region
 from .storage.artifacts import canonical_json

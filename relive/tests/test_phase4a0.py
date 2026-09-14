@@ -2,10 +2,15 @@
 from __future__ import annotations
 import hashlib, json, tempfile, unittest
 from pathlib import Path
+import sys
 from PIL import Image
 
 from relive.phase4a0 import (ELIGIBLE, Phase4A0Error, SPEC_FORMAT, prepare,
                              sha, claim_sha256, validate_reviews, export_historical_pilots)
+
+TEST_DIRECTORY = str(Path(__file__).resolve().parent)
+if TEST_DIRECTORY not in sys.path:
+    sys.path.insert(0, TEST_DIRECTORY)
 
 
 class Phase4A0Tests(unittest.TestCase):
