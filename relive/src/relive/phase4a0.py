@@ -45,6 +45,11 @@ def sha(value: Any) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def claim_sha256(text: str) -> str:
+    """Bind claim text exactly as the frozen Phase 3.5 manifest does."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def file_sha(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -92,7 +97,7 @@ def validate_candidate_specs(path: Path) -> list[dict[str, Any]]:
         if not isinstance(row["audit_case_id"], str) or row["audit_case_id"] in identifiers:
             raise Phase4A0Error("CANDIDATE_AUDIT_CASE_ID_INVALID_OR_DUPLICATE")
         identifiers.add(row["audit_case_id"])
-        if not isinstance(row["claim_text"], str) or sha(row["claim_text"]) != row["claim_sha256"]:
+        if not isinstance(row["claim_text"], str) or claim_sha256(row["claim_text"]) != row["claim_sha256"]:
             raise Phase4A0Error("CLAIM_SHA256_MISMATCH")
         if (not isinstance(row["frame_orders"], list) or not row["frame_orders"] or len(row["frame_orders"]) != len(row["frame_paths"]) or len(row["frame_paths"]) != len(row["frame_sha256"])):
             raise Phase4A0Error("FROZEN_FRAME_SPEC_INVALID")
@@ -185,6 +190,112 @@ def _write_initial_reports(output_dir: Path, count: int) -> None:
     (output_dir / "eligibility_report.jsonl").write_text("", encoding="utf-8")
     (output_dir / "eligibility_summary.json").write_text(canonical(summary) + "\n")
     (output_dir / "phase4a0_audit.json").write_text(canonical(summary) + "\n")
+
+
+def _control_event(run_dir: Path, sample_id: str, region: list[float]) -> tuple[dict[str, Any] | None, Path | None]:
+    """Return an already persisted exact control event; never regenerate geometry."""
+    proposals = run_dir / "events" / "spatial_proposals"
+    proposal_id = None
+    if proposals.is_dir():
+        for path in sorted(proposals.glob("*.json")):
+            value = _read_json(path); proposal = value.get("proposal", {})
+            if value.get("sample_id") == sample_id and proposal.get("support_region") == region:
+                proposal_id = proposal.get("proposal_id"); break
+    if not isinstance(proposal_id, str): return None, None
+    root = run_dir / "events" / "controls"
+    if not root.is_dir():
+        return None, None
+    for path in sorted(root.glob("*.json")):
+        value = _read_json(path)
+        if value.get("sample_id") == sample_id and value.get("proposal_id") == proposal_id:
+            controls = value.get("regions")
+            if isinstance(controls, list) and controls:
+                return value, path
+    return None, None
+
+
+def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: Path,
+                             phase35_v3_run_dir: Path, phase36_run_dir: Path,
+                             output_dir: Path) -> dict[str, Any]:
+    """Export only auditable, immutable Phase 3.5/3.6 geometry to Phase 4A-0.
+
+    The function deliberately looks up persisted ``events/controls`` rather
+    than calling the control-placement helper.  Thus a missing historical
+    control is reported as unavailable instead of being silently reconstructed.
+    """
+    required = (runtime_path, prospective_manifest_path, phase35_v3_run_dir / "phase35_v3_trace.jsonl",
+                phase36_run_dir / "phase36_regrounding_trace.jsonl")
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise Phase4A0Error("FROZEN_ARTIFACT_MISSING:" + ",".join(missing))
+    if output_dir.exists() and any(output_dir.iterdir()): raise Phase4A0Error("OUTPUT_DIRECTORY_MUST_BE_EMPTY")
+    runtime_rows = _rows(runtime_path)
+    prospective = _read_json(prospective_manifest_path)
+    if prospective.get("selection_status") != "FROZEN_PRE_SPATIAL_CERTIFICATE_OUTCOMES" or prospective.get("gt_used") is not False:
+        raise Phase4A0Error("PHASE35_PROSPECTIVE_MANIFEST_NOT_FROZEN_OR_GT_SAFE")
+    selected = {row.get("claim_id"): row for row in prospective.get("selected", []) if isinstance(row, dict)}
+    if set(selected) != {"phase35-local-001", "phase35-local-002", "phase35-local-003"}:
+        raise Phase4A0Error("HISTORICAL_PILOT_COHORT_BINDING_MISMATCH")
+    by_claim = {row.get("target_claim", {}).get("claim_id"): row for row in runtime_rows if isinstance(row.get("target_claim"), dict)}
+    if set(selected) - set(by_claim): raise Phase4A0Error("FROZEN_RUNTIME_CLAIM_MISSING")
+    traces35 = {row.get("claim_id"): row for row in _rows(phase35_v3_run_dir / "phase35_v3_trace.jsonl")}
+    traces36 = {row.get("claim_id"): row for row in _rows(phase36_run_dir / "phase36_regrounding_trace.jsonl")}
+    output_dir.mkdir(parents=True)
+    exported, cases = [], []
+    source_hash = sha({"runtime": file_sha(runtime_path), "prospective": file_sha(prospective_manifest_path),
+                       "phase35_trace": file_sha(phase35_v3_run_dir / "phase35_v3_trace.jsonl"),
+                       "phase36_trace": file_sha(phase36_run_dir / "phase36_regrounding_trace.jsonl")})
+    for claim_id, source in (("phase35-local-001", "PHASE36_FROZEN_R1"), ("phase35-local-002", "PHASE35_FROZEN_R0"), ("phase35-local-003", "NO_FROZEN_AUDITABLE_ROI")):
+        runtime = by_claim[claim_id]; frames = runtime.get("frames", []); claim = runtime["target_claim"]
+        if claim.get("text") is None or [frame.get("frame_id") for frame in frames] != claim.get("time_scope", {}).get("frame_ids"):
+            raise Phase4A0Error("FROZEN_CLAIM_FRAME_BINDING_MISMATCH")
+        expected_hash = selected[claim_id].get("claim_text_sha256")
+        if claim_sha256(claim["text"]) != expected_hash: raise Phase4A0Error("FROZEN_CLAIM_SHA256_MISMATCH")
+        frame_paths = [Path(frame["path"]) for frame in frames]
+        if not all(path.is_file() for path in frame_paths):
+            cases.append({"source_claim_id": claim_id, "status": "FROZEN_ARTIFACT_MISSING", "roi_source": source}); continue
+        if source == "PHASE36_FROZEN_R1":
+            trace, control_dir = traces36.get(claim_id), phase36_run_dir
+            region = trace.get("r1_normalized_0_1_xyxy") if isinstance(trace, dict) else None
+        elif source == "PHASE35_FROZEN_R0":
+            trace, control_dir = traces35.get(claim_id), phase35_v3_run_dir
+            region = trace.get("automatic_support_region") if isinstance(trace, dict) else None
+        else:
+            trace, control_dir, region = None, None, None
+        if not isinstance(region, list) or len(region) != 4:
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source}); continue
+        try: region = list(validate_region(region))
+        except ValueError:
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source}); continue
+        control, control_path = _control_event(control_dir, runtime["sample_id"], region)
+        if control is None:
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "MATCHED_CONTROL_ARTIFACT_MISSING"}); continue
+        intervention = control.get("intervention_protocol")
+        try: intervention = resolve_intervention_spec(intervention, float(intervention.get("parameters", {}).get("blur_radius", 1.0)))
+        except (AttributeError, ValueError):
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "FROZEN_OPERATOR_INVALID"}); continue
+        metadata = runtime.get("metadata", {})
+        spec = {"format": SPEC_FORMAT, "audit_case_id": "historical-" + claim_id.rsplit("-", 1)[-1], "source_claim_id": claim_id,
+                "claim_text": claim["text"], "claim_sha256": claim_sha256(claim["text"]), "source_record_index": metadata.get("source_record_index"),
+                "public_record_sha256": metadata.get("public_record_sha256"), "frame_orders": [frame["order"] for frame in frames],
+                "frame_paths": [str(path) for path in frame_paths], "frame_sha256": [file_sha(path) for path in frame_paths],
+                "frozen_support_region": region, "coordinate_system": "normalized_0_1_xyxy", "intervention": intervention,
+                "matched_control_regions": control["regions"], "candidate_manifest_sha256": prospective["manifest_sha256"],
+                "historical_pilot": True, "gt_used": False}
+        if type(spec["source_record_index"]) is not int or not isinstance(spec["public_record_sha256"], str):
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "PUBLIC_PROVENANCE_MISSING"}); continue
+        exported.append(spec)
+        cases.append({"source_claim_id": claim_id, "status": "EXPORTED", "roi_source": source, "candidate_audit_case_id": spec["audit_case_id"],
+                      "frozen_control_artifact": str(control_path), "frozen_control_artifact_sha256": file_sha(control_path), "frame_sha256": spec["frame_sha256"]})
+    candidate_path = output_dir / "phase4a0_historical_pilot_candidates.jsonl"
+    candidate_path.write_text("".join(canonical(row) + "\n" for row in exported), encoding="utf-8")
+    report = {"format": FORMAT, "status": "PASS", "mode": "export_historical_pilots", "model_calls_made": 0,
+              "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False,
+              "historical_artifacts_unchanged": True, "source_artifact_binding_sha256": source_hash,
+              "candidate_manifest": str(candidate_path), "candidate_count": len(exported), "cases": cases,
+              "prohibited_inputs_not_opened": ["reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt", "struc_info", "RC_info", "phase37"]}
+    (output_dir / "phase4a0_historical_pilot_provenance_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    return report
 
 
 def _validate_review(rows: list[dict[str, Any]], template: list[dict[str, Any]]) -> str:

@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from relive.phase4a0 import (ELIGIBLE, Phase4A0Error, SPEC_FORMAT, prepare,
-                             sha, validate_reviews)
+                             sha, claim_sha256, validate_reviews, export_historical_pilots)
 
 
 class Phase4A0Tests(unittest.TestCase):
@@ -13,7 +13,7 @@ class Phase4A0Tests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.root = Path(self.temp.name)
         self.frame = self.root / "public.png"; Image.new("RGB", (40, 30), (40, 80, 120)).save(self.frame)
         self.spec = {"format": SPEC_FORMAT, "audit_case_id": "pilot-001", "source_claim_id": "phase35-local-001", "claim_text": "A visible white object is centered.", "source_record_index": 2, "public_record_sha256": "publichash", "frame_orders": [11], "frame_paths": [str(self.frame)], "frame_sha256": [hashlib.sha256(self.frame.read_bytes()).hexdigest()], "frozen_support_region": [.2, .2, .7, .8], "coordinate_system": "normalized_0_1_xyxy", "intervention": {"operator": "opaque_gray", "operator_version": "relive-opaque-gray-hard-mask-v1", "parameters": {"fill_rgb": [127,127,127]}}, "matched_control_regions": [[.0,.0,.5,.6]], "candidate_manifest_sha256": "frozen", "historical_pilot": True, "gt_used": False}
-        self.spec["claim_sha256"] = sha(self.spec["claim_text"])
+        self.spec["claim_sha256"] = claim_sha256(self.spec["claim_text"])
         self.manifest = self.root / "candidates.jsonl"; self.manifest.write_text(json.dumps(self.spec) + "\n")
         self.out = self.root / "out"
 
@@ -119,5 +119,28 @@ class Phase4A0Tests(unittest.TestCase):
         report = prepare(self.manifest, self.out)
         self.assertEqual(report["new_verified_count"], 0)
         self.assertNotIn("VERIFIED", (self.out / "phase4a0_audit.json").read_text())
+
+    def test_export_historical_uses_stored_r1_r0_and_never_reconstructs_local003(self):
+        # The existing Phase 3.6 fixture gives local-001 a persisted R1 control;
+        # its Phase 3.5 run gives local-002 a persisted R0 control.
+        from test_phase36 import Phase36Tests
+        fixture = Phase36Tests(methodName="test_routes_contract_and_replay"); fixture.setUp()
+        try:
+            from relive.phase36 import execute as phase36_execute, preflight as phase36_preflight
+            p36 = fixture.root / "p36-export"
+            phase36_preflight(config_path=fixture.config, runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", output_dir=p36, require_real=False)
+            phase36_execute(config_path=fixture.config, runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", output_dir=p36, mode="run", require_real=False)
+            rows = [json.loads(line) for line in fixture.runtime.read_text().splitlines()]
+            for index, row in enumerate(rows):
+                row["metadata"].update({"source_record_index": index + 2, "public_record_sha256": f"public-{index}"})
+            fixture.runtime.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            out = fixture.root / "export"
+            report = export_historical_pilots(runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", phase36_run_dir=p36 / "run", output_dir=out)
+            self.assertEqual(report["candidate_count"], 2)
+            by_claim = {row["source_claim_id"]: row for row in [json.loads(line) for line in (out / "phase4a0_historical_pilot_candidates.jsonl").read_text().splitlines()]}
+            self.assertEqual(by_claim["phase35-local-001"]["frozen_support_region"], [0.08, 0.12, 0.36, 0.42])
+            self.assertEqual(by_claim["phase35-local-002"]["frozen_support_region"], [0.396, 0.549, 0.522, 0.654])
+            self.assertEqual(next(case for case in report["cases"] if case["source_claim_id"] == "phase35-local-003")["status"], "NO_FROZEN_AUDITABLE_ROI")
+        finally: fixture.tearDown()
 
 if __name__ == "__main__": unittest.main()
