@@ -26,6 +26,7 @@ from .claims import PROMPT_VERSIONS
 from .config import load_config
 from .interventions import OPAQUE_GRAY_OPERATOR, OPAQUE_GRAY_VERSION, apply_spatial_intervention
 from .phase35_v3 import candidate_for, runtime_gt_audit, sha256_path, validate_config, validate_prospective_manifest
+from .phase4a0 import validate_candidate_specs
 from .runner import _image_file
 from .spatial import validate_region
 from .storage.artifacts import ArtifactStore, canonical_json, stable_hash
@@ -226,6 +227,57 @@ def _calibration_sources(path: Path | None) -> tuple[list[dict[str, Any]], dict[
     return sources, {"status": "INCLUDED", "manifest": str(path), "manifest_sha256": manifest["frozen_manifest_sha256"], "control_count": len(sources)}
 
 
+def development_control_sources(path: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Adapt only human-eligible Phase 4A-0 controls into diagnostic inputs."""
+    if path is None:
+        return [], {"status": "NOT_INCLUDED"}
+    specs = validate_candidate_specs(path)
+    if not all(row.get("development_control") is True and row.get("historical_pilot") is False for row in specs):
+        raise Phase4AError("development manifest contains non-development control")
+    entries = []
+    for spec in specs:
+        frames = _file_rows([f"development:{spec['audit_case_id']}:frame:{order:06d}" for order in spec["frame_orders"]], spec["frame_paths"])
+        entries.append({"source_id": f"development:{spec['audit_case_id']}", "source_kind": "phase4a0_human_eligible_development_control",
+                        "sample_id": None, "claim_id": spec["source_claim_id"], "claim": spec["claim_text"],
+                        "claim_sha256": spec["claim_sha256"], "frames": frames,
+                        "target_roi": spec["frozen_support_region"], "matched_control_roi": spec["matched_control_regions"][0],
+                        "source_record_index": spec["source_record_index"],
+                        "roi_source": "phase4a0_frozen_human_target_and_matched_control",
+                        "generated_semantic_verdict_observation": None, "calibration_expectation_present_posthoc_only": False})
+    return entries, {"status": "INCLUDED", "manifest": str(path), "manifest_sha256": sha256_path(path), "control_count": len(entries),
+                     "human_eligibility_required": True}
+
+
+def freeze_development_mismatched_public(*, development_manifest_path: Path, output_path: Path) -> dict[str, Any]:
+    """Pre-register a deterministic non-self public-frame permutation, zero model."""
+    if output_path.exists():
+        raise Phase4AError("mismatched-public output already exists")
+    entries, _ = development_control_sources(development_manifest_path)
+    if len(entries) < 2:
+        raise Phase4AError("development mismatched-public freeze requires at least two controls")
+    # Source-record peers are preferred; ties use source ID only. No model or
+    # outcome value participates in this selector.
+    items = []
+    for entry in entries:
+        candidates = [other for other in entries if other["source_id"] != entry["source_id"]]
+        other = min(candidates, key=lambda value: (value["source_record_index"] != entry["source_record_index"], value["source_id"]))
+        # The audit manifest does not need a second source's claim; only its frozen public image.
+        identity = [{"frame_id": row["frame_id"], "path": row["path"]} for row in other["frames"]]
+        items.append({"source_id": entry["source_id"], "frame_ids": [row["frame_id"] for row in other["frames"]],
+                      "frame_paths": [row["path"] for row in other["frames"]],
+                      "selector": "phase4a0-frozen-deterministic-nonself-public-control-v1",
+                      "frame_manifest_sha256": _sha(identity)})
+    manifest = {"format": "relive-phase4a-mismatched-public-manifest-v1", "selection_status": "FROZEN_PRE_INFERENCE", "items": items,
+                "development_manifest": str(development_manifest_path), "development_manifest_sha256": sha256_path(development_manifest_path),
+                "selector_policy": "deterministic non-self public control; sorted source ID fallback; no model or GT"}
+    manifest["mismatched_manifest_sha256"] = _sha(manifest)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return {"status": "PASS", "mode": "freeze_development_mismatched_public", "model_calls_made": 0, "gt_used": False,
+            "development_manifest": str(development_manifest_path), "mismatched_manifest": str(output_path),
+            "mismatched_manifest_sha256": manifest["mismatched_manifest_sha256"], "item_count": len(items)}
+
+
 def _variant_images(entry: dict[str, Any], root: Path, operator: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
     target, matched = entry["target_roi"], entry["matched_control_roi"]
     source_paths, ids = [row["path"] for row in entry["frames"]], [row["frame_id"] for row in entry["frames"]]
@@ -331,17 +383,25 @@ def _numeric_snapshot(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return snapshots
 
 
-def preflight(*, config_path: Path, runtime_path: Path, prospective_manifest_path: Path, phase35_v3_run_dir: Path,
-              phase36_run_dir: Path, mismatched_manifest_path: Path, output_dir: Path, calibration_manifest_path: Path | None = None,
+def preflight(*, config_path: Path, runtime_path: Path | None = None, prospective_manifest_path: Path | None = None, phase35_v3_run_dir: Path | None = None,
+              phase36_run_dir: Path | None = None, mismatched_manifest_path: Path | None = None, output_dir: Path | None = None, calibration_manifest_path: Path | None = None,
+              development_manifest_path: Path | None = None,
               require_real: bool = True, backend_factory: Callable[[dict[str, Any]], Any] = make_backend) -> dict[str, Any]:
+    if output_dir is None or mismatched_manifest_path is None:
+        raise Phase4AError("Phase 4A preflight requires output and mismatched manifests")
     if output_dir.exists():
         raise Phase4AError("Phase 4A output directory must not exist before preflight")
     config = load_config(config_path); validate_config(config, require_real=require_real)
     if config["spatial"]["intervention"].get("operator") != OPAQUE_GRAY_OPERATOR or config["spatial"]["intervention"].get("operator_version") != OPAQUE_GRAY_VERSION:
         raise Phase4AError("Phase 4A requires the frozen registered opaque-gray operator")
-    phase_entries, lineage = _phase35_sources(runtime_path, prospective_manifest_path, phase35_v3_run_dir, phase36_run_dir)
+    phase_args = (runtime_path, prospective_manifest_path, phase35_v3_run_dir, phase36_run_dir)
+    if any(value is not None for value in phase_args) and not all(value is not None for value in phase_args):
+        raise Phase4AError("Phase 3.5 inputs must be supplied together")
+    phase_entries, lineage = (_phase35_sources(runtime_path, prospective_manifest_path, phase35_v3_run_dir, phase36_run_dir)
+                              if all(value is not None for value in phase_args) else ([], {"status": "NOT_INCLUDED", "unavailable": []}))
     calibration_entries, calibration = _calibration_sources(calibration_manifest_path)
-    entries = [*phase_entries, *calibration_entries]
+    development_entries, development = development_control_sources(development_manifest_path)
+    entries = [*phase_entries, *calibration_entries, *development_entries]
     if not entries:
         raise Phase4AError("no frozen claim/ROI sources are available for Phase 4A")
     mismatch = _mismatches(mismatched_manifest_path)
@@ -374,7 +434,8 @@ def preflight(*, config_path: Path, runtime_path: Path, prospective_manifest_pat
             if contract.get("choice_labels") != list(CHOICES) or set(contract.get("choice_token_ids", {})) != set(CHOICES) or len(set(contract["choice_token_ids"].values())) != 3:
                 raise Phase4AError("A/B/C next-token contract is not unique in actual prompt context")
             contracts[f"{entry['source_id']}:{variant}"] = contract
-    gt = runtime_gt_audit(runtime_path, validate_prospective_manifest(prospective_manifest_path, runtime_path)[1])
+    gt = (runtime_gt_audit(runtime_path, validate_prospective_manifest(prospective_manifest_path, runtime_path)[1])
+          if runtime_path is not None else {"status": "NOT_APPLICABLE_DEVELOPMENT_ONLY", "gt_used": False})
     imports = audit_runtime_imports()
     if imports["status"] != "PASS":
         raise Phase4AError("runtime import audit failed")
@@ -387,7 +448,7 @@ def preflight(*, config_path: Path, runtime_path: Path, prospective_manifest_pat
     plan = {"format": PHASE4A_FORMAT, "status": "PASS", "mode": "preflight", "model_calls_made": 0, "cache_mutated": False,
             "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0, "gt_used": False, "git_commit": _git_commit(),
             "config": str(config_path), "config_sha256": sha256_path(config_path), "runtime": str(runtime_path),
-            "prospective_manifest": str(prospective_manifest_path), "lineage": lineage, "calibration": calibration,
+            "prospective_manifest": str(prospective_manifest_path) if prospective_manifest_path else None, "lineage": lineage, "calibration": calibration, "development_controls": development,
             "frozen_manifest": str(output_dir / "phase4a_frozen_manifest.json"), "frozen_manifest_sha256": frozen_manifest["phase4a_frozen_manifest_sha256"],
             "choice_prompt_version": PROMPT_VERSIONS["visual_dependence_choice"], "choice_prompt_hashes": {entry["source_id"]: hashlib.sha256(choice_prompt(entry["claim"]).encode()).hexdigest() for entry in all_entries},
             "choice_token_contracts": contracts, "spatial_intervention": config["spatial"]["intervention"], "semantic_verifier_unchanged": True,
@@ -399,11 +460,13 @@ def preflight(*, config_path: Path, runtime_path: Path, prospective_manifest_pat
     return plan
 
 
-def execute(*, config_path: Path, runtime_path: Path, prospective_manifest_path: Path, phase35_v3_run_dir: Path,
-            phase36_run_dir: Path, mismatched_manifest_path: Path, output_dir: Path, mode: str, calibration_manifest_path: Path | None = None,
+def execute(*, config_path: Path, runtime_path: Path | None = None, prospective_manifest_path: Path | None = None, phase35_v3_run_dir: Path | None = None,
+            phase36_run_dir: Path | None = None, mismatched_manifest_path: Path | None = None, output_dir: Path | None = None, mode: str = "run", calibration_manifest_path: Path | None = None,
+            development_manifest_path: Path | None = None,
             require_real: bool = True, backend_factory: Callable[[dict[str, Any]], Any] = make_backend) -> dict[str, Any]:
     if mode not in {"run", "replay"}:
         raise Phase4AError("mode must be run or replay")
+    if output_dir is None: raise Phase4AError("output directory is required")
     plan = _json(output_dir / "phase4a_preflight.json"); frozen = _json(output_dir / "phase4a_frozen_manifest.json")
     _strict_frozen_hash(frozen, "phase4a_frozen_manifest_sha256")
     config = load_config(config_path); validate_config(config, require_real=require_real)
@@ -454,7 +517,8 @@ def execute(*, config_path: Path, runtime_path: Path, prospective_manifest_path:
     audit = {"status": "PASS", "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0, "gt_used": False,
              "no_certificate_builder_called": True, "semantic_verifier_not_called": True, "all_variants_same_choice_prompt_per_claim": all(len({row["variants"][variant]["prompt_sha256"] for variant in VARIANTS}) == 1 for row in rows),
              "replay_numeric_identical": mode != "replay" or True, "runtime_import_audit": audit_runtime_imports(),
-             "runtime_gt_isolation_audit": runtime_gt_audit(runtime_path, validate_prospective_manifest(prospective_manifest_path, runtime_path)[1])}
+             "runtime_gt_isolation_audit": (runtime_gt_audit(runtime_path, validate_prospective_manifest(prospective_manifest_path, runtime_path)[1])
+                                              if runtime_path is not None else {"status": "NOT_APPLICABLE_DEVELOPMENT_ONLY", "gt_used": False})}
     report = {"status": "PASS" if audit["runtime_import_audit"]["status"] == "PASS" else "FAIL", "mode": mode, "summary": summary, "audit": audit, "traces": str(store.root / "phase4a_trace.jsonl")}
     (output_dir / f"phase4a_{mode}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
     (output_dir / f"phase4a_{mode}_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")

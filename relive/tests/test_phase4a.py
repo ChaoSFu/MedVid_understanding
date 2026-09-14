@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from relive.phase36 import execute as phase36_execute, preflight as phase36_preflight
-from relive.phase4a import (CHOICES, Phase4AError, choice_prompt, execute, preflight, support_margin)
+from relive.phase4a import (CHOICES, Phase4AError, choice_prompt, execute, freeze_development_mismatched_public,
+                            preflight, support_margin)
 from test_phase36 import Phase36Tests
 
 
@@ -80,6 +81,32 @@ class Phase4ATests(unittest.TestCase):
         FakeChoiceBackend.duplicate = True
         with self.assertRaisesRegex(Phase4AError, "A/B/C next-token contract"):
             preflight(**self.kwargs(self.root / "duplicate"))
+
+    def test_development_controls_can_run_without_phase35_inputs(self):
+        runtime_rows = [json.loads(line) for line in self.runtime.read_text().splitlines()]
+        frames = [row["frames"][0] for row in runtime_rows[:2]]
+        specs = []
+        for index, frame in enumerate(frames, 1):
+            claim = f"A visible test object {index} is present."
+            specs.append({"format": "relive-phase4a0-candidate-audit-spec-v1", "audit_case_id": f"development-{index}",
+                          "source_claim_id": f"development-{index}", "claim_text": claim,
+                          "claim_sha256": hashlib.sha256(claim.encode()).hexdigest(), "source_record_index": index,
+                          "public_record_sha256": str(index) * 64, "frame_orders": [0], "frame_paths": [frame["path"]],
+                          "frame_sha256": [hashlib.sha256(Path(frame["path"]).read_bytes()).hexdigest()],
+                          "frozen_support_region": [.1,.1,.4,.4], "coordinate_system": "normalized_0_1_xyxy",
+                          "intervention": {"operator":"opaque_gray", "operator_version":"relive-opaque-gray-hard-mask-v1", "parameters":{"fill_rgb":[127,127,127]}},
+                          "matched_control_regions": [[.5,.1,.8,.4]], "candidate_manifest_sha256": "fixture",
+                          "historical_pilot": False, "development_control": True, "gt_used": False})
+        development = self.root / "development.jsonl"; development.write_text("".join(json.dumps(row)+"\n" for row in specs))
+        mismatch = self.root / "development-mismatch.json"
+        self.assertEqual(freeze_development_mismatched_public(development_manifest_path=development, output_path=mismatch)["status"], "PASS")
+        out = self.root / "development-audit"
+        plan = preflight(config_path=self.config, mismatched_manifest_path=mismatch, output_dir=out,
+                         development_manifest_path=development, require_real=False, backend_factory=FakeChoiceBackend)
+        self.assertEqual(plan["development_controls"]["control_count"], 2)
+        self.assertEqual(execute(config_path=self.config, mismatched_manifest_path=mismatch, output_dir=out,
+                                 development_manifest_path=development, mode="run", require_real=False,
+                                 backend_factory=FakeChoiceBackend)["summary"]["new_model_calls"], 12)
 
 
 if __name__ == "__main__": unittest.main()
