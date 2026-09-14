@@ -109,6 +109,16 @@ class Phase4A0Tests(unittest.TestCase):
         with self.assertRaisesRegex(Phase4A0Error, "REVIEW_REASON_CODE_INVALID"):
             validate_reviews(self.out, [review])
 
+    def test_wrong_packet_id_and_non_string_reviewer_are_rejected(self):
+        prepare(self.manifest, self.out); review = self._review("r1")
+        row = json.loads(review.read_text()); row["packet_id"] = "wrong"; review.write_text(json.dumps(row)+"\n")
+        with self.assertRaisesRegex(Phase4A0Error, "REVIEW_PACKET_ID_MISMATCH"):
+            validate_reviews(self.out, [review])
+        row["packet_id"] = json.loads((self.out / "review_template.jsonl").read_text())["packet_id"]
+        row["reviewer_id"] = 1; review.write_text(json.dumps(row)+"\n")
+        with self.assertRaisesRegex(Phase4A0Error, "REVIEWER_ID_REQUIRED_AND_CONSISTENT"):
+            validate_reviews(self.out, [review])
+
     def test_different_seed_only_changes_mapping_order(self):
         first, second = self.root / "one", self.root / "two"
         prepare(self.manifest, first, seed=1); prepare(self.manifest, second, seed=2)

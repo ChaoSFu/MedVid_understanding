@@ -322,11 +322,17 @@ def _validate_review(rows: list[dict[str, Any]], template: list[dict[str, Any]])
     expected = {row["case_blind_id"]: set(row["variant_assessments"]) for row in template}
     if len(rows) != len(expected) or {row.get("case_blind_id") for row in rows} != set(expected): raise Phase4A0Error("REVIEW_CASE_SET_MISMATCH")
     ids = {row.get("reviewer_id") for row in rows}
-    if len(ids) != 1 or not next(iter(ids), None): raise Phase4A0Error("REVIEWER_ID_REQUIRED_AND_CONSISTENT")
+    if len(ids) != 1 or not isinstance(next(iter(ids), None), str) or not next(iter(ids), "").strip(): raise Phase4A0Error("REVIEWER_ID_REQUIRED_AND_CONSISTENT")
     reviewer = next(iter(ids))
+    packet_ids = {row.get("packet_id") for row in template}
+    if len(packet_ids) != 1 or not isinstance(next(iter(packet_ids)), str):
+        raise Phase4A0Error("REVIEW_TEMPLATE_PACKET_ID_INVALID")
+    expected_packet_id = next(iter(packet_ids))
     for row in rows:
         if set(row) - {"reviewer_id", "packet_id", "case_blind_id", "variant_assessments", "claim_wording", "temporal_scope", "observability", "eligibility_label", "reason_codes", "notes"}: raise Phase4A0Error("REVIEW_UNKNOWN_FIELD")
         values = row.get("variant_assessments")
+        if row.get("packet_id") != expected_packet_id:
+            raise Phase4A0Error("REVIEW_PACKET_ID_MISMATCH")
         if not isinstance(values, dict) or set(values) != expected[row["case_blind_id"]] or any(value not in BLIND_STATUSES for value in values.values()): raise Phase4A0Error("REVIEW_VARIANT_SCHEMA_INVALID")
         if row.get("claim_wording") not in CLAIM_WORDING or row.get("temporal_scope") not in TEMPORAL_SCOPE or row.get("observability") not in OBSERVABILITY or row.get("eligibility_label") not in LABELS: raise Phase4A0Error("REVIEW_CLOSED_VALUE_INVALID")
         if not isinstance(row.get("reason_codes"), list) or any(value not in REASONS for value in row["reason_codes"]): raise Phase4A0Error("REVIEW_REASON_CODE_INVALID")
