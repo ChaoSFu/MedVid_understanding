@@ -16,7 +16,9 @@ from relive.data.medvidu import load_public_records
 from relive.phase4a0_development_controls import (DevelopmentControlError, ROI_TEMPLATE_FORMAT,
                                                    SELECTION_FORMAT, TARGET_OVERRIDE_FORMAT,
                                                    MATCHED_CONTROL_OVERRIDE_FORMAT, apply_matched_control_overrides,
-                                                   apply_target_roi_overrides, prepare_development_controls)
+                                                   apply_target_roi_overrides, freeze_development_controls,
+                                                   prepare_development_controls)
+from relive.phase4a0 import validate_candidate_specs
 
 
 class DevelopmentControlPreparationTests(unittest.TestCase):
@@ -129,6 +131,31 @@ class DevelopmentControlPreparationTests(unittest.TestCase):
             apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
                                             matched_control_overrides_path=bad,
                                             output_path=self.root / "bad-ready.jsonl")
+
+    def test_freeze_recomputes_bindings_and_emits_phase4a0_candidate_specs(self):
+        selection = self.root / "selection.jsonl"
+        selection.write_text(json.dumps(self._row("dev-001", "A blue object is visible.", 0)) + "\n", encoding="utf-8")
+        prepared = self.root / "prepared"
+        prepare_development_controls(selection_path=selection, source_json=self.source,
+                                     frame_root=self.root / "frames", source_prefix="/root/data", output_dir=prepared)
+        target = self.root / "target.jsonl"
+        target.write_text(json.dumps({"format": TARGET_OVERRIDE_FORMAT, "development_case_id": "dev-001",
+                                      "target_roi_normalized_0_1_xyxy": [.1,.2,.5,.6]}) + "\n")
+        target_sheet = self.root / "target-filled.jsonl"
+        apply_target_roi_overrides(roi_template_path=prepared / "phase4a0_development_roi_freeze.template.jsonl",
+                                   target_roi_overrides_path=target, output_path=target_sheet)
+        control = self.root / "control.jsonl"
+        control.write_text(json.dumps({"format": MATCHED_CONTROL_OVERRIDE_FORMAT, "development_case_id": "dev-001",
+                                       "matched_control_roi_normalized_0_1_xyxy": [.55,.2,.95,.6]}) + "\n")
+        ready = self.root / "ready.jsonl"
+        apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
+                                        matched_control_overrides_path=control, output_path=ready)
+        frozen = self.root / "frozen"
+        report = freeze_development_controls(ready_worksheet_path=ready, output_dir=frozen)
+        self.assertEqual(report["status"], "PASS")
+        specs = validate_candidate_specs(frozen / "phase4a0_development_control_candidates.frozen.jsonl")
+        self.assertTrue(specs[0]["development_control"])
+        self.assertFalse(specs[0]["historical_pilot"])
 
 
 if __name__ == "__main__":

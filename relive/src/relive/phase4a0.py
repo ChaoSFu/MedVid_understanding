@@ -92,7 +92,10 @@ def validate_candidate_specs(path: Path) -> list[dict[str, Any]]:
     for row in rows:
         _reject_forbidden(row)
         if not required.issubset(row): raise Phase4A0Error("CANDIDATE_AUDIT_SPEC_MISSING_REQUIRED_FIELD")
-        if row["format"] != SPEC_FORMAT or row["gt_used"] is not False or row["historical_pilot"] is not True:
+        development_control = row.get("development_control", False)
+        if (row["format"] != SPEC_FORMAT or row["gt_used"] is not False
+                or not isinstance(row["historical_pilot"], bool) or not isinstance(development_control, bool)
+                or row["historical_pilot"] == development_control):
             raise Phase4A0Error("CANDIDATE_AUDIT_SPEC_INVALID_PROVENANCE")
         if not isinstance(row["audit_case_id"], str) or row["audit_case_id"] in identifiers:
             raise Phase4A0Error("CANDIDATE_AUDIT_CASE_ID_INVALID_OR_DUPLICATE")
@@ -302,7 +305,7 @@ def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: P
                 "frame_paths": [str(path) for path in frame_paths], "frame_sha256": [file_sha(path) for path in frame_paths],
                 "frozen_support_region": region, "coordinate_system": "normalized_0_1_xyxy", "intervention": intervention,
                 "matched_control_regions": control["regions"], "candidate_manifest_sha256": prospective["manifest_sha256"],
-                "historical_pilot": True, "gt_used": False}
+                "historical_pilot": True, "development_control": False, "gt_used": False}
         exported.append(spec)
         cases.append({"source_claim_id": claim_id, "status": "EXPORTED", "roi_source": source, "candidate_audit_case_id": spec["audit_case_id"],
                       "frozen_control_artifact": str(control_path), "frozen_control_artifact_sha256": file_sha(control_path), "frame_sha256": spec["frame_sha256"]})

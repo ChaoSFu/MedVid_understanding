@@ -17,7 +17,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from .data.medvidu import load_public_records, audit_frame_mapping
-from .phase4a0 import claim_sha256
+from .phase4a0 import SPEC_FORMAT, claim_sha256
 from .spatial import validate_region
 from .storage.artifacts import canonical_json
 
@@ -303,3 +303,72 @@ def apply_matched_control_overrides(*, target_roi_worksheet_path: Path,
             "matched_control_overrides_sha256": _sha_file(matched_control_overrides_path),
             "output": str(output_path), "output_sha256": _sha_bytes(body),
             "geometry_audit": {"status": "PASS", "same_extent_required": True, "overlap_required": False}}
+
+
+def freeze_development_controls(*, ready_worksheet_path: Path, output_dir: Path) -> dict[str, Any]:
+    """Create an immutable, auditable Phase 4A-0 manifest without model work."""
+    if output_dir.exists():
+        raise DevelopmentControlError("FREEZE_OUTPUT_DIRECTORY_MUST_NOT_EXIST")
+    ready_rows = _read_jsonl_objects(ready_worksheet_path, "ready ROI worksheet")
+    required = {"format", "development_case_id", "source_claim_id", "claim_text", "claim_sha256",
+                "source_record_index", "public_record_sha256", "frame_orders", "frame_ids", "frame_paths",
+                "frame_sha256", "target_roi_normalized_0_1_xyxy", "matched_control_roi_normalized_0_1_xyxy",
+                "intervention", "selection_status", "development_control", "gt_used"}
+    specs = []
+    seen: set[str] = set()
+    for row in ready_rows:
+        if not required.issubset(row) or row.get("format") != ROI_TEMPLATE_FORMAT:
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_SCHEMA_INVALID")
+        case_id = row.get("development_case_id")
+        if not isinstance(case_id, str) or case_id in seen:
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_CASE_ID_INVALID_OR_DUPLICATE")
+        seen.add(case_id)
+        if row.get("selection_status") != "READY_FOR_ZERO_MODEL_FREEZE_AUDIT" or row.get("development_control") is not True or row.get("gt_used") is not False:
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_PROVENANCE_INVALID")
+        if not isinstance(row.get("claim_text"), str) or claim_sha256(row["claim_text"]) != row.get("claim_sha256"):
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_CLAIM_SHA256_MISMATCH")
+        if (not isinstance(row.get("frame_orders"), list) or len(row["frame_orders"]) != 1
+                or not isinstance(row.get("frame_ids"), list) or not isinstance(row.get("frame_paths"), list)
+                or not isinstance(row.get("frame_sha256"), list) or len(row["frame_paths"]) != 1
+                or len(row["frame_ids"]) != 1 or len(row["frame_sha256"]) != 1):
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_FRAME_BINDING_INVALID")
+        path = Path(row["frame_paths"][0])
+        if not path.is_file() or _sha_file(path) != row["frame_sha256"][0]:
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_PUBLIC_FRAME_SHA256_MISMATCH")
+        target = list(validate_region(row["target_roi_normalized_0_1_xyxy"]))
+        control = list(validate_region(row["matched_control_roi_normalized_0_1_xyxy"]))
+        if not _same_extent(target, control):
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_CONTROL_DIMENSIONS_MISMATCH")
+        if _overlaps(target, control):
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_CONTROL_OVERLAPS_TARGET")
+        try:
+            intervention = resolve_intervention_spec(row["intervention"], float(row["intervention"].get("parameters", {}).get("blur_radius", 1.0)))
+        except (AttributeError, ValueError) as exc:
+            raise DevelopmentControlError("READY_ROI_WORKSHEET_OPERATOR_INVALID") from exc
+        specs.append({"format": SPEC_FORMAT, "audit_case_id": f"development-{case_id}",
+                      "source_claim_id": row["source_claim_id"], "claim_text": row["claim_text"],
+                      "claim_sha256": row["claim_sha256"], "source_record_index": row["source_record_index"],
+                      "public_record_sha256": row["public_record_sha256"], "frame_orders": row["frame_orders"],
+                      "frame_paths": row["frame_paths"], "frame_sha256": row["frame_sha256"],
+                      "frozen_support_region": target, "coordinate_system": "normalized_0_1_xyxy",
+                      "intervention": intervention, "matched_control_regions": [control],
+                      "candidate_manifest_sha256": _sha_file(ready_worksheet_path),
+                      "historical_pilot": False, "development_control": True, "gt_used": False})
+    output_dir.mkdir(parents=True)
+    body = b"".join((canonical_json(row) + "\n").encode("utf-8") for row in specs)
+    manifest = output_dir / "phase4a0_development_control_candidates.frozen.jsonl"
+    _write_new(manifest, body)
+    audit = {"format": FORMAT, "status": "PASS", "mode": "freeze_development_controls",
+             "model_calls_made": 0, "backend_loaded": False, "spatial_proposer_called": False,
+             "verifier_called": False, "certificate_created": False, "new_verified_count": 0,
+             "gt_used": False, "development_control": True, "case_count": len(specs),
+             "ready_worksheet": str(ready_worksheet_path), "ready_worksheet_sha256": _sha_file(ready_worksheet_path),
+             "frozen_candidate_manifest": str(manifest), "frozen_candidate_manifest_sha256": _sha_bytes(body),
+             "frame_sha256_recomputed": True, "claim_binding_recomputed": True,
+             "operator_geometry_audit": {"status": "PASS", "operator": "opaque_gray",
+                                         "same_extent_required": True, "overlap_required": False},
+             "prohibited_inputs_not_opened": ["reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt",
+                                               "struc_info", "RC_info", "evaluation_artifacts"]}
+    _write_new(output_dir / "phase4a0_development_control_freeze_report.json",
+               (json.dumps(audit, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    return audit

@@ -28,6 +28,12 @@ This cohort intentionally allows multiple development cases from the same
 source record. It is therefore not an input to the prospective Phase 3.5
 fresh-runtime generator, whose unique-source rule remains unchanged.
 
+After both override files have been applied, run the script's `--mode freeze`
+command on the resulting `READY_FOR_ZERO_MODEL_FREEZE_AUDIT` worksheet. The
+freeze recomputes every claim and public-frame SHA-256, validates the registered
+operator and matched-control geometry, and writes an immutable candidate
+manifest. It does not load a model or create a certificate.
+
 Before sending any filled ROI sheet for freezing, reconsider the claim scope:
 
 - `dev-002`, `dev-007`, `dev-008`, `dev-009`, and `dev-010` are the closest to

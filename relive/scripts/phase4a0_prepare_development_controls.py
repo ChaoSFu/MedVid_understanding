@@ -8,12 +8,13 @@ import sys
 from pathlib import Path
 
 from relive.phase4a0_development_controls import (DevelopmentControlError, apply_target_roi_overrides,
-                                                   apply_matched_control_overrides, prepare_development_controls)
+                                                   apply_matched_control_overrides, freeze_development_controls,
+                                                   prepare_development_controls)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=("prepare", "apply-target-rois", "apply-matched-controls"), default="prepare")
+    parser.add_argument("--mode", choices=("prepare", "apply-target-rois", "apply-matched-controls", "freeze"), default="prepare")
     parser.add_argument("--selection")
     parser.add_argument("--source-json")
     parser.add_argument("--frame-root")
@@ -23,6 +24,7 @@ def main() -> int:
     parser.add_argument("--target-roi-overrides")
     parser.add_argument("--target-roi-worksheet")
     parser.add_argument("--matched-control-overrides")
+    parser.add_argument("--ready-worksheet")
     parser.add_argument("--output")
     args = parser.parse_args()
     try:
@@ -38,12 +40,17 @@ def main() -> int:
             result = apply_target_roi_overrides(roi_template_path=Path(args.roi_template),
                                                 target_roi_overrides_path=Path(args.target_roi_overrides),
                                                 output_path=Path(args.output))
-        else:
+        elif args.mode == "apply-matched-controls":
             if not all((args.target_roi_worksheet, args.matched_control_overrides, args.output)):
                 raise DevelopmentControlError("APPLY_MATCHED_CONTROLS_REQUIRES_TARGET_WORKSHEET_OVERRIDES_AND_OUTPUT")
             result = apply_matched_control_overrides(target_roi_worksheet_path=Path(args.target_roi_worksheet),
                                                      matched_control_overrides_path=Path(args.matched_control_overrides),
                                                      output_path=Path(args.output))
+        else:
+            if not all((args.ready_worksheet, args.output_dir)):
+                raise DevelopmentControlError("FREEZE_REQUIRES_READY_WORKSHEET_AND_OUTPUT_DIR")
+            result = freeze_development_controls(ready_worksheet_path=Path(args.ready_worksheet),
+                                                 output_dir=Path(args.output_dir))
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (OSError, ValueError, DevelopmentControlError) as exc:
