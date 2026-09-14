@@ -216,20 +216,34 @@ def _control_event(run_dir: Path, sample_id: str, region: list[float]) -> tuple[
 
 def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: Path,
                              phase35_v3_run_dir: Path, phase36_run_dir: Path,
-                             output_dir: Path) -> dict[str, Any]:
+                             output_dir: Path, fresh_source_manifest_path: Path | None = None) -> dict[str, Any]:
     """Export only auditable, immutable Phase 3.5/3.6 geometry to Phase 4A-0.
 
     The function deliberately looks up persisted ``events/controls`` rather
     than calling the control-placement helper.  Thus a missing historical
     control is reported as unavailable instead of being silently reconstructed.
     """
-    required = (runtime_path, prospective_manifest_path, phase35_v3_run_dir / "phase35_v3_trace.jsonl",
+    fresh_source_manifest_path = fresh_source_manifest_path or runtime_path.parent / "fresh_source_manifest.jsonl"
+    required = (runtime_path, prospective_manifest_path, fresh_source_manifest_path, phase35_v3_run_dir / "phase35_v3_trace.jsonl",
                 phase36_run_dir / "phase36_regrounding_trace.jsonl")
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise Phase4A0Error("FROZEN_ARTIFACT_MISSING:" + ",".join(missing))
     if output_dir.exists() and any(output_dir.iterdir()): raise Phase4A0Error("OUTPUT_DIRECTORY_MUST_BE_EMPTY")
     runtime_rows = _rows(runtime_path)
+    # The strict runtime schema deliberately omits source_record_index.  Its
+    # immutable sibling source manifest is the only accepted location for the
+    # public-record binding.  We extract only these four fields; confirmation
+    # prose and every other source value are discarded before packet creation.
+    source_rows = _rows(fresh_source_manifest_path)
+    source_by_sample: dict[str, dict[str, Any]] = {}
+    for item in source_rows:
+        if not {"source_record_index", "sample_id", "public_record_sha256", "target_claim", "claim_text_sha256"}.issubset(item):
+            raise Phase4A0Error("FRESH_SOURCE_MANIFEST_PUBLIC_PROVENANCE_MISSING")
+        sample_id = item["sample_id"]
+        if type(item["source_record_index"]) is not int or not isinstance(sample_id, str) or not isinstance(item["public_record_sha256"], str):
+            raise Phase4A0Error("FRESH_SOURCE_MANIFEST_PUBLIC_PROVENANCE_INVALID")
+        source_by_sample[sample_id] = {key: item[key] for key in ("source_record_index", "sample_id", "public_record_sha256", "target_claim", "claim_text_sha256")}
     prospective = _read_json(prospective_manifest_path)
     if prospective.get("selection_status") != "FROZEN_PRE_SPATIAL_CERTIFICATE_OUTCOMES" or prospective.get("gt_used") is not False:
         raise Phase4A0Error("PHASE35_PROSPECTIVE_MANIFEST_NOT_FROZEN_OR_GT_SAFE")
@@ -244,13 +258,21 @@ def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: P
     exported, cases = [], []
     source_hash = sha({"runtime": file_sha(runtime_path), "prospective": file_sha(prospective_manifest_path),
                        "phase35_trace": file_sha(phase35_v3_run_dir / "phase35_v3_trace.jsonl"),
-                       "phase36_trace": file_sha(phase36_run_dir / "phase36_regrounding_trace.jsonl")})
+                       "phase36_trace": file_sha(phase36_run_dir / "phase36_regrounding_trace.jsonl"), "fresh_source_manifest": file_sha(fresh_source_manifest_path)})
     for claim_id, source in (("phase35-local-001", "PHASE36_FROZEN_R1"), ("phase35-local-002", "PHASE35_FROZEN_R0"), ("phase35-local-003", "NO_FROZEN_AUDITABLE_ROI")):
         runtime = by_claim[claim_id]; frames = runtime.get("frames", []); claim = runtime["target_claim"]
+        source_public = source_by_sample.get(runtime.get("sample_id"))
+        if source_public is None:
+            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "PUBLIC_PROVENANCE_MISSING"}); continue
         if claim.get("text") is None or [frame.get("frame_id") for frame in frames] != claim.get("time_scope", {}).get("frame_ids"):
             raise Phase4A0Error("FROZEN_CLAIM_FRAME_BINDING_MISMATCH")
         expected_hash = selected[claim_id].get("claim_text_sha256")
-        if claim_sha256(claim["text"]) != expected_hash: raise Phase4A0Error("FROZEN_CLAIM_SHA256_MISMATCH")
+        if (claim_sha256(claim["text"]) != expected_hash or claim_sha256(claim["text"]) != source_public["claim_text_sha256"]
+                or source_public["target_claim"].get("claim_id") != claim_id or source_public["target_claim"].get("text") != claim["text"]):
+            raise Phase4A0Error("FROZEN_CLAIM_SHA256_MISMATCH")
+        runtime_sha = runtime.get("metadata", {}).get("source_record_sha256")
+        if runtime_sha != source_public["public_record_sha256"]:
+            raise Phase4A0Error("PUBLIC_RECORD_SHA256_BINDING_MISMATCH")
         frame_paths = [Path(frame["path"]) for frame in frames]
         if not all(path.is_file() for path in frame_paths):
             cases.append({"source_claim_id": claim_id, "status": "FROZEN_ARTIFACT_MISSING", "roi_source": source}); continue
@@ -274,16 +296,13 @@ def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: P
         try: intervention = resolve_intervention_spec(intervention, float(intervention.get("parameters", {}).get("blur_radius", 1.0)))
         except (AttributeError, ValueError):
             cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "FROZEN_OPERATOR_INVALID"}); continue
-        metadata = runtime.get("metadata", {})
         spec = {"format": SPEC_FORMAT, "audit_case_id": "historical-" + claim_id.rsplit("-", 1)[-1], "source_claim_id": claim_id,
-                "claim_text": claim["text"], "claim_sha256": claim_sha256(claim["text"]), "source_record_index": metadata.get("source_record_index"),
-                "public_record_sha256": metadata.get("public_record_sha256"), "frame_orders": [frame["order"] for frame in frames],
+                "claim_text": claim["text"], "claim_sha256": claim_sha256(claim["text"]), "source_record_index": source_public["source_record_index"],
+                "public_record_sha256": source_public["public_record_sha256"], "frame_orders": [frame["order"] for frame in frames],
                 "frame_paths": [str(path) for path in frame_paths], "frame_sha256": [file_sha(path) for path in frame_paths],
                 "frozen_support_region": region, "coordinate_system": "normalized_0_1_xyxy", "intervention": intervention,
                 "matched_control_regions": control["regions"], "candidate_manifest_sha256": prospective["manifest_sha256"],
                 "historical_pilot": True, "gt_used": False}
-        if type(spec["source_record_index"]) is not int or not isinstance(spec["public_record_sha256"], str):
-            cases.append({"source_claim_id": claim_id, "status": "NO_FROZEN_AUDITABLE_ROI", "roi_source": source, "reason": "PUBLIC_PROVENANCE_MISSING"}); continue
         exported.append(spec)
         cases.append({"source_claim_id": claim_id, "status": "EXPORTED", "roi_source": source, "candidate_audit_case_id": spec["audit_case_id"],
                       "frozen_control_artifact": str(control_path), "frozen_control_artifact_sha256": file_sha(control_path), "frame_sha256": spec["frame_sha256"]})
@@ -292,6 +311,7 @@ def export_historical_pilots(*, runtime_path: Path, prospective_manifest_path: P
     report = {"format": FORMAT, "status": "PASS", "mode": "export_historical_pilots", "model_calls_made": 0,
               "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False,
               "historical_artifacts_unchanged": True, "source_artifact_binding_sha256": source_hash,
+              "fresh_source_manifest": str(fresh_source_manifest_path), "fresh_source_manifest_sha256": file_sha(fresh_source_manifest_path),
               "candidate_manifest": str(candidate_path), "candidate_count": len(exported), "cases": cases,
               "prohibited_inputs_not_opened": ["reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt", "struc_info", "RC_info", "phase37"]}
     (output_dir / "phase4a0_historical_pilot_provenance_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")

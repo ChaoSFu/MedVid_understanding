@@ -10,13 +10,13 @@ def main() -> int:
     parser.add_argument("--mode", choices=("export-historical", "prepare", "validate"), required=True)
     parser.add_argument("--output-dir", required=True); parser.add_argument("--candidate-manifest")
     parser.add_argument("--review", action="append", default=[]); parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--runtime"); parser.add_argument("--prospective-manifest"); parser.add_argument("--phase35-v3-run-dir"); parser.add_argument("--phase36-run-dir")
+    parser.add_argument("--runtime"); parser.add_argument("--fresh-source-manifest"); parser.add_argument("--prospective-manifest"); parser.add_argument("--phase35-v3-run-dir"); parser.add_argument("--phase36-run-dir")
     args = parser.parse_args()
     try:
         if args.mode == "export-historical":
             if not all((args.runtime, args.prospective_manifest, args.phase35_v3_run_dir, args.phase36_run_dir)):
                 raise Phase4A0Error("FROZEN_ARTIFACT_PATHS_REQUIRED")
-            result = export_historical_pilots(runtime_path=Path(args.runtime), prospective_manifest_path=Path(args.prospective_manifest), phase35_v3_run_dir=Path(args.phase35_v3_run_dir), phase36_run_dir=Path(args.phase36_run_dir), output_dir=Path(args.output_dir))
+            result = export_historical_pilots(runtime_path=Path(args.runtime), fresh_source_manifest_path=Path(args.fresh_source_manifest) if args.fresh_source_manifest else None, prospective_manifest_path=Path(args.prospective_manifest), phase35_v3_run_dir=Path(args.phase35_v3_run_dir), phase36_run_dir=Path(args.phase36_run_dir), output_dir=Path(args.output_dir))
         elif args.mode == "prepare":
             if not args.candidate_manifest: raise Phase4A0Error("CANDIDATE_MANIFEST_REQUIRED")
             result = prepare(Path(args.candidate_manifest), Path(args.output_dir), seed=args.seed)

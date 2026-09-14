@@ -131,9 +131,14 @@ class Phase4A0Tests(unittest.TestCase):
             phase36_preflight(config_path=fixture.config, runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", output_dir=p36, require_real=False)
             phase36_execute(config_path=fixture.config, runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", output_dir=p36, mode="run", require_real=False)
             rows = [json.loads(line) for line in fixture.runtime.read_text().splitlines()]
+            source_rows = []
             for index, row in enumerate(rows):
-                row["metadata"].update({"source_record_index": index + 2, "public_record_sha256": f"public-{index}"})
+                public = (chr(97 + index) * 64)
+                row["metadata"]["source_record_sha256"] = public
+                source_rows.append({"source_record_index": index + 2, "sample_id": row["sample_id"], "public_record_sha256": public,
+                                    "target_claim": row["target_claim"], "claim_text_sha256": claim_sha256(row["target_claim"]["text"])})
             fixture.runtime.write_text("".join(json.dumps(row) + "\n" for row in rows))
+            (fixture.runtime.parent / "fresh_source_manifest.jsonl").write_text("".join(json.dumps(row) + "\n" for row in source_rows))
             out = fixture.root / "export"
             report = export_historical_pilots(runtime_path=fixture.runtime, prospective_manifest_path=fixture.manifest, phase35_v3_run_dir=fixture.v3 / "run", phase36_run_dir=p36 / "run", output_dir=out)
             self.assertEqual(report["candidate_count"], 2)
