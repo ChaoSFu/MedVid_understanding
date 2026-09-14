@@ -18,11 +18,13 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .data.medvidu import load_public_records, audit_frame_mapping
 from .phase4a0 import claim_sha256
+from .spatial import validate_region
 from .storage.artifacts import canonical_json
 
 
 SELECTION_FORMAT = "relive-phase4a0-development-control-selection-v1"
 ROI_TEMPLATE_FORMAT = "relive-phase4a0-development-roi-freeze-template-v1"
+TARGET_OVERRIDE_FORMAT = "relive-phase4a0-development-target-roi-overrides-v1"
 FORMAT = "relive-phase4a0-development-control-preparation-v1"
 FORBIDDEN = {"reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt",
              "struc_info", "RC_info", "evaluation_artifacts", "roi", "bbox", "mask"}
@@ -174,3 +176,65 @@ def prepare_development_controls(*, selection_path: Path, source_json: Path, fra
     _write_new(output_dir / "phase4a0_development_control_preparation_report.json",
                (json.dumps(report, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     return report
+
+
+def _read_jsonl_objects(path: Path, label: str) -> list[dict[str, Any]]:
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise DevelopmentControlError(f"unreadable {label} JSONL: {path}") from exc
+    if not rows or not all(isinstance(row, dict) for row in rows):
+        raise DevelopmentControlError(f"{label.upper().replace(' ', '_')}_JSONL_INVALID")
+    return rows
+
+
+def apply_target_roi_overrides(*, roi_template_path: Path, target_roi_overrides_path: Path,
+                               output_path: Path) -> dict[str, Any]:
+    """Make a new ROI worksheet with user-authored targets, never mutating input.
+
+    Matched controls deliberately remain unset.  Selecting them is a separate
+    human decision because a convenient automatic placement could itself carry
+    salient evidence for the claim.
+    """
+    templates = _read_jsonl_objects(roi_template_path, "ROI template")
+    overrides = _read_jsonl_objects(target_roi_overrides_path, "target ROI override")
+    template_ids: set[str] = set()
+    for row in templates:
+        if row.get("format") != ROI_TEMPLATE_FORMAT or row.get("selection_status") != "AWAITING_HUMAN_ROI_AND_MATCHED_CONTROL":
+            raise DevelopmentControlError("ROI_TEMPLATE_NOT_AWAITING_HUMAN_SELECTION")
+        case_id = row.get("development_case_id")
+        if not isinstance(case_id, str) or case_id in template_ids:
+            raise DevelopmentControlError("ROI_TEMPLATE_CASE_ID_INVALID_OR_DUPLICATE")
+        if row.get("target_roi_normalized_0_1_xyxy") is not None or row.get("matched_control_roi_normalized_0_1_xyxy") is not None:
+            raise DevelopmentControlError("ROI_TEMPLATE_ALREADY_CONTAINS_HUMAN_REGIONS")
+        template_ids.add(case_id)
+    by_id: dict[str, list[float]] = {}
+    expected = {"format", "development_case_id", "target_roi_normalized_0_1_xyxy"}
+    for row in overrides:
+        if set(row) != expected or row.get("format") != TARGET_OVERRIDE_FORMAT:
+            raise DevelopmentControlError("TARGET_ROI_OVERRIDE_SCHEMA_INVALID")
+        case_id = row["development_case_id"]
+        if not isinstance(case_id, str) or case_id not in template_ids or case_id in by_id:
+            raise DevelopmentControlError("TARGET_ROI_OVERRIDE_CASE_ID_INVALID_OR_DUPLICATE")
+        by_id[case_id] = list(validate_region(row["target_roi_normalized_0_1_xyxy"]))
+    if set(by_id) != template_ids:
+        raise DevelopmentControlError("TARGET_ROI_OVERRIDE_MUST_COVER_EVERY_TEMPLATE_CASE")
+    if output_path.exists():
+        raise DevelopmentControlError("REFUSING_TO_OVERWRITE_TARGET_ROI_WORKSHEET")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    merged = []
+    for row in templates:
+        updated = dict(row)
+        updated["target_roi_normalized_0_1_xyxy"] = by_id[row["development_case_id"]]
+        updated["selection_status"] = "AWAITING_HUMAN_MATCHED_CONTROL"
+        merged.append(updated)
+    body = b"".join((canonical_json(row) + "\n").encode("utf-8") for row in merged)
+    output_path.write_bytes(body)
+    return {"format": FORMAT, "status": "PASS", "mode": "apply_target_roi_overrides",
+            "model_calls_made": 0, "backend_loaded": False, "certificate_created": False,
+            "new_verified_count": 0, "gt_used": False, "case_count": len(merged),
+            "roi_template": str(roi_template_path), "roi_template_sha256": _sha_file(roi_template_path),
+            "target_roi_overrides": str(target_roi_overrides_path),
+            "target_roi_overrides_sha256": _sha_file(target_roi_overrides_path),
+            "output": str(output_path), "output_sha256": _sha_bytes(body),
+            "matched_control_status": "AWAITING_HUMAN_SELECTION"}

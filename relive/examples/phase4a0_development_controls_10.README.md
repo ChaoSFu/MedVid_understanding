@@ -5,7 +5,7 @@ human-selected claims and one-frame windows from the supplied public-data
 worksheet. It contains no ROI, matched control, model output, certificate
 output, answer, or ground truth.
 
-Run `scripts/phase4a0_prepare_development_controls.py` on the server before
+Run `scripts/phase4a0_prepare_development_controls.py --mode prepare` on the server before
 selecting any ROI. The command validates each source-record identity, maps the
 selected public frame, recomputes its SHA-256, and writes:
 
@@ -14,8 +14,10 @@ selected public frame, recomputes its SHA-256, and writes:
   public frame ID/path/SHA-256, and blank target/control ROI fields; and
 - a zero-model provenance report.
 
-Fill each target ROI and matched-control ROI only after reviewing those exact
-previews. Both are normalized `[x1, y1, x2, y2]` coordinates, measured from
+The user-selected target boxes are stored in
+`phase4a0_development_controls_10.target_roi.overrides.jsonl`. Apply them to
+the generated worksheet with the script's `--mode apply-target-rois` command.
+Review and fill only the matched-control ROI afterwards. Both are normalized `[x1, y1, x2, y2]` coordinates, measured from
 the upper-left image corner. The matched control must have the same width and
 height as the target ROI and must not overlap it. Do not modify the claim,
 source-record identity, frozen order, public path, or SHA-256.
