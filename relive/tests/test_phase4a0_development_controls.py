@@ -124,7 +124,7 @@ class DevelopmentControlPreparationTests(unittest.TestCase):
         self.assertEqual(final[0]["selection_status"], "READY_FOR_ZERO_MODEL_FREEZE_AUDIT")
         bad = self.root / "bad-controls.jsonl"
         bad.write_text(json.dumps({"format": MATCHED_CONTROL_OVERRIDE_FORMAT, "development_case_id": "dev-001",
-                                   "matched_control_roi_normalized_0_1_xyxy": [.1,.2,.4,.6]}) + "\n", encoding="utf-8")
+                                   "matched_control_roi_normalized_0_1_xyxy": [.55,.2,.95,.6]}) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(DevelopmentControlError, "MUST_COVER"):
             apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
                                             matched_control_overrides_path=bad,
