@@ -1,0 +1,239 @@
+"""Phase 4A-0: zero-model, blinded human claim--evidence eligibility audit.
+
+This module intentionally has no dependency on a backend, runner, verifier, or
+certificate builder.  It packages already frozen public frames and registered
+pixel interventions for independent human review before any Phase 4A scorer is
+allowed to run.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import random
+import shutil
+from pathlib import Path
+from typing import Any, Iterable
+
+from PIL import Image, ImageDraw, ImageFont
+
+from .interventions import apply_spatial_intervention, resolve_intervention_spec
+from .spatial import validate_region
+
+FORMAT = "relive-phase4a0-claim-evidence-eligibility-v1"
+SPEC_FORMAT = "relive-phase4a0-candidate-audit-spec-v1"
+ELIGIBLE = "ELIGIBLE_FOR_PHASE4A_POSITIVE_CONTROL"
+FINAL_STATUSES = {ELIGIBLE, "INELIGIBLE_SINGLE_ROI", "REQUIRES_ADJUDICATION", "AWAITING_HUMAN_REVIEWS", "TECHNICAL_FAILURE"}
+VARIANTS = ("ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL")
+BLIND_STATUSES = {"SUPPORTED", "INSUFFICIENT", "CONTRADICTED", "UNREADABLE"}
+CLAIM_WORDING = {"CLEAR", "AMBIGUOUS"}
+TEMPORAL_SCOPE = {"VALID", "MISMATCH"}
+OBSERVABILITY = {"DIRECTLY_VISIBLE", "APPARENT_2D_ONLY", "NOT_VISUALLY_SUPPORTED"}
+LABELS = {"SINGLE_ROI_ELIGIBLE", "RELATIONAL_COMPOSITE_REQUIRED", "TEMPORAL_TUBE_REQUIRED", "AMBIGUOUS_VISUAL_FACT", "CLAIM_NOT_SUPPORTED"}
+REASONS = {"TEMPORAL_SCOPE_MISMATCH", "UNCLEAR_ENTITY_REFERENCE", "PHYSICAL_CONTACT_NOT_DIRECTLY_OBSERVABLE", "OBJECT_ATTRIBUTE_NOT_VISIBLE", "RELATION_REQUIRES_MULTIPLE_COMPONENTS", "STATIC_ROI_INADEQUATE_ACROSS_FRAMES", "HUMAN_VARIANT_PATTERN_FAILED"}
+FORBIDDEN = {"reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt", "struc_info", "RC_info", "semantic_status", "certificate_status", "keep", "drop", "phase37", "human_public_visual_confirmation_note"}
+
+
+class Phase4A0Error(ValueError):
+    pass
+
+
+def canonical(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def sha(value: Any) -> str:
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def file_sha(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Phase4A0Error(f"unreadable JSON: {path}") from exc
+
+
+def _rows(path: Path) -> list[dict[str, Any]]:
+    try:
+        values = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Phase4A0Error(f"unreadable JSONL: {path}") from exc
+    if not values or not all(isinstance(v, dict) for v in values):
+        raise Phase4A0Error("CANDIDATE_AUDIT_MANIFEST_REQUIRES_NONEMPTY_OBJECT_ROWS")
+    return values
+
+
+def _reject_forbidden(value: Any) -> None:
+    if isinstance(value, dict):
+        bad = set(value).intersection(FORBIDDEN)
+        if bad:
+            raise Phase4A0Error("GT_OR_HISTORICAL_OUTCOME_FIELD_FORBIDDEN:" + ",".join(sorted(bad)))
+        for child in value.values(): _reject_forbidden(child)
+    elif isinstance(value, list):
+        for child in value: _reject_forbidden(child)
+
+
+def validate_candidate_specs(path: Path) -> list[dict[str, Any]]:
+    rows = _rows(path)
+    identifiers: set[str] = set()
+    required = {"format", "audit_case_id", "source_claim_id", "claim_text", "claim_sha256", "source_record_index", "public_record_sha256", "frame_orders", "frame_paths", "frame_sha256", "frozen_support_region", "coordinate_system", "intervention", "matched_control_regions", "candidate_manifest_sha256", "historical_pilot", "gt_used"}
+    for row in rows:
+        _reject_forbidden(row)
+        if not required.issubset(row): raise Phase4A0Error("CANDIDATE_AUDIT_SPEC_MISSING_REQUIRED_FIELD")
+        if row["format"] != SPEC_FORMAT or row["gt_used"] is not False or row["historical_pilot"] is not True:
+            raise Phase4A0Error("CANDIDATE_AUDIT_SPEC_INVALID_PROVENANCE")
+        if not isinstance(row["audit_case_id"], str) or row["audit_case_id"] in identifiers:
+            raise Phase4A0Error("CANDIDATE_AUDIT_CASE_ID_INVALID_OR_DUPLICATE")
+        identifiers.add(row["audit_case_id"])
+        if not isinstance(row["claim_text"], str) or sha(row["claim_text"]) != row["claim_sha256"]:
+            raise Phase4A0Error("CLAIM_SHA256_MISMATCH")
+        if (not isinstance(row["frame_orders"], list) or not row["frame_orders"] or len(row["frame_orders"]) != len(row["frame_paths"]) or len(row["frame_paths"]) != len(row["frame_sha256"])):
+            raise Phase4A0Error("FROZEN_FRAME_SPEC_INVALID")
+        if any(type(o) is not int for o in row["frame_orders"]) or row["frame_orders"] != sorted(row["frame_orders"]):
+            raise Phase4A0Error("FROZEN_FRAME_ORDERS_INVALID")
+        for frame, expected in zip(row["frame_paths"], row["frame_sha256"]):
+            p = Path(frame)
+            if not p.is_file(): raise Phase4A0Error(f"FROZEN_ARTIFACT_MISSING:{p}")
+            if file_sha(p) != expected: raise Phase4A0Error("PUBLIC_FRAME_SHA256_MISMATCH")
+        row["frozen_support_region"] = list(validate_region(row["frozen_support_region"]))
+        row["intervention"] = resolve_intervention_spec(row["intervention"], float(row["intervention"].get("parameters", {}).get("blur_radius", 1.0)))
+        if not isinstance(row["matched_control_regions"], list) or not row["matched_control_regions"]:
+            raise Phase4A0Error("MATCHED_CONTROL_REQUIRED")
+        row["matched_control_regions"] = [list(validate_region(r)) for r in row["matched_control_regions"]]
+    return rows
+
+
+def _save_variants(spec: dict[str, Any], target: Path) -> tuple[dict[str, list[Path]], dict[str, list[dict[str, Any]]]]:
+    paths: dict[str, list[Path]] = {kind: [] for kind in VARIANTS}
+    audits: dict[str, list[dict[str, Any]]] = {kind: [] for kind in VARIANTS}
+    for index, source in enumerate(spec["frame_paths"]):
+        with Image.open(source) as opened:
+            image = opened.convert("RGB")
+            regions = {"ORIGINAL": spec["frozen_support_region"], "KEEP_TARGET": spec["frozen_support_region"], "DROP_TARGET": spec["frozen_support_region"], "DROP_MATCHED_CONTROL": spec["matched_control_regions"][0]}
+            for kind in VARIANTS:
+                rendered, audit = apply_spatial_intervention(image, regions[kind], kind, spec["intervention"])
+                out = target / f"{spec['audit_case_id']}_{kind.lower()}_{index:02d}.png"
+                out.parent.mkdir(parents=True, exist_ok=True); rendered.save(out)
+                paths[kind].append(out); audits[kind].append(audit)
+    return paths, audits
+
+
+def _contact_sheet(images: list[Path], destination: Path, title: str) -> None:
+    opened = [Image.open(path).convert("RGB") for path in images]
+    try:
+        width = max(image.width for image in opened); height = max(image.height for image in opened)
+        canvas = Image.new("RGB", (width * len(opened), height + 44), "white")
+        draw = ImageDraw.Draw(canvas)
+        draw.text((4, 4), title, fill="black", font=ImageFont.load_default())
+        for idx, image in enumerate(opened): canvas.paste(image, (idx * width, 44))
+        destination.parent.mkdir(parents=True, exist_ok=True); canvas.save(destination)
+    finally:
+        for image in opened: image.close()
+
+
+def _packet_schema() -> dict[str, Any]:
+    return {"format": FORMAT, "strict": True, "reviewer_fields": ["reviewer_id", "packet_id", "case_blind_id", "variant_assessments", "claim_wording", "temporal_scope", "observability", "eligibility_label", "reason_codes", "notes"], "closed_sets": {"variant_status": sorted(BLIND_STATUSES), "claim_wording": sorted(CLAIM_WORDING), "temporal_scope": sorted(TEMPORAL_SCOPE), "observability": sorted(OBSERVABILITY), "eligibility_label": sorted(LABELS), "reason_codes": sorted(REASONS)}}
+
+
+def prepare(candidate_manifest: Path, output_dir: Path, *, seed: int = 0) -> dict[str, Any]:
+    """Create a blind, zero-model packet from a pre-frozen public candidate manifest."""
+    specs = validate_candidate_specs(candidate_manifest)
+    if output_dir.exists() and any(output_dir.iterdir()): raise Phase4A0Error("OUTPUT_DIRECTORY_MUST_BE_EMPTY")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    generated, audits = output_dir / "generated_images", {}
+    rendered: dict[str, dict[str, list[Path]]] = {}
+    for spec in specs:
+        rendered[spec["audit_case_id"]], audits[spec["audit_case_id"]] = _save_variants(spec, generated)
+    randomizer = random.Random(seed)
+    shuffled = sorted(specs, key=lambda row: row["audit_case_id"]); randomizer.shuffle(shuffled)
+    mapping: dict[str, Any] = {"format": FORMAT, "seed": seed, "mapping_is_not_for_review": True, "cases": {}}
+    packet = output_dir / "review_packet"; template: list[dict[str, Any]] = []
+    for number, spec in enumerate(shuffled, 1):
+        blind_case = f"case-{number:03d}"; kinds = list(VARIANTS); randomizer.shuffle(kinds)
+        variant_map = {chr(ord("A") + index): kind for index, kind in enumerate(kinds)}
+        mapping["cases"][blind_case] = {"audit_case_id": spec["audit_case_id"], "variants": variant_map, "pixel_audits": audits[spec["audit_case_id"]], "matched_control_available": True}
+        for blind_variant, kind in variant_map.items():
+            assets = []
+            for index, source in enumerate(rendered[spec["audit_case_id"]][kind]):
+                asset = packet / "assets" / blind_case / blind_variant / f"frame_{index:02d}.png"
+                asset.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(source, asset); assets.append(asset)
+            _contact_sheet(assets, packet / f"{blind_case}_{blind_variant}.png", f"{blind_case} | variant {blind_variant} | chronological public frames")
+        # The packet contains only the blinded case, wording and public order; never source/provenance/history.
+        (packet / f"{blind_case}.json").write_text(canonical({"case_blind_id": blind_case, "claim": spec["claim_text"], "frame_orders": spec["frame_orders"], "variants": sorted(variant_map)}) + "\n", encoding="utf-8")
+        template.append({"reviewer_id": "", "packet_id": sha({"manifest": sha(specs), "seed": seed})[:16], "case_blind_id": blind_case, "variant_assessments": {key: "" for key in sorted(variant_map)}, "claim_wording": "", "temporal_scope": "", "observability": "", "eligibility_label": "", "reason_codes": [], "notes": ""})
+    (output_dir / "candidate_audit_manifest.jsonl").write_text("".join(canonical(row) + "\n" for row in specs), encoding="utf-8")
+    (output_dir / "candidate_audit_manifest_sha256.json").write_text(canonical({"sha256": sha(specs), "row_count": len(specs)}) + "\n")
+    (output_dir / "blind_mapping.json").write_text(canonical(mapping) + "\n")
+    (output_dir / "review_template.jsonl").write_text("".join(canonical(row) + "\n" for row in template))
+    (output_dir / "review_schema.json").write_text(canonical(_packet_schema()) + "\n")
+    (output_dir / "new_calibration_candidate_manifest.template.json").write_text(canonical({"format": "relive-phase4a0-calibration-candidate-template-v1", "selection_status": "AWAITING_HUMAN_FREEZE", "candidates": []}) + "\n")
+    readme = "# Phase 4A-0 blind human eligibility packet\n\nThis is a diagnostic-only, zero-model review. Variant letters are blinded. Do not use model outputs, historical certificates, GT, or prior outcomes. Fill two independent copies of `review_template.jsonl`, then validate them with the Phase 4A-0 CLI. A passing eligibility result is not VERIFIED and does not change any certificate.\n"
+    (output_dir / "README.md").write_text(readme)
+    _write_initial_reports(output_dir, len(specs))
+    return {"format": FORMAT, "status": "PASS", "mode": "prepare", "model_calls_made": 0, "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False, "historical_artifacts_unchanged": True, "candidate_count": len(specs), "candidate_audit_manifest": str(output_dir / "candidate_audit_manifest.jsonl"), "review_packet": str(packet)}
+
+
+def _write_initial_reports(output_dir: Path, count: int) -> None:
+    summary = {"format": FORMAT, "status": "AWAITING_HUMAN_REVIEWS", "candidate_count": count, "model_calls_made": 0, "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False, "historical_artifacts_unchanged": True}
+    (output_dir / "eligibility_report.jsonl").write_text("", encoding="utf-8")
+    (output_dir / "eligibility_summary.json").write_text(canonical(summary) + "\n")
+    (output_dir / "phase4a0_audit.json").write_text(canonical(summary) + "\n")
+
+
+def _validate_review(rows: list[dict[str, Any]], template: list[dict[str, Any]]) -> str:
+    expected = {row["case_blind_id"]: set(row["variant_assessments"]) for row in template}
+    if len(rows) != len(expected) or {row.get("case_blind_id") for row in rows} != set(expected): raise Phase4A0Error("REVIEW_CASE_SET_MISMATCH")
+    ids = {row.get("reviewer_id") for row in rows}
+    if len(ids) != 1 or not next(iter(ids), None): raise Phase4A0Error("REVIEWER_ID_REQUIRED_AND_CONSISTENT")
+    reviewer = next(iter(ids))
+    for row in rows:
+        if set(row) - {"reviewer_id", "packet_id", "case_blind_id", "variant_assessments", "claim_wording", "temporal_scope", "observability", "eligibility_label", "reason_codes", "notes"}: raise Phase4A0Error("REVIEW_UNKNOWN_FIELD")
+        values = row.get("variant_assessments")
+        if not isinstance(values, dict) or set(values) != expected[row["case_blind_id"]] or any(value not in BLIND_STATUSES for value in values.values()): raise Phase4A0Error("REVIEW_VARIANT_SCHEMA_INVALID")
+        if row.get("claim_wording") not in CLAIM_WORDING or row.get("temporal_scope") not in TEMPORAL_SCOPE or row.get("observability") not in OBSERVABILITY or row.get("eligibility_label") not in LABELS: raise Phase4A0Error("REVIEW_CLOSED_VALUE_INVALID")
+        if not isinstance(row.get("reason_codes"), list) or any(value not in REASONS for value in row["reason_codes"]): raise Phase4A0Error("REVIEW_REASON_CODE_INVALID")
+    return reviewer
+
+
+def validate_reviews(output_dir: Path, review_paths: Iterable[Path]) -> dict[str, Any]:
+    template = _rows(output_dir / "review_template.jsonl")
+    groups = [_rows(path) for path in review_paths]
+    reviewers = [_validate_review(rows, template) for rows in groups]
+    if len(set(reviewers)) != len(reviewers): raise Phase4A0Error("DUPLICATE_REVIEWER_ID")
+    validated = output_dir / "validated_reviews"; validated.mkdir(exist_ok=True)
+    for reviewer, rows in zip(reviewers, groups): (validated / f"{reviewer}.jsonl").write_text("".join(canonical(row) + "\n" for row in rows))
+    if len(groups) < 2:
+        _write_initial_reports(output_dir, len(template)); return {"status": "AWAITING_HUMAN_REVIEWS", "reviewers": reviewers}
+    # No variant identity is read until every supplied review has passed strict validation.
+    mapping = _read_json(output_dir / "blind_mapping.json")
+    by_case = [{row["case_blind_id"]: row for row in group} for group in groups]
+    records = []
+    for case in sorted(mapping["cases"]):
+        reviews = [group[case] for group in by_case]
+        def comparable(review: dict[str, Any]) -> dict[str, Any]:
+            # Reviewer identity and free-text notes never decide agreement.
+            return {key: value for key, value in review.items() if key not in {"reviewer_id", "notes"}}
+        if any(canonical(comparable(review)) != canonical(comparable(reviews[0])) for review in reviews[1:]):
+            status = "REQUIRES_ADJUDICATION"; reasons = ["HUMAN_REVIEW_DISAGREEMENT"]
+        else:
+            review, identity = reviews[0], mapping["cases"][case]["variants"]
+            inverse = {kind: blind for blind, kind in identity.items()}
+            pattern = (review["variant_assessments"][inverse["ORIGINAL"]] == "SUPPORTED" and review["variant_assessments"][inverse["KEEP_TARGET"]] == "SUPPORTED" and review["variant_assessments"][inverse["DROP_TARGET"]] == "INSUFFICIENT" and review["variant_assessments"][inverse["DROP_MATCHED_CONTROL"]] == "SUPPORTED")
+            pixel = all(a["pixel_audit_pass"] for entries in mapping["cases"][case]["pixel_audits"].values() for a in entries)
+            meta = review["claim_wording"] == "CLEAR" and review["temporal_scope"] == "VALID" and review["observability"] == "DIRECTLY_VISIBLE" and review["eligibility_label"] == "SINGLE_ROI_ELIGIBLE"
+            status = ELIGIBLE if pattern and pixel and meta and mapping["cases"][case]["matched_control_available"] else "INELIGIBLE_SINGLE_ROI"
+            reasons = [] if status == ELIGIBLE else ["HUMAN_ELIGIBILITY_GATE_NOT_MET"]
+        records.append({"blind_case_id": case, "audit_case_id": mapping["cases"][case]["audit_case_id"], "eligibility_status": status, "reason_codes": reasons, "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0, "gt_used": False})
+    overall = "REQUIRES_ADJUDICATION" if any(r["eligibility_status"] == "REQUIRES_ADJUDICATION" for r in records) else "PASS"
+    (output_dir / "eligibility_report.jsonl").write_text("".join(canonical(row) + "\n" for row in records))
+    summary = {"format": FORMAT, "status": overall, "records": len(records), "eligible_count": sum(r["eligibility_status"] == ELIGIBLE for r in records), "model_calls_made": 0, "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False, "historical_artifacts_unchanged": True}
+    (output_dir / "eligibility_summary.json").write_text(canonical(summary) + "\n")
+    (output_dir / "phase4a0_audit.json").write_text(canonical(summary) + "\n")
+    return summary

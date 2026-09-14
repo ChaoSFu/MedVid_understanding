@@ -268,3 +268,75 @@ class LocalHFBackend(Backend):
             raise
         except Exception:
             raise BackendError("LOCAL_HF_GENERATION_FAILURE") from None
+
+    def forced_choice_token_contract(self, request: dict[str, Any], choices: tuple[str, str, str] = ("A", "B", "C")) -> dict[str, Any]:
+        """Validate exact one-token diagnostic choices in the real chat context.
+
+        This is intentionally separate from :meth:`infer`: it neither calls
+        ``generate`` nor parses a semantic response.  The prompt is required to
+        end in the fixed answer anchor so a next-token A/B/C comparison has an
+        unambiguous meaning.
+        """
+        if not isinstance(request.get("prompt"), str) or not request["prompt"].endswith("\nAnswer:"):
+            raise BackendError("CHOICE_PROMPT_MISSING_ANSWER_ANCHOR")
+        if not isinstance(choices, tuple) or choices != ("A", "B", "C"):
+            raise BackendError("CHOICE_LABEL_CONTRACT_INVALID")
+        paths = request.get("image_paths", [])
+        if not isinstance(paths, list):
+            raise BackendError("FRAME_IDENTITY_LENGTH_MISMATCH")
+        images = [self._prepared_image(path) for path in paths]
+        messages = self._messages(request, images)
+        inputs = self._model_inputs(messages, images)
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        encode = getattr(tokenizer, "encode", None)
+        if not callable(encode):
+            raise BackendError("CHOICE_TOKENIZER_UNAVAILABLE")
+        token_ids: dict[str, int] = {}
+        try:
+            for label in choices:
+                encoded = encode(label, add_special_tokens=False)
+                if not isinstance(encoded, list) or len(encoded) != 1 or type(encoded[0]) is not int:
+                    raise ValueError("choice does not map to exactly one token")
+                token_ids[label] = encoded[0]
+        except Exception:
+            raise BackendError("CHOICE_TOKENIZATION_NOT_UNIQUE") from None
+        if len(set(token_ids.values())) != len(choices):
+            raise BackendError("CHOICE_TOKENIZATION_NOT_UNIQUE")
+        try:
+            input_ids = inputs["input_ids"]
+            sequence = input_ids[0].detach().to("cpu").tolist()
+            if not isinstance(sequence, list) or not sequence:
+                raise ValueError("empty chat context")
+        except Exception:
+            raise BackendError("CHOICE_CONTEXT_TOKENIZATION_UNAVAILABLE") from None
+        return {"choice_labels": list(choices), "choice_token_ids": token_ids,
+                "context_input_ids_sha256": hashlib.sha256(json.dumps(sequence, separators=(",", ":")).encode()).hexdigest(),
+                "context_token_count": len(sequence)}
+
+    def forced_choice_likelihood(self, request: dict[str, Any], *, choice_token_ids: dict[str, int] | None = None) -> dict[str, Any]:
+        """Score A/B/C at the next token under the exact local-HF chat path.
+
+        This diagnostic API shares checkpoint loading, image preparation, chat
+        template use, processor invocation, and device placement with ``infer``.
+        It does not alter ``infer`` or the semantic verifier protocol.
+        """
+        self.calls += 1
+        contract = self.forced_choice_token_contract(request)
+        if choice_token_ids is not None and choice_token_ids != contract["choice_token_ids"]:
+            raise BackendError("CHOICE_TOKEN_CONTRACT_DRIFT")
+        paths = request.get("image_paths", [])
+        images = [self._prepared_image(path) for path in paths]
+        messages = self._messages(request, images)
+        inputs = self._model_inputs(messages, images)
+        try:
+            with self.torch.inference_mode():
+                output = self.model(**inputs)
+                logits = output.logits[:, -1, :]
+                log_probs = self.torch.log_softmax(logits, dim=-1)[0]
+            values = {label: {"token_id": token_id,
+                              "raw_logit": float(logits[0, token_id].detach().to("cpu").item()),
+                              "log_probability": float(log_probs[token_id].detach().to("cpu").item())}
+                      for label, token_id in contract["choice_token_ids"].items()}
+        except Exception:
+            raise BackendError("LOCAL_HF_CHOICE_SCORING_FAILURE") from None
+        return {"choice_contract": contract, "choices": values}

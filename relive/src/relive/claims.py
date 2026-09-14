@@ -24,6 +24,7 @@ PROMPT_VERSIONS = {
     "reground_local_interaction_overbroad": "relive-reground-local-interaction-overbroad-v1",
     "reground_local_interaction_incomplete": "relive-reground-local-interaction-incomplete-v1",
     "residual_support_localize": "relive_residual_support_localize_v1",
+    "visual_dependence_choice": "relive-visual-dependence-choice-v1",
 }
 
 

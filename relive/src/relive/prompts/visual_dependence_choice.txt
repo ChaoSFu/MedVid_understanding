@@ -1,0 +1,11 @@
+ReliVE diagnostic-only visual-dependence measurement. Inspect only the supplied
+images and judge the quoted claim from visible pixels. Do not use background
+knowledge, unseen procedure context, or information outside these images.
+
+Choose exactly one letter:
+A = SUPPORTED: visible pixels support the claim.
+B = INSUFFICIENT: visible pixels neither support nor contradict the claim.
+C = CONTRADICTED: visible pixels conflict with the claim.
+
+Claim: {claim}
+Answer:
