@@ -25,6 +25,7 @@ from .storage.artifacts import canonical_json
 SELECTION_FORMAT = "relive-phase4a0-development-control-selection-v1"
 ROI_TEMPLATE_FORMAT = "relive-phase4a0-development-roi-freeze-template-v1"
 TARGET_OVERRIDE_FORMAT = "relive-phase4a0-development-target-roi-overrides-v1"
+MATCHED_CONTROL_OVERRIDE_FORMAT = "relive-phase4a0-development-matched-control-roi-overrides-v1"
 FORMAT = "relive-phase4a0-development-control-preparation-v1"
 FORBIDDEN = {"reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt",
              "struc_info", "RC_info", "evaluation_artifacts", "roi", "bbox", "mask"}
@@ -238,3 +239,67 @@ def apply_target_roi_overrides(*, roi_template_path: Path, target_roi_overrides_
             "target_roi_overrides_sha256": _sha_file(target_roi_overrides_path),
             "output": str(output_path), "output_sha256": _sha_bytes(body),
             "matched_control_status": "AWAITING_HUMAN_SELECTION"}
+
+
+def _same_extent(first: list[float], second: list[float]) -> bool:
+    return abs((first[2] - first[0]) - (second[2] - second[0])) < 1e-9 and abs((first[3] - first[1]) - (second[3] - second[1])) < 1e-9
+
+
+def _overlaps(first: list[float], second: list[float]) -> bool:
+    return max(first[0], second[0]) < min(first[2], second[2]) and max(first[1], second[1]) < min(first[3], second[3])
+
+
+def apply_matched_control_overrides(*, target_roi_worksheet_path: Path,
+                                    matched_control_overrides_path: Path, output_path: Path) -> dict[str, Any]:
+    """Freeze human-drawn matched controls after checking exact local geometry."""
+    worksheets = _read_jsonl_objects(target_roi_worksheet_path, "target ROI worksheet")
+    overrides = _read_jsonl_objects(matched_control_overrides_path, "matched control override")
+    worksheet_by_id: dict[str, dict[str, Any]] = {}
+    for row in worksheets:
+        if row.get("format") != ROI_TEMPLATE_FORMAT or row.get("selection_status") != "AWAITING_HUMAN_MATCHED_CONTROL":
+            raise DevelopmentControlError("TARGET_ROI_WORKSHEET_NOT_AWAITING_MATCHED_CONTROL")
+        case_id = row.get("development_case_id")
+        if not isinstance(case_id, str) or case_id in worksheet_by_id:
+            raise DevelopmentControlError("TARGET_ROI_WORKSHEET_CASE_ID_INVALID_OR_DUPLICATE")
+        target = row.get("target_roi_normalized_0_1_xyxy")
+        if row.get("matched_control_roi_normalized_0_1_xyxy") is not None or target is None:
+            raise DevelopmentControlError("TARGET_ROI_WORKSHEET_REGION_STATE_INVALID")
+        row["target_roi_normalized_0_1_xyxy"] = list(validate_region(target))
+        worksheet_by_id[case_id] = row
+    expected = {"format", "development_case_id", "matched_control_roi_normalized_0_1_xyxy"}
+    control_by_id: dict[str, list[float]] = {}
+    for row in overrides:
+        if set(row) != expected or row.get("format") != MATCHED_CONTROL_OVERRIDE_FORMAT:
+            raise DevelopmentControlError("MATCHED_CONTROL_OVERRIDE_SCHEMA_INVALID")
+        case_id = row["development_case_id"]
+        if not isinstance(case_id, str) or case_id not in worksheet_by_id or case_id in control_by_id:
+            raise DevelopmentControlError("MATCHED_CONTROL_OVERRIDE_CASE_ID_INVALID_OR_DUPLICATE")
+        control = list(validate_region(row["matched_control_roi_normalized_0_1_xyxy"]))
+        target = worksheet_by_id[case_id]["target_roi_normalized_0_1_xyxy"]
+        if not _same_extent(target, control):
+            raise DevelopmentControlError("MATCHED_CONTROL_DIMENSIONS_MUST_EQUAL_TARGET")
+        if _overlaps(target, control):
+            raise DevelopmentControlError("MATCHED_CONTROL_MUST_NOT_OVERLAP_TARGET")
+        control_by_id[case_id] = control
+    if set(control_by_id) != set(worksheet_by_id):
+        raise DevelopmentControlError("MATCHED_CONTROL_OVERRIDE_MUST_COVER_EVERY_TARGET_CASE")
+    if output_path.exists():
+        raise DevelopmentControlError("REFUSING_TO_OVERWRITE_MATCHED_CONTROL_WORKSHEET")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    frozen = []
+    for row in worksheets:
+        updated = dict(row)
+        updated["matched_control_roi_normalized_0_1_xyxy"] = control_by_id[row["development_case_id"]]
+        updated["selection_status"] = "READY_FOR_ZERO_MODEL_FREEZE_AUDIT"
+        frozen.append(updated)
+    body = b"".join((canonical_json(row) + "\n").encode("utf-8") for row in frozen)
+    output_path.write_bytes(body)
+    return {"format": FORMAT, "status": "PASS", "mode": "apply_matched_control_overrides",
+            "model_calls_made": 0, "backend_loaded": False, "certificate_created": False,
+            "new_verified_count": 0, "gt_used": False, "case_count": len(frozen),
+            "target_roi_worksheet": str(target_roi_worksheet_path),
+            "target_roi_worksheet_sha256": _sha_file(target_roi_worksheet_path),
+            "matched_control_overrides": str(matched_control_overrides_path),
+            "matched_control_overrides_sha256": _sha_file(matched_control_overrides_path),
+            "output": str(output_path), "output_sha256": _sha_bytes(body),
+            "geometry_audit": {"status": "PASS", "same_extent_required": True, "overlap_required": False}}

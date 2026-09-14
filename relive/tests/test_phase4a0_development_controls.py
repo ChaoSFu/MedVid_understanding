@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from relive.data.medvidu import load_public_records
 from relive.phase4a0_development_controls import (DevelopmentControlError, ROI_TEMPLATE_FORMAT,
                                                    SELECTION_FORMAT, TARGET_OVERRIDE_FORMAT,
+                                                   MATCHED_CONTROL_OVERRIDE_FORMAT, apply_matched_control_overrides,
                                                    apply_target_roi_overrides, prepare_development_controls)
 
 
@@ -95,6 +96,39 @@ class DevelopmentControlPreparationTests(unittest.TestCase):
         self.assertEqual(rows[0]["selection_status"], "AWAITING_HUMAN_MATCHED_CONTROL")
         self.assertEqual(rows[0]["target_roi_normalized_0_1_xyxy"], [.1,.2,.5,.6])
         self.assertIsNone(rows[0]["matched_control_roi_normalized_0_1_xyxy"])
+
+    def test_matched_controls_require_same_extent_and_no_overlap(self):
+        selection = self.root / "selection.jsonl"
+        rows = [self._row("dev-001", "A blue object is visible.", 0),
+                self._row("dev-002", "A red object is visible.", 1)]
+        selection.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+        prepared = self.root / "prepared"
+        prepare_development_controls(selection_path=selection, source_json=self.source,
+                                     frame_root=self.root / "frames", source_prefix="/root/data", output_dir=prepared)
+        targets = self.root / "targets.jsonl"
+        targets.write_text("\n".join(json.dumps({"format": TARGET_OVERRIDE_FORMAT, "development_case_id": case,
+                                                    "target_roi_normalized_0_1_xyxy": region})
+                                        for case, region in (("dev-001", [.1,.2,.5,.6]), ("dev-002", [.3,.2,.7,.6]))) + "\n")
+        target_sheet = self.root / "target-filled.jsonl"
+        apply_target_roi_overrides(roi_template_path=prepared / "phase4a0_development_roi_freeze.template.jsonl",
+                                   target_roi_overrides_path=targets, output_path=target_sheet)
+        controls = self.root / "controls.jsonl"
+        controls.write_text("\n".join(json.dumps({"format": MATCHED_CONTROL_OVERRIDE_FORMAT, "development_case_id": case,
+                                                    "matched_control_roi_normalized_0_1_xyxy": region})
+                                        for case, region in (("dev-001", [.5,.2,.9,.6]), ("dev-002", [.0,.2,.4,.6]))) + "\n")
+        result = apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
+                                                 matched_control_overrides_path=controls,
+                                                 output_path=self.root / "ready.jsonl")
+        self.assertEqual(result["geometry_audit"]["status"], "PASS")
+        final = [json.loads(line) for line in (self.root / "ready.jsonl").read_text().splitlines()]
+        self.assertEqual(final[0]["selection_status"], "READY_FOR_ZERO_MODEL_FREEZE_AUDIT")
+        bad = self.root / "bad-controls.jsonl"
+        bad.write_text(json.dumps({"format": MATCHED_CONTROL_OVERRIDE_FORMAT, "development_case_id": "dev-001",
+                                   "matched_control_roi_normalized_0_1_xyxy": [.1,.2,.4,.6]}) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(DevelopmentControlError, "MUST_COVER"):
+            apply_matched_control_overrides(target_roi_worksheet_path=target_sheet,
+                                            matched_control_overrides_path=bad,
+                                            output_path=self.root / "bad-ready.jsonl")
 
 
 if __name__ == "__main__":

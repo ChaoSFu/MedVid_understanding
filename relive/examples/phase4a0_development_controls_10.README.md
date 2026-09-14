@@ -17,7 +17,9 @@ selected public frame, recomputes its SHA-256, and writes:
 The user-selected target boxes are stored in
 `phase4a0_development_controls_10.target_roi.overrides.jsonl`. Apply them to
 the generated worksheet with the script's `--mode apply-target-rois` command.
-Review and fill only the matched-control ROI afterwards. Both are normalized `[x1, y1, x2, y2]` coordinates, measured from
+The normalized, size-adjusted matched controls are stored in
+`phase4a0_development_controls_10.matched_control_roi.overrides.jsonl`; apply
+them only after checking the target worksheet. Both are normalized `[x1, y1, x2, y2]` coordinates, measured from
 the upper-left image corner. The matched control must have the same width and
 height as the target ROI and must not overlap it. Do not modify the claim,
 source-record identity, frozen order, public path, or SHA-256.
