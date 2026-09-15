@@ -722,3 +722,32 @@ A cache replay establishes engineering reproducibility. An independent fresh
 forward run is needed to evaluate inference stability. Development controls are
 for threshold/rule development only; future held-out confirmatory controls are
 required for confirmation.
+
+## ReliVE-v2 protocol-development status
+
+ReliVE-v2 currently provides CPU-only, append-only `RequirementSpec` and
+`ClaimSpec` contracts, a claim graph, and a failure-routed adaptation controller.
+They are future-planning records only: they neither run retrieval or spatial
+proposals nor create certificates or answers. Phase 4A routing fixtures remain
+diagnostic-only legacy development artifacts. Their old posthoc status is read
+as `POSTHOC_VALIDATED_FOR_DIAGNOSTIC_FINALIZATION_ONLY`, never as certificate
+verification.
+
+The frozen v2 controller can decide a permitted next action and budget effect,
+but it does not execute that action. `STOP_DIAGNOSTIC` and `STOP_ABSTAIN` are
+not evidence admission. Future temporal planning, re-grounding, evidence-bank
+construction, and final reasoning require separately frozen protocols.
+
+Implemented now:
+
+- immutable `RequirementSpec` contract;
+- append-only Claim Graph contract;
+- closed failure taxonomy;
+- bounded deterministic controller; and
+- Phase 4A fixture routing validation.
+
+Not implemented: Task Adapter, hypothesis or observation generator, video index,
+temporal pyramid, claim-conditioned retrieval, typed spatial-proposal execution,
+SAM 2 propagation, geometry-specific verifier, Evidence Bank, and Final
+Reasoner. Controller decision != action success; diagnostic complete != `VERIFIED`; fixture replay != model experiment; and legacy posthoc Phase 4A != a
+formal confirmatory control.
