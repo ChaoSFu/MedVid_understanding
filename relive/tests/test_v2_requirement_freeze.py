@@ -30,3 +30,24 @@ class RequirementFreezeIsolationTests(unittest.TestCase):
     elif isinstance(node,ast.ImportFrom) and node.module: imported.append(node.module)
   for forbidden in ("relive.backends","relive.runner","relive.verification","relive.certificate","relive.interventions","relive.evaluation","relive.data.medvidu"):
    self.assertFalse(any(name==forbidden or name.startswith(forbidden+".") for name in imported))
+
+class RequirementFreezeHardeningTests(RequirementFreezeTests):
+ def test_each_artifact_tamper_and_invalid_json_fail_closed(self):
+  for artifact in ("v2_requirement_specs.jsonl","v2_requirement_build_report.jsonl","v2_requirement_unresolved.jsonl","v2_requirement_manifest.json","v2_requirement_freeze_audit.json"):
+   with self.subTest(artifact=artifact):
+    out=self.root/artifact.replace(".","_");self.freeze(out)
+    path=out/artifact;path.write_bytes(path.read_bytes()+b" ")
+    with self.assertRaises(RequirementFreezeError):validate_requirement_freeze_artifacts(out)
+  out=self.root/"invalid";self.freeze(out);(out/"v2_requirement_specs.jsonl").write_bytes(b'\xff')
+  with self.assertRaises(RequirementFreezeError):validate_requirement_freeze_artifacts(out)
+ def test_two_output_directories_have_identical_all_frozen_hashes(self):
+  one,two=self.root/"one-hard",self.root/"two-hard";self.freeze(one);self.freeze(two)
+  for name in ("v2_requirement_specs.jsonl","v2_requirement_build_report.jsonl","v2_requirement_unresolved.jsonl","v2_requirement_manifest.json","v2_requirement_freeze_audit.json"):
+   self.assertEqual(hashlib.sha256((one/name).read_bytes()).hexdigest(),hashlib.sha256((two/name).read_bytes()).hexdigest())
+ def test_validator_cli_is_standalone_and_reports_zero_authority(self):
+  import subprocess,sys
+  out=self.root/"cli";self.freeze(out)
+  script=Path(__file__).resolve().parents[1]/"scripts/validate_v2_tal_requirement_freeze.py"
+  result=subprocess.run([sys.executable,str(script),"--output-dir",str(out)],cwd=script.parents[1],env={**__import__("os").environ,"PYTHONPATH":str(script.parents[1]/"src")},capture_output=True,text=True,check=False)
+  self.assertEqual(result.returncode,0,result.stderr+result.stdout)
+  row=json.loads(result.stdout);self.assertEqual(row["certificate_status"],"NOT_APPLICABLE");self.assertEqual(row["new_verified_count"],0)

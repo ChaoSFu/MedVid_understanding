@@ -789,3 +789,24 @@ semantics. It does not assert that this event happened in any video. Video
 indexing, temporal pyramids, candidate hypotheses, observation decomposition,
 spatial evidence, verification execution, Evidence Bank construction, and a
 final TAL answer remain unimplemented.
+
+The parser retains the full human-authored question and its SHA-256. It only
+recognizes a single registered query clause anchored at the end of the
+question; procedure descriptions and possible-action lists are not event
+sources. Unsupported, unknown, and ambiguous terminal queries are emitted as
+unresolved records.
+
+For a preregistered cohort, replace `--max-samples` with an ordered strict
+JSONL `--identity-manifest`; each line contains exactly `source_record_index`,
+`sample_id`, `public_record_sha256`, and `question_sha256`. Its byte SHA-256 is
+bound into the selection manifest. This is public-cohort selection only and
+must not contain an answer, event interval, frame, ROI, model score, or
+verification result.
+
+Validate an existing freeze without reopening its selector, ontology, video,
+frames, GT, backend, or cache:
+
+```bash
+PYTHONPATH=src python3 scripts/validate_v2_tal_requirement_freeze.py \
+  --output-dir /path/to/v2_tal_requirements
+```

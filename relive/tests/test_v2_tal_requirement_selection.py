@@ -31,3 +31,37 @@ class TALSelectionBindingTests(unittest.TestCase):
    selector=root/"selector.jsonl";selector.write_text(canonical_json(row)+"\n");selection=freeze_selector_order(selector_path=selector,max_samples=1);manifest=root/"selection.json";write_selection(selection,manifest)
    row["sample_id"]="changed";selector.write_text(canonical_json(row)+"\n")
    with self.assertRaisesRegex(TALSelectionError,"SOURCE_HASH"):load_selection(path=manifest,selector_path=selector)
+
+class ExplicitIdentitySelectionTests(unittest.TestCase):
+ def setUp(self):self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
+ def tearDown(self):self.tmp.cleanup()
+ def row(self,index,qa="tal"):
+  question=f"When does Secure the base happen? {index}"
+  return {"source_record_index":index,"sample_id":f"s-{index}","public_record_sha256":hashlib.sha256(f"p-{index}".encode()).hexdigest(),"question_sha256":hashlib.sha256(question.encode()).hexdigest(),"qa_type":qa,"question":question}
+ def test_explicit_identity_preserves_input_order_and_binds_bytes(self):
+  rows=[self.row(0),self.row(1),self.row(2)]
+  selector=self.root/"selector.jsonl";selector.write_text("".join(canonical_json(row)+"\n" for row in rows))
+  identity=self.root/"identity.jsonl";identity.write_text(canonical_json({key:rows[2][key] for key in IDENTITY_FIELDS})+"\n"+canonical_json({key:rows[0][key] for key in IDENTITY_FIELDS})+"\n")
+  selection=freeze_explicit_public_identity(selector_path=selector,identity_manifest_path=identity)
+  self.assertEqual([item.source_record_index for item in selection.items],[2,0])
+  self.assertEqual(selection.identity_manifest_sha256,hashlib.sha256(identity.read_bytes()).hexdigest())
+ def test_identity_schema_duplicate_unknown_and_invalid_utf8_fail_closed(self):
+  row=self.row(0);selector=self.root/"selector.jsonl";selector.write_text(canonical_json(row)+"\n")
+  identity=self.root/"identity.jsonl";good={key:row[key] for key in IDENTITY_FIELDS}
+  identity.write_text(canonical_json(good)+"\n"+canonical_json(good)+"\n")
+  with self.assertRaisesRegex(TALSelectionError,"DUPLICATE"):freeze_explicit_public_identity(selector_path=selector,identity_manifest_path=identity)
+  identity.write_text(canonical_json({**good,"roi":[0,0,1,1]})+"\n")
+  with self.assertRaisesRegex(TALSelectionError,"CLOSED_SCHEMA"):freeze_explicit_public_identity(selector_path=selector,identity_manifest_path=identity)
+  identity.write_bytes(b'\xff')
+  with self.assertRaisesRegex(TALSelectionError,"UNREADABLE"):freeze_explicit_public_identity(selector_path=selector,identity_manifest_path=identity)
+
+class StrictSelectorEncodingTests(unittest.TestCase):
+ def test_selector_invalid_utf8_duplicate_key_and_nonfinite_fail_closed(self):
+  with tempfile.TemporaryDirectory() as directory:
+   path=Path(directory)/"selector.jsonl"
+   path.write_bytes(b'\xff')
+   with self.assertRaisesRegex(TALSelectionError,"UNREADABLE"):read_public_question_selector(path)
+   path.write_text('{"source_record_index":0,"source_record_index":1}\n')
+   with self.assertRaisesRegex(TALSelectionError,"DUPLICATE_KEY"):read_public_question_selector(path)
+   path.write_text('{"source_record_index":NaN}\n')
+   with self.assertRaisesRegex(TALSelectionError,"NONFINITE"):read_public_question_selector(path)
