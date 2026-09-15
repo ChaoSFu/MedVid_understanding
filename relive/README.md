@@ -701,3 +701,24 @@ matched-control generator, pixel audit, and certificate builder without any
 policy, threshold, or manual-ROI change. A retained DROP `SUPPORTED` result is
 reported only as `RESIDUAL_SUPPORT_OR_SEMANTIC_INSENSITIVITY`; it does not
 trigger another refinement round.
+
+## Phase 3.7 and Phase 4A diagnostic boundary
+
+Phase 3.7 records a frozen residual-support diagnostic and stops before R2,
+R3, or multi-ROI admission. Phase 4A-0 has two separate uses: historical audit
+remains `HISTORICAL_EXPLORATORY`; development controls require independent human
+eligibility review before they can enter `DEVELOPMENT_POSITIVE_CONTROL` mode.
+The latter mode accepts only the frozen `ELIGIBLE_FOR_PHASE4A_POSITIVE_CONTROL`
+records and never automatically loads historical Phase 3.5 cases.
+
+Phase 4A measures A/B/C forced-choice likelihood under frozen ORIGINAL, KEEP,
+DROP, matched-control, full-gray, and mismatched-public inputs. Its finalizer
+is read-only and creates descriptive failure-routing fixtures only. Human
+eligibility, likelihood diagnostics, certificate admission, and `VERIFIED` are
+different stages: neither human eligibility nor a diagnostic pattern creates a
+certificate or establishes claim truth.
+
+A cache replay establishes engineering reproducibility. An independent fresh
+forward run is needed to evaluate inference stability. Development controls are
+for threshold/rule development only; future held-out confirmatory controls are
+required for confirmation.

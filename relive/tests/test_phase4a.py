@@ -8,8 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from relive.phase36 import execute as phase36_execute, preflight as phase36_preflight
-from relive.phase4a import (CHOICES, Phase4AError, choice_prompt, execute, freeze_development_mismatched_public,
+from relive.phase4a import (CHOICES, DEVELOPMENT_POSITIVE_CONTROL, Phase4AError, choice_prompt, execute, freeze_development_mismatched_public,
                             preflight, support_margin)
+from relive.phase4a0 import ELIGIBLE_MANIFEST_FORMAT, ELIGIBLE_RECORD_FORMAT
+from relive.storage.artifacts import canonical_json
 from test_phase36 import Phase36Tests
 
 
@@ -98,15 +100,39 @@ class Phase4ATests(unittest.TestCase):
                           "matched_control_regions": [[.5,.1,.8,.4]], "candidate_manifest_sha256": "fixture",
                           "historical_pilot": False, "development_control": True, "gt_used": False})
         development = self.root / "development.jsonl"; development.write_text("".join(json.dumps(row)+"\n" for row in specs))
+        review_a, review_b = self.root / "review-a.jsonl", self.root / "review-b.jsonl"
+        review_a.write_text("fixture reviewer a\n"); review_b.write_text("fixture reviewer b\n")
+        eligible_rows = []
+        for spec in specs:
+            eligible_rows.append({**spec, "format": ELIGIBLE_RECORD_FORMAT, "packet_id": "fixture-packet", "reviewer_ids": ["a", "b"],
+                                  "review_file_sha256": {"a": hashlib.sha256(review_a.read_bytes()).hexdigest(), "b": hashlib.sha256(review_b.read_bytes()).hexdigest()},
+                                  "review_file_paths": {"a": str(review_a), "b": str(review_b)}, "eligibility_status": "ELIGIBLE_FOR_PHASE4A_POSITIVE_CONTROL",
+                                  "eligibility_policy_version": "fixture-v2", "cohort_kind": DEVELOPMENT_POSITIVE_CONTROL})
+        eligible_path = self.root / "eligible.jsonl"; eligible_path.write_text("".join(canonical_json(row) + "\n" for row in eligible_rows))
+        outer = {"format": ELIGIBLE_MANIFEST_FORMAT, "selection_status": "FROZEN_ELIGIBLE_CONTROLS", "cohort_kind": DEVELOPMENT_POSITIVE_CONTROL,
+                 "gt_used": False, "eligible_controls_path": str(eligible_path), "eligible_controls_sha256": hashlib.sha256(eligible_path.read_bytes()).hexdigest(),
+                 "eligible_count": 2, "inputs": {}}
+        outer["manifest_content_sha256"] = hashlib.sha256(canonical_json(outer).encode()).hexdigest()
+        eligibility = self.root / "eligible.manifest.json"; eligibility.write_text(json.dumps(outer))
         mismatch = self.root / "development-mismatch.json"
-        self.assertEqual(freeze_development_mismatched_public(development_manifest_path=development, output_path=mismatch)["status"], "PASS")
+        self.assertEqual(freeze_development_mismatched_public(eligibility_manifest_path=eligibility, output_path=mismatch)["status"], "PASS")
         out = self.root / "development-audit"
         plan = preflight(config_path=self.config, mismatched_manifest_path=mismatch, output_dir=out,
-                         development_manifest_path=development, require_real=False, backend_factory=FakeChoiceBackend)
+                         eligibility_manifest_path=eligibility, source_mode=DEVELOPMENT_POSITIVE_CONTROL, require_real=False, backend_factory=FakeChoiceBackend)
         self.assertEqual(plan["development_controls"]["control_count"], 2)
         self.assertEqual(execute(config_path=self.config, mismatched_manifest_path=mismatch, output_dir=out,
-                                 development_manifest_path=development, mode="run", require_real=False,
+                                 eligibility_manifest_path=eligibility, source_mode=DEVELOPMENT_POSITIVE_CONTROL, mode="run", require_real=False,
                                  backend_factory=FakeChoiceBackend)["summary"]["new_model_calls"], 12)
+        review_a.write_text("tampered reviewer a\n")
+        with self.assertRaisesRegex(Phase4AError, "FROZEN_INPUT_BYTES_CHANGED"):
+            execute(config_path=self.config, mismatched_manifest_path=mismatch, output_dir=out,
+                    eligibility_manifest_path=eligibility, source_mode=DEVELOPMENT_POSITIVE_CONTROL, mode="replay", require_real=False,
+                    backend_factory=FakeChoiceBackend)
+
+    def test_development_mode_requires_eligible_manifest(self):
+        with self.assertRaisesRegex(Phase4AError, "REQUIRES_ELIGIBILITY"):
+            preflight(config_path=self.config, mismatched_manifest_path=self.mismatch, output_dir=self.root / "no-eligibility",
+                      source_mode=DEVELOPMENT_POSITIVE_CONTROL, require_real=False, backend_factory=FakeChoiceBackend)
 
 
 if __name__ == "__main__": unittest.main()

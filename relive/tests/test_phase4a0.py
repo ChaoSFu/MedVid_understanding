@@ -88,6 +88,12 @@ class Phase4A0Tests(unittest.TestCase):
         self.assertEqual(result["eligible_count"], 1)
         report = json.loads((self.out / "eligibility_report.jsonl").read_text())
         self.assertEqual(report["eligibility_status"], ELIGIBLE)
+        eligible = [json.loads(line) for line in (self.out / "phase4a0_eligible_controls.jsonl").read_text().splitlines()]
+        self.assertEqual(len(eligible), 1)
+        self.assertEqual(eligible[0]["eligibility_status"], ELIGIBLE)
+        manifest = json.loads((self.out / "phase4a0_eligible_controls.manifest.json").read_text())
+        self.assertEqual(manifest["eligible_count"], 1)
+        self.assertIn("manifest_content_sha256", manifest)
 
     def test_disagreement_and_fail_closed_input(self):
         prepare(self.manifest, self.out, seed=2)

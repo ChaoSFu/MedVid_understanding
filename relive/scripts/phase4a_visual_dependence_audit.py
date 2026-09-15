@@ -13,12 +13,15 @@ def main() -> int:
     parser.add_argument("--prospective-manifest"); parser.add_argument("--phase35-v3-run-dir")
     parser.add_argument("--phase36-run-dir"); parser.add_argument("--mismatched-manifest")
     parser.add_argument("--output-dir", required=True); parser.add_argument("--calibration-manifest")
-    parser.add_argument("--development-manifest")
+    parser.add_argument("--development-manifest"); parser.add_argument("--eligibility-manifest")
+    parser.add_argument("--source-mode", choices=("HISTORICAL_EXPLORATORY", "DEVELOPMENT_POSITIVE_CONTROL"))
     args = parser.parse_args()
     try:
         if args.mode == "freeze-development-mismatch":
-            if not args.development_manifest: raise Phase4AError("development manifest is required")
-            result = freeze_development_mismatched_public(development_manifest_path=Path(args.development_manifest).resolve(), output_path=Path(args.output_dir).resolve())
+            if not args.development_manifest and not args.eligibility_manifest: raise Phase4AError("development or eligibility manifest is required")
+            result = freeze_development_mismatched_public(development_manifest_path=Path(args.development_manifest).resolve() if args.development_manifest else None,
+                                                          eligibility_manifest_path=Path(args.eligibility_manifest).resolve() if args.eligibility_manifest else None,
+                                                          output_path=Path(args.output_dir).resolve())
         else:
             if not args.config or not args.mismatched_manifest: raise Phase4AError("config and mismatched manifest are required")
             kwargs = {"config_path": Path(args.config).resolve(), "runtime_path": Path(args.runtime).resolve() if args.runtime else None,
@@ -27,7 +30,9 @@ def main() -> int:
                       "phase36_run_dir": Path(args.phase36_run_dir).resolve() if args.phase36_run_dir else None,
                       "mismatched_manifest_path": Path(args.mismatched_manifest).resolve(), "output_dir": Path(args.output_dir).resolve(),
                       "calibration_manifest_path": Path(args.calibration_manifest).resolve() if args.calibration_manifest else None,
-                      "development_manifest_path": Path(args.development_manifest).resolve() if args.development_manifest else None}
+                      "development_manifest_path": Path(args.development_manifest).resolve() if args.development_manifest else None,
+                      "eligibility_manifest_path": Path(args.eligibility_manifest).resolve() if args.eligibility_manifest else None,
+                      "source_mode": args.source_mode}
             result = preflight(**kwargs) if args.mode == "preflight" else execute(**kwargs, mode=args.mode)
         print(json.dumps(result, ensure_ascii=False, indent=2)); return 0 if result.get("status") == "PASS" else 2
     except (OSError, ValueError, RuntimeError, Phase4AError) as exc:

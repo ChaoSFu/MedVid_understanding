@@ -26,7 +26,8 @@ from .claims import PROMPT_VERSIONS
 from .config import load_config
 from .interventions import OPAQUE_GRAY_OPERATOR, OPAQUE_GRAY_VERSION, apply_spatial_intervention
 from .phase35_v3 import candidate_for, runtime_gt_audit, sha256_path, validate_config, validate_prospective_manifest
-from .phase4a0 import validate_candidate_specs
+from .phase4a0 import (ELIGIBLE, ELIGIBLE_MANIFEST_FORMAT, ELIGIBLE_RECORD_FORMAT,
+                       claim_sha256, validate_candidate_specs)
 from .runner import _image_file
 from .spatial import validate_region
 from .storage.artifacts import ArtifactStore, canonical_json, stable_hash
@@ -35,6 +36,9 @@ PHASE4A_FORMAT = "relive-phase4a-frozen-visual-dependence-audit-v1"
 CHOICES = ("A", "B", "C")
 VARIANTS = ("ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL", "FULL_GRAY", "MISMATCHED_PUBLIC")
 PROHIBITED_INPUTS = ["reference_answer", "assistant_answer", "temporal_gt", "bbox_mask_gt", "struc_info", "RC_info", "evaluation_artifacts"]
+HISTORICAL_EXPLORATORY = "HISTORICAL_EXPLORATORY"
+DEVELOPMENT_POSITIVE_CONTROL = "DEVELOPMENT_POSITIVE_CONTROL"
+SOURCE_MODES = {HISTORICAL_EXPLORATORY, DEVELOPMENT_POSITIVE_CONTROL}
 
 
 class Phase4AError(ValueError):
@@ -248,11 +252,79 @@ def development_control_sources(path: Path | None) -> tuple[list[dict[str, Any]]
                      "human_eligibility_required": True}
 
 
-def freeze_development_mismatched_public(*, development_manifest_path: Path, output_path: Path) -> dict[str, Any]:
+def eligible_development_control_sources(path: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Load only Phase 4A-0 v2, human-eligible development controls.
+
+    Reviewer records are never returned, so they cannot enter a choice prompt
+    or backend request.  This function verifies the frozen public bytes again;
+    content drift is a hard error rather than a cache miss.
+    """
+    if path is None:
+        raise Phase4AError("DEVELOPMENT_POSITIVE_CONTROL_REQUIRES_ELIGIBILITY_MANIFEST")
+    manifest = _json(path)
+    if manifest.get("format") != ELIGIBLE_MANIFEST_FORMAT or manifest.get("selection_status") != "FROZEN_ELIGIBLE_CONTROLS":
+        raise Phase4AError("INVALID_PHASE4A0_ELIGIBILITY_MANIFEST")
+    _strict_frozen_hash(manifest, "manifest_content_sha256")
+    if manifest.get("cohort_kind") != DEVELOPMENT_POSITIVE_CONTROL or manifest.get("gt_used") is not False:
+        raise Phase4AError("ELIGIBILITY_MANIFEST_PROVENANCE_INVALID")
+    records_path = Path(manifest.get("eligible_controls_path", ""))
+    if not records_path.is_file() or manifest.get("eligible_controls_sha256") != sha256_path(records_path):
+        raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+    records = _jsonl(records_path)
+    if len(records) != manifest.get("eligible_count"):
+        raise Phase4AError("ELIGIBILITY_MANIFEST_RECORD_COUNT_MISMATCH")
+    entries: list[dict[str, Any]] = []
+    required = {"format", "audit_case_id", "source_claim_id", "claim_text", "claim_sha256", "source_record_index", "public_record_sha256", "frame_orders", "frame_paths", "frame_sha256", "frozen_support_region", "coordinate_system", "intervention", "matched_control_regions", "candidate_manifest_sha256", "packet_id", "reviewer_ids", "review_file_sha256", "review_file_paths", "eligibility_status", "eligibility_policy_version", "cohort_kind", "historical_pilot", "development_control", "gt_used"}
+    for record in records:
+        if not required.issubset(record) or record.get("format") != ELIGIBLE_RECORD_FORMAT:
+            raise Phase4AError("ELIGIBILITY_RECORD_SCHEMA_INVALID")
+        if (record.get("eligibility_status") != ELIGIBLE or record.get("cohort_kind") != DEVELOPMENT_POSITIVE_CONTROL
+                or record.get("historical_pilot") is not False or record.get("development_control") is not True or record.get("gt_used") is not False):
+            raise Phase4AError("ELIGIBILITY_STATUS_NOT_ALLOWED_FOR_DEVELOPMENT")
+        if claim_sha256(record["claim_text"]) != record["claim_sha256"]:
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        if (not isinstance(record["reviewer_ids"], list) or sorted(record["reviewer_ids"]) != sorted(record["review_file_sha256"])
+                or sorted(record["reviewer_ids"]) != sorted(record["review_file_paths"])):
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        for reviewer in record["reviewer_ids"]:
+            try:
+                unchanged_review = sha256_path(Path(record["review_file_paths"][reviewer])) == record["review_file_sha256"][reviewer]
+            except OSError:
+                unchanged_review = False
+            if not unchanged_review:
+                raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        frames = _file_rows([f"development:{record['audit_case_id']}:frame:{order:06d}" for order in record["frame_orders"]], record["frame_paths"])
+        if [row["sha256"] for row in frames] != record["frame_sha256"]:
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        target = list(validate_region(record["frozen_support_region"])); controls = record["matched_control_regions"]
+        if not isinstance(controls, list) or not controls:
+            raise Phase4AError("ELIGIBILITY_RECORD_MATCHED_CONTROL_MISSING")
+        matched = list(validate_region(controls[0]))
+        if record["coordinate_system"] != "normalized_0_1_xyxy":
+            raise Phase4AError("ELIGIBILITY_RECORD_COORDINATE_SYSTEM_INVALID")
+        if record["intervention"].get("operator") != OPAQUE_GRAY_OPERATOR or record["intervention"].get("operator_version") != OPAQUE_GRAY_VERSION:
+            raise Phase4AError("ELIGIBILITY_RECORD_INTERVENTION_INVALID")
+        entries.append({"source_id": f"development:{record['audit_case_id']}", "source_kind": "phase4a0_human_eligible_development_control",
+            "sample_id": None, "claim_id": record["source_claim_id"], "claim": record["claim_text"], "claim_sha256": record["claim_sha256"],
+            "frames": frames, "target_roi": target, "matched_control_roi": matched, "source_record_index": record["source_record_index"],
+            "roi_source": "phase4a0_eligible_frozen_human_target_and_matched_control", "generated_semantic_verdict_observation": None,
+            "calibration_expectation_present_posthoc_only": False, "eligibility_binding": {"eligibility_manifest_sha256": manifest["manifest_content_sha256"],
+            "packet_id": record["packet_id"], "eligibility_policy_version": record["eligibility_policy_version"]}})
+    return entries, {"status": "INCLUDED", "manifest": str(path), "manifest_sha256": manifest["manifest_content_sha256"],
+                     "control_count": len(entries), "human_eligibility_required": True, "eligibility_gate_status": "PASS"}
+
+
+def freeze_development_mismatched_public(*, development_manifest_path: Path | None = None,
+                                         eligibility_manifest_path: Path | None = None, output_path: Path) -> dict[str, Any]:
     """Pre-register a deterministic non-self public-frame permutation, zero model."""
     if output_path.exists():
         raise Phase4AError("mismatched-public output already exists")
-    entries, _ = development_control_sources(development_manifest_path)
+    if eligibility_manifest_path is not None:
+        entries, binding = eligible_development_control_sources(eligibility_manifest_path)
+    elif development_manifest_path is not None:  # v1 compatibility only; formal mode rejects this input.
+        entries, binding = development_control_sources(development_manifest_path)
+    else:
+        raise Phase4AError("development or eligibility manifest is required")
     if len(entries) < 2:
         raise Phase4AError("development mismatched-public freeze requires at least two controls")
     # Source-record peers are preferred; ties use source ID only. No model or
@@ -268,13 +340,16 @@ def freeze_development_mismatched_public(*, development_manifest_path: Path, out
                       "selector": "phase4a0-frozen-deterministic-nonself-public-control-v1",
                       "frame_manifest_sha256": _sha(identity)})
     manifest = {"format": "relive-phase4a-mismatched-public-manifest-v1", "selection_status": "FROZEN_PRE_INFERENCE", "items": items,
-                "development_manifest": str(development_manifest_path), "development_manifest_sha256": sha256_path(development_manifest_path),
+                "development_manifest": str(development_manifest_path) if development_manifest_path else None,
+                "eligibility_manifest": str(eligibility_manifest_path) if eligibility_manifest_path else None,
+                "source_binding_sha256": binding["manifest_sha256"],
                 "selector_policy": "deterministic non-self public control; sorted source ID fallback; no model or GT"}
     manifest["mismatched_manifest_sha256"] = _sha(manifest)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"status": "PASS", "mode": "freeze_development_mismatched_public", "model_calls_made": 0, "gt_used": False,
-            "development_manifest": str(development_manifest_path), "mismatched_manifest": str(output_path),
+            "development_manifest": str(development_manifest_path) if development_manifest_path else None,
+            "eligibility_manifest": str(eligibility_manifest_path) if eligibility_manifest_path else None, "mismatched_manifest": str(output_path),
             "mismatched_manifest_sha256": manifest["mismatched_manifest_sha256"], "item_count": len(items)}
 
 
@@ -282,7 +357,8 @@ def _variant_images(entry: dict[str, Any], root: Path, operator: dict[str, Any])
     target, matched = entry["target_roi"], entry["matched_control_roi"]
     source_paths, ids = [row["path"] for row in entry["frames"]], [row["frame_id"] for row in entry["frames"]]
     store = ArtifactStore(root)
-    variants: dict[str, dict[str, Any]] = {"ORIGINAL": {"frame_ids": ids, "image_paths": source_paths, "selector": "frozen_original_public_frames", "pixel_audits": []}}
+    variants: dict[str, dict[str, Any]] = {"ORIGINAL": {"frame_ids": ids, "image_paths": source_paths,
+        "image_sha256": [sha256_path(path) for path in source_paths], "selector": "frozen_original_public_frames", "pixel_audits": []}}
     audits = []
     declarations = {"KEEP_TARGET": (target, "KEEP_TARGET"), "DROP_TARGET": (target, "DROP_TARGET"),
                     "DROP_MATCHED_CONTROL": (matched, "DROP_MATCHED_CONTROL"), "FULL_GRAY": ([0.0, 0.0, 1.0, 1.0], "DROP_TARGET")}
@@ -296,7 +372,8 @@ def _variant_images(entry: dict[str, Any], root: Path, operator: dict[str, Any])
             paths.append(output_path); variant_audits.append(item); audits.append(item)
         if not all(item["pixel_audit_pass"] for item in variant_audits):
             raise Phase4AError(f"pixel audit failed while freezing {variant}")
-        variants[variant] = {"frame_ids": ids, "image_paths": paths, "selector": f"registered_opaque_gray:{operation}", "pixel_audits": variant_audits}
+        variants[variant] = {"frame_ids": ids, "image_paths": paths, "image_sha256": [sha256_path(path) for path in paths],
+                             "selector": f"registered_opaque_gray:{operation}", "pixel_audits": variant_audits}
     return variants, audits
 
 
@@ -385,7 +462,8 @@ def _numeric_snapshot(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def preflight(*, config_path: Path, runtime_path: Path | None = None, prospective_manifest_path: Path | None = None, phase35_v3_run_dir: Path | None = None,
               phase36_run_dir: Path | None = None, mismatched_manifest_path: Path | None = None, output_dir: Path | None = None, calibration_manifest_path: Path | None = None,
-              development_manifest_path: Path | None = None,
+              development_manifest_path: Path | None = None, eligibility_manifest_path: Path | None = None,
+              source_mode: str | None = None,
               require_real: bool = True, backend_factory: Callable[[dict[str, Any]], Any] = make_backend) -> dict[str, Any]:
     if output_dir is None or mismatched_manifest_path is None:
         raise Phase4AError("Phase 4A preflight requires output and mismatched manifests")
@@ -394,14 +472,26 @@ def preflight(*, config_path: Path, runtime_path: Path | None = None, prospectiv
     config = load_config(config_path); validate_config(config, require_real=require_real)
     if config["spatial"]["intervention"].get("operator") != OPAQUE_GRAY_OPERATOR or config["spatial"]["intervention"].get("operator_version") != OPAQUE_GRAY_VERSION:
         raise Phase4AError("Phase 4A requires the frozen registered opaque-gray operator")
+    if source_mode is None:
+        source_mode = DEVELOPMENT_POSITIVE_CONTROL if development_manifest_path or eligibility_manifest_path else HISTORICAL_EXPLORATORY
+    if source_mode not in SOURCE_MODES:
+        raise Phase4AError("Phase 4A source mode is invalid")
     phase_args = (runtime_path, prospective_manifest_path, phase35_v3_run_dir, phase36_run_dir)
     if any(value is not None for value in phase_args) and not all(value is not None for value in phase_args):
         raise Phase4AError("Phase 3.5 inputs must be supplied together")
     phase_entries, lineage = (_phase35_sources(runtime_path, prospective_manifest_path, phase35_v3_run_dir, phase36_run_dir)
                               if all(value is not None for value in phase_args) else ([], {"status": "NOT_INCLUDED", "unavailable": []}))
     calibration_entries, calibration = _calibration_sources(calibration_manifest_path)
-    development_entries, development = development_control_sources(development_manifest_path)
-    entries = [*phase_entries, *calibration_entries, *development_entries]
+    if source_mode == DEVELOPMENT_POSITIVE_CONTROL:
+        if any(value is not None for value in phase_args) or calibration_manifest_path is not None or development_manifest_path is not None:
+            raise Phase4AError("DEVELOPMENT_POSITIVE_CONTROL_CANNOT_INCLUDE_HISTORICAL_OR_V1_SOURCES")
+        development_entries, development = eligible_development_control_sources(eligibility_manifest_path)
+        entries = development_entries
+    else:
+        if eligibility_manifest_path is not None or development_manifest_path is not None:
+            raise Phase4AError("HISTORICAL_EXPLORATORY_CANNOT_INCLUDE_DEVELOPMENT_CONTROLS")
+        development = {"status": "NOT_INCLUDED"}
+        entries = [*phase_entries, *calibration_entries]
     if not entries:
         raise Phase4AError("no frozen claim/ROI sources are available for Phase 4A")
     mismatch = _mismatches(mismatched_manifest_path)
@@ -422,7 +512,7 @@ def preflight(*, config_path: Path, runtime_path: Path | None = None, prospectiv
             raise Phase4AError("mismatched public evidence cannot reuse a target public frame")
         variants, pixel_audits = _variant_images(entry, frozen_root / entry["source_id"].replace(":", "_"), config["spatial"]["intervention"])
         variants["MISMATCHED_PUBLIC"] = {"frame_ids": [row["frame_id"] for row in mismatch_item["frames"]], "image_paths": [row["path"] for row in mismatch_item["frames"]],
-                                         "selector": mismatch_item["selector"], "pixel_audits": []}
+                                         "image_sha256": [row["sha256"] for row in mismatch_item["frames"]], "selector": mismatch_item["selector"], "pixel_audits": []}
         entry = {**entry, "variants": variants, "mismatched_selector": mismatch_item["selector"]}
         all_entries.append(entry); audit_rows.extend(pixel_audits)
         for variant in VARIANTS:
@@ -439,7 +529,8 @@ def preflight(*, config_path: Path, runtime_path: Path | None = None, prospectiv
     imports = audit_runtime_imports()
     if imports["status"] != "PASS":
         raise Phase4AError("runtime import audit failed")
-    frozen_manifest = {"format": PHASE4A_FORMAT, "diagnostic_only": True, "selection_status": "FROZEN_PRE_INFERENCE", "entries": all_entries,
+    frozen_manifest = {"format": PHASE4A_FORMAT, "diagnostic_only": True, "formal_positive_control": source_mode == DEVELOPMENT_POSITIVE_CONTROL,
+                       "source_mode": source_mode, "selection_status": "FROZEN_PRE_INFERENCE", "entries": all_entries,
                        "mismatched_manifest": str(mismatched_manifest_path), "mismatched_manifest_sha256": _json(mismatched_manifest_path)["mismatched_manifest_sha256"],
                        "variant_order": list(VARIANTS), "operator": config["spatial"]["intervention"], "choice_prompt_version": PROMPT_VERSIONS["visual_dependence_choice"]}
     frozen_manifest["phase4a_frozen_manifest_sha256"] = _sha(frozen_manifest)
@@ -448,7 +539,9 @@ def preflight(*, config_path: Path, runtime_path: Path | None = None, prospectiv
     plan = {"format": PHASE4A_FORMAT, "status": "PASS", "mode": "preflight", "model_calls_made": 0, "cache_mutated": False,
             "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0, "gt_used": False, "git_commit": _git_commit(),
             "config": str(config_path), "config_sha256": sha256_path(config_path), "runtime": str(runtime_path),
-            "prospective_manifest": str(prospective_manifest_path) if prospective_manifest_path else None, "lineage": lineage, "calibration": calibration, "development_controls": development,
+            "prospective_manifest": str(prospective_manifest_path) if prospective_manifest_path else None, "source_mode": source_mode,
+            "formal_positive_control": source_mode == DEVELOPMENT_POSITIVE_CONTROL, "lineage": lineage, "calibration": calibration, "development_controls": development,
+            "eligibility_manifest": str(eligibility_manifest_path) if eligibility_manifest_path else None,
             "frozen_manifest": str(output_dir / "phase4a_frozen_manifest.json"), "frozen_manifest_sha256": frozen_manifest["phase4a_frozen_manifest_sha256"],
             "choice_prompt_version": PROMPT_VERSIONS["visual_dependence_choice"], "choice_prompt_hashes": {entry["source_id"]: hashlib.sha256(choice_prompt(entry["claim"]).encode()).hexdigest() for entry in all_entries},
             "choice_token_contracts": contracts, "spatial_intervention": config["spatial"]["intervention"], "semantic_verifier_unchanged": True,
@@ -460,9 +553,52 @@ def preflight(*, config_path: Path, runtime_path: Path | None = None, prospectiv
     return plan
 
 
+def _verify_frozen_inputs(frozen: dict[str, Any], plan: dict[str, Any], *, source_mode: str | None,
+                          eligibility_manifest_path: Path | None) -> None:
+    """Fail before backend construction when any frozen Phase 4A input drifted."""
+    # v1 preflights did not have a source-mode field.  They remain readable as
+    # historical exploratory artifacts, but no v1 artifact can enter the new
+    # development-positive-control path.
+    frozen_mode = frozen.get("source_mode", HISTORICAL_EXPLORATORY)
+    legacy_v1 = "source_mode" not in frozen
+    if frozen_mode not in SOURCE_MODES or (not legacy_v1 and plan.get("source_mode") != frozen_mode):
+        raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+    if source_mode is not None and source_mode != frozen_mode:
+        raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+    if frozen_mode == DEVELOPMENT_POSITIVE_CONTROL:
+        if source_mode != DEVELOPMENT_POSITIVE_CONTROL or eligibility_manifest_path is None or plan.get("eligibility_manifest") != str(eligibility_manifest_path):
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        _, binding = eligible_development_control_sources(eligibility_manifest_path)
+        if plan["development_controls"].get("manifest_sha256") != binding["manifest_sha256"]:
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+    for entry in frozen.get("entries", []):
+        if claim_sha256(entry.get("claim", "")) != entry.get("claim_sha256"):
+            raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        validate_region(entry.get("target_roi")); validate_region(entry.get("matched_control_roi"))
+        for source in entry.get("frames", []):
+            try:
+                unchanged = isinstance(source, dict) and sha256_path(Path(source.get("path", ""))) == source.get("sha256")
+            except OSError:
+                unchanged = False
+            if not unchanged:
+                raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+        for payload in entry.get("variants", {}).values():
+            paths, hashes = payload.get("image_paths"), payload.get("image_sha256")
+            if legacy_v1 and hashes is None:
+                continue
+            if not isinstance(paths, list) or not isinstance(hashes, list) or len(paths) != len(hashes):
+                raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+            try:
+                unchanged = all(sha256_path(Path(path)) == expected for path, expected in zip(paths, hashes))
+            except OSError:
+                unchanged = False
+            if not unchanged:
+                raise Phase4AError("FROZEN_INPUT_BYTES_CHANGED")
+
+
 def execute(*, config_path: Path, runtime_path: Path | None = None, prospective_manifest_path: Path | None = None, phase35_v3_run_dir: Path | None = None,
             phase36_run_dir: Path | None = None, mismatched_manifest_path: Path | None = None, output_dir: Path | None = None, mode: str = "run", calibration_manifest_path: Path | None = None,
-            development_manifest_path: Path | None = None,
+            development_manifest_path: Path | None = None, eligibility_manifest_path: Path | None = None, source_mode: str | None = None,
             require_real: bool = True, backend_factory: Callable[[dict[str, Any]], Any] = make_backend) -> dict[str, Any]:
     if mode not in {"run", "replay"}:
         raise Phase4AError("mode must be run or replay")
@@ -474,6 +610,7 @@ def execute(*, config_path: Path, runtime_path: Path | None = None, prospective_
         raise Phase4AError("incompatible Phase 4A zero-call preflight")
     if frozen.get("operator") != config["spatial"]["intervention"]:
         raise Phase4AError("frozen Phase 4A operator changed")
+    _verify_frozen_inputs(frozen, plan, source_mode=source_mode, eligibility_manifest_path=eligibility_manifest_path)
     target = output_dir / mode
     if target.exists():
         raise Phase4AError(f"Phase 4A {mode} output already exists")

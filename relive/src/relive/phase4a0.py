@@ -20,6 +20,9 @@ from .interventions import apply_spatial_intervention, resolve_intervention_spec
 from .spatial import validate_region
 
 FORMAT = "relive-phase4a0-claim-evidence-eligibility-v1"
+ELIGIBLE_MANIFEST_FORMAT = "relive-phase4a0-eligible-controls-manifest-v2"
+ELIGIBLE_RECORD_FORMAT = "relive-phase4a0-eligible-control-v2"
+ELIGIBILITY_POLICY_VERSION = "relive-phase4a0-human-single-roi-gate-v2"
 SPEC_FORMAT = "relive-phase4a0-candidate-audit-spec-v1"
 ELIGIBLE = "ELIGIBLE_FOR_PHASE4A_POSITIVE_CONTROL"
 FINAL_STATUSES = {ELIGIBLE, "INELIGIBLE_SINGLE_ROI", "REQUIRES_ADJUDICATION", "AWAITING_HUMAN_REVIEWS", "TECHNICAL_FAILURE"}
@@ -56,6 +59,15 @@ def file_sha(path: Path) -> str:
         for block in iter(lambda: handle.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _tree_sha(path: Path) -> str:
+    """Content-address a blinded review packet without using filesystem mtimes."""
+    if not path.is_dir():
+        raise Phase4A0Error(f"FROZEN_ARTIFACT_MISSING:{path}")
+    rows = [{"path": str(item.relative_to(path)), "sha256": file_sha(item)}
+            for item in sorted(path.rglob("*")) if item.is_file()]
+    return sha(rows)
 
 
 def _read_json(path: Path) -> Any:
@@ -343,6 +355,7 @@ def _validate_review(rows: list[dict[str, Any]], template: list[dict[str, Any]])
 
 
 def validate_reviews(output_dir: Path, review_paths: Iterable[Path]) -> dict[str, Any]:
+    review_paths = list(review_paths)
     template = _rows(output_dir / "review_template.jsonl")
     groups = [_rows(path) for path in review_paths]
     reviewers = [_validate_review(rows, template) for rows in groups]
@@ -355,6 +368,10 @@ def validate_reviews(output_dir: Path, review_paths: Iterable[Path]) -> dict[str
     mapping = _read_json(output_dir / "blind_mapping.json")
     by_case = [{row["case_blind_id"]: row for row in group} for group in groups]
     records = []
+    specs = {row["audit_case_id"]: row for row in _rows(output_dir / "candidate_audit_manifest.jsonl")}
+    eligible_records: list[dict[str, Any]] = []
+    review_hashes = {reviewer: file_sha(path) for reviewer, path in zip(reviewers, review_paths)}
+    review_file_paths = {reviewer: str(path.resolve()) for reviewer, path in zip(reviewers, review_paths)}
     for case in sorted(mapping["cases"]):
         reviews = [group[case] for group in by_case]
         def comparable(review: dict[str, Any]) -> dict[str, Any]:
@@ -365,15 +382,52 @@ def validate_reviews(output_dir: Path, review_paths: Iterable[Path]) -> dict[str
         else:
             review, identity = reviews[0], mapping["cases"][case]["variants"]
             inverse = {kind: blind for blind, kind in identity.items()}
-            pattern = (review["variant_assessments"][inverse["ORIGINAL"]] == "SUPPORTED" and review["variant_assessments"][inverse["KEEP_TARGET"]] == "SUPPORTED" and review["variant_assessments"][inverse["DROP_TARGET"]] == "INSUFFICIENT" and review["variant_assessments"][inverse["DROP_MATCHED_CONTROL"]] == "SUPPORTED")
+            if "HUMAN_VARIANT_PATTERN_FAILED" in review["reason_codes"]:
+                raise Phase4A0Error("HUMAN_VARIANT_PATTERN_FAILED_IS_SYSTEM_DERIVED")
+            assessments = review["variant_assessments"]
+            reasons = []
+            if assessments[inverse["ORIGINAL"]] != "SUPPORTED": reasons.append("ORIGINAL_NOT_SUPPORTED")
+            if assessments[inverse["KEEP_TARGET"]] != "SUPPORTED": reasons.append("KEEP_NOT_SUPPORTED")
+            if assessments[inverse["DROP_TARGET"]] != "INSUFFICIENT": reasons.append("DROP_NOT_INSUFFICIENT")
+            if assessments[inverse["DROP_MATCHED_CONTROL"]] != "SUPPORTED": reasons.append("CONTROL_NOT_SUPPORTED")
+            if review["claim_wording"] != "CLEAR": reasons.append("CLAIM_WORDING_NOT_CLEAR")
+            if review["temporal_scope"] != "VALID": reasons.append("TEMPORAL_SCOPE_INVALID")
+            if review["observability"] != "DIRECTLY_VISIBLE": reasons.append("OBSERVABILITY_NOT_DIRECT")
+            if review["eligibility_label"] != "SINGLE_ROI_ELIGIBLE": reasons.append("NOT_SINGLE_ROI_ELIGIBLE")
             pixel = all(a["pixel_audit_pass"] for entries in mapping["cases"][case]["pixel_audits"].values() for a in entries)
-            meta = review["claim_wording"] == "CLEAR" and review["temporal_scope"] == "VALID" and review["observability"] == "DIRECTLY_VISIBLE" and review["eligibility_label"] == "SINGLE_ROI_ELIGIBLE"
-            status = ELIGIBLE if pattern and pixel and meta and mapping["cases"][case]["matched_control_available"] else "INELIGIBLE_SINGLE_ROI"
-            reasons = [] if status == ELIGIBLE else ["HUMAN_ELIGIBILITY_GATE_NOT_MET"]
+            if not pixel: reasons.append("PIXEL_AUDIT_FAILED")
+            if not mapping["cases"][case]["matched_control_available"]: reasons.append("CONTROL_NOT_SUPPORTED")
+            status = ELIGIBLE if not reasons else "INELIGIBLE_SINGLE_ROI"
         records.append({"blind_case_id": case, "audit_case_id": mapping["cases"][case]["audit_case_id"], "eligibility_status": status, "reason_codes": reasons, "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0, "gt_used": False})
+        if status == ELIGIBLE:
+            spec = specs[mapping["cases"][case]["audit_case_id"]]
+            eligible_records.append({"format": ELIGIBLE_RECORD_FORMAT, "audit_case_id": spec["audit_case_id"],
+                "source_claim_id": spec["source_claim_id"], "claim_text": spec["claim_text"], "claim_sha256": spec["claim_sha256"],
+                "source_record_index": spec["source_record_index"], "public_record_sha256": spec["public_record_sha256"],
+                "frame_orders": spec["frame_orders"], "frame_paths": spec["frame_paths"], "frame_sha256": spec["frame_sha256"],
+                "frozen_support_region": spec["frozen_support_region"], "coordinate_system": spec["coordinate_system"],
+                "intervention": spec["intervention"], "matched_control_regions": spec["matched_control_regions"],
+                "candidate_manifest_sha256": spec["candidate_manifest_sha256"], "packet_id": review["packet_id"],
+                "reviewer_ids": sorted(reviewers), "review_file_sha256": review_hashes, "review_file_paths": review_file_paths, "eligibility_status": ELIGIBLE,
+                "eligibility_policy_version": ELIGIBILITY_POLICY_VERSION, "cohort_kind": "DEVELOPMENT_POSITIVE_CONTROL",
+                "historical_pilot": False, "development_control": True, "gt_used": False})
     overall = "REQUIRES_ADJUDICATION" if any(r["eligibility_status"] == "REQUIRES_ADJUDICATION" for r in records) else "PASS"
     (output_dir / "eligibility_report.jsonl").write_text("".join(canonical(row) + "\n" for row in records))
     summary = {"format": FORMAT, "status": overall, "records": len(records), "eligible_count": sum(r["eligibility_status"] == ELIGIBLE for r in records), "model_calls_made": 0, "backend_loaded": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False, "historical_artifacts_unchanged": True}
     (output_dir / "eligibility_summary.json").write_text(canonical(summary) + "\n")
     (output_dir / "phase4a0_audit.json").write_text(canonical(summary) + "\n")
+    eligible_path = output_dir / "phase4a0_eligible_controls.jsonl"
+    eligible_path.write_text("".join(canonical(row) + "\n" for row in eligible_records), encoding="utf-8")
+    inputs = {"candidate_audit_manifest_sha256": file_sha(output_dir / "candidate_audit_manifest.jsonl"),
+              "blind_mapping_sha256": file_sha(output_dir / "blind_mapping.json"),
+              "review_packet_sha256": _tree_sha(output_dir / "review_packet"),
+              "review_file_sha256": review_hashes, "review_file_paths": review_file_paths,
+              "eligibility_report_sha256": file_sha(output_dir / "eligibility_report.jsonl")}
+    manifest = {"format": ELIGIBLE_MANIFEST_FORMAT, "selection_status": "FROZEN_ELIGIBLE_CONTROLS",
+                "eligibility_policy_version": ELIGIBILITY_POLICY_VERSION, "cohort_kind": "DEVELOPMENT_POSITIVE_CONTROL",
+                "eligible_controls_path": str(eligible_path), "eligible_controls_sha256": file_sha(eligible_path),
+                "eligible_count": len(eligible_records), "inputs": inputs, "gt_used": False,
+                "diagnostic_only": True, "certificate_unchanged": True, "new_verified_count": 0}
+    manifest["manifest_content_sha256"] = sha(manifest)
+    (output_dir / "phase4a0_eligible_controls.manifest.json").write_text(canonical(manifest) + "\n", encoding="utf-8")
     return summary
