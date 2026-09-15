@@ -1,1 +1,1 @@
-{"allowed_sources":["PUBLIC_PER_FRAME_TIMESTAMP_MANIFEST_SECONDS"],"default_status":"UNRESOLVED_TIMEBASE","format":"relive-v2-tal-timebase-policy-v1","policy_version":"relive-v2-tal-timebase-policy-v1"}
+{"allowed_sources":["DECODER_PTS","DOCUMENTED_SOURCE_FRAME_INDEX_AND_FPS","PUBLIC_PER_FRAME_TIMESTAMP","VERSIONED_DATASET_TIMEBASE_ADAPTER"],"default_status":"UNRESOLVED_TIMEBASE","format":"relive-v2-tal-timebase-policy-v1","policy_version":"relive-v2-tal-timebase-policy-v1"}

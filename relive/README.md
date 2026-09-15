@@ -810,10 +810,27 @@ PYTHONPATH=src python scripts/validate_v2_tal_video_index.py \
   --output-dir /path/to/v2_video_index --materialize-frames
 ```
 
-The optional timestamp manifest is strict JSONL and must bind each selected
-logical frame to a finite, ordered timestamp in declared `seconds`; frame
-order, filenames, IDs, sampled references, and default FPS are never treated
-as seconds. The freeze opens a mixed source container only to project a
+A timestamp JSONL is insufficient on its own. Stage 2 accepts a resolved
+seconds timebase only when it is accompanied by
+`public_per_frame_timestamps.provenance.json`, which binds its SHA-256, source
+file SHA-256, registered source type, adapter version, and explicit time origin.
+Use `scripts/audit_v2_tal_timestamp_source.py` (or the equivalent exporter) on
+the frozen `v2_public_media_projection.jsonl`. It accepts only decoder PTS with
+a frozen decoder-frame map, or an explicit documented source-frame-index/FPS
+adapter; without either it writes `UNRESOLVED_TIMEBASE_SOURCE` and no timestamp
+manifest. Frame order, filenames, IDs, sampled references, and default FPS are
+never treated as seconds. Pass both files to Stage 2:
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_video_index.py \
+  # ... frozen Stage 2 inputs ... \
+  --public-timestamp-manifest /path/to/public_per_frame_timestamps.jsonl \
+  --public-timestamp-provenance /path/to/public_per_frame_timestamps.provenance.json \
+  --output-dir /path/to/v2_video_index
+```
+
+All timestamp exporter, validator, and README commands use `python`; they never
+load a model, cache, backend, GT, certificate builder, or retrieval stage. The freeze opens a mixed source container only to project a
 whitelisted public identity, human question, ordered frame references, and
 paired sampled-reference shape. It does not access assistant or GT values.
 

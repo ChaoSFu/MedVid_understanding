@@ -15,13 +15,14 @@ def main() -> int:
     parser.add_argument("--source-prefix", required=True)
     parser.add_argument("--timebase-policy", required=True, type=Path)
     parser.add_argument("--public-timestamp-manifest", type=Path)
+    parser.add_argument("--public-timestamp-provenance", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
     try:
         audit = freeze_video_index(requirement_dir=args.requirement_freeze_dir, selection_manifest_path=args.selection_manifest,
                                    source_json=args.source_json, frame_root=args.frame_root, source_prefix=args.source_prefix,
                                    timebase_policy_path=args.timebase_policy, output_dir=args.output_dir,
-                                   public_timestamp_manifest_path=args.public_timestamp_manifest)
+                                   public_timestamp_manifest_path=args.public_timestamp_manifest, public_timestamp_provenance_path=args.public_timestamp_provenance)
     except VideoIndexError as exc:
         print(f"ReliVE-v2 TAL video-index freeze error: {exc}")
         return 2
