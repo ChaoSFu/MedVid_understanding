@@ -358,7 +358,7 @@ def _variant_images(entry: dict[str, Any], root: Path, operator: dict[str, Any])
     source_paths, ids = [row["path"] for row in entry["frames"]], [row["frame_id"] for row in entry["frames"]]
     store = ArtifactStore(root)
     variants: dict[str, dict[str, Any]] = {"ORIGINAL": {"frame_ids": ids, "image_paths": source_paths,
-        "image_sha256": [sha256_path(path) for path in source_paths], "selector": "frozen_original_public_frames", "pixel_audits": []}}
+        "image_sha256": [sha256_path(Path(path)) for path in source_paths], "selector": "frozen_original_public_frames", "pixel_audits": []}}
     audits = []
     declarations = {"KEEP_TARGET": (target, "KEEP_TARGET"), "DROP_TARGET": (target, "DROP_TARGET"),
                     "DROP_MATCHED_CONTROL": (matched, "DROP_MATCHED_CONTROL"), "FULL_GRAY": ([0.0, 0.0, 1.0, 1.0], "DROP_TARGET")}
@@ -372,7 +372,7 @@ def _variant_images(entry: dict[str, Any], root: Path, operator: dict[str, Any])
             paths.append(output_path); variant_audits.append(item); audits.append(item)
         if not all(item["pixel_audit_pass"] for item in variant_audits):
             raise Phase4AError(f"pixel audit failed while freezing {variant}")
-        variants[variant] = {"frame_ids": ids, "image_paths": paths, "image_sha256": [sha256_path(path) for path in paths],
+        variants[variant] = {"frame_ids": ids, "image_paths": paths, "image_sha256": [sha256_path(Path(path)) for path in paths],
                              "selector": f"registered_opaque_gray:{operation}", "pixel_audits": variant_audits}
     return variants, audits
 
