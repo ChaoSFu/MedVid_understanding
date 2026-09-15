@@ -752,61 +752,71 @@ SAM 2 propagation, geometry-specific verifier, Evidence Bank, and Final
 Reasoner. Controller decision != action success; diagnostic complete != `VERIFIED`; fixture replay != model experiment; and legacy posthoc Phase 4A != a
 formal confirmatory control.
 
-## ReliVE-v2 Stage: TAL Requirement Freeze
+## ReliVE-v2 TAL requirement and VideoIndex stages
 
-This stage implements only the following pre-video path:
+ReliVE-v2 now implements only this GT-isolated, non-inferential path:
 
 ```text
 public question → deterministic TAL adapter → frozen RequirementSpec
+frozen RequirementSpec → audited selected public media → immutable VideoIndex
 ```
 
-A `RequirementSpec` states what the public question requires. A future
-`HypothesisClaim` is a video-dependent possible answer, and an
-`ObservationClaim` is a directly visible atomic fact. This stage creates neither
-claim type, opens no frames or videos, and does not execute verification.
+The TAL adapter retains the complete human-authored question and its SHA-256.
+It recognizes one registered terminal query clause and never derives an event
+from a procedure description or possible-action list. Unsupported, unknown,
+and ambiguous queries remain unresolved.
 
-Freeze a small, ordered TAL selection from a GT-isolated public selector:
+A `RequirementSpec` describes what the question demands. A VideoIndex binds
+selected, decoded public frame bytes and can be created only when a public,
+validated seconds timebase is supplied. It does not localize an event.
+
+```text
+VideoIndex frozen != event localized
+timebase resolved != claim supported
+frame audit != VERIFIED
+```
+
+Freeze an ordered public cohort, or replace `--max-samples` with a strict,
+ordered `--identity-manifest` containing only public identity fields:
 
 ```bash
-PYTHONPATH=src python3 scripts/freeze_v2_tal_requirement_selection.py \
+PYTHONPATH=src python scripts/freeze_v2_tal_requirement_selection.py \
   --public-question-selector /path/to/medvidu_public_question_selector.jsonl \
   --output /path/to/tal_requirement_selection.frozen.json \
   --max-samples 5
-```
 
-Then build immutable requirements using the versioned ontology:
-
-```bash
-PYTHONPATH=src python3 scripts/prepare_v2_tal_requirements.py \
+PYTHONPATH=src python scripts/prepare_v2_tal_requirements.py \
   --public-question-selector /path/to/medvidu_public_question_selector.jsonl \
   --selection-manifest /path/to/tal_requirement_selection.frozen.json \
   --event-ontology configs/v2/tal_event_ontology.yaml \
   --output-dir /path/to/v2_tal_requirements
 ```
 
-The initial ontology defines only the human-authored `secure_the_base` task
-semantics. It does not assert that this event happened in any video. Video
-indexing, temporal pyramids, candidate hypotheses, observation decomposition,
-spatial evidence, verification execution, Evidence Bank construction, and a
-final TAL answer remain unimplemented.
-
-The parser retains the full human-authored question and its SHA-256. It only
-recognizes a single registered query clause anchored at the end of the
-question; procedure descriptions and possible-action lists are not event
-sources. Unsupported, unknown, and ambiguous terminal queries are emitted as
-unresolved records.
-
-For a preregistered cohort, replace `--max-samples` with an ordered strict
-JSONL `--identity-manifest`; each line contains exactly `source_record_index`,
-`sample_id`, `public_record_sha256`, and `question_sha256`. Its byte SHA-256 is
-bound into the selection manifest. This is public-cohort selection only and
-must not contain an answer, event interval, frame, ROI, model score, or
-verification result.
-
-Validate an existing freeze without reopening its selector, ontology, video,
-frames, GT, backend, or cache:
+Build a VideoIndex. Without `--public-timestamp-manifest`, the command still
+writes the media projection but produces the legitimate
+`UNRESOLVED_TIMEBASE` stop state and no VideoIndex rows:
 
 ```bash
-PYTHONPATH=src python3 scripts/validate_v2_tal_requirement_freeze.py \
-  --output-dir /path/to/v2_tal_requirements
+PYTHONPATH=src python scripts/prepare_v2_tal_video_index.py \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --source-json /path/to/medvidu_source.json \
+  --frame-root /path/to/public_frames \
+  --source-prefix /root/data \
+  --timebase-policy configs/v2/tal_timebase_sources.yaml \
+  --output-dir /path/to/v2_video_index
+
+PYTHONPATH=src python scripts/validate_v2_tal_video_index.py \
+  --output-dir /path/to/v2_video_index --materialize-frames
 ```
+
+The optional timestamp manifest is strict JSONL and must bind each selected
+logical frame to a finite, ordered timestamp in declared `seconds`; frame
+order, filenames, IDs, sampled references, and default FPS are never treated
+as seconds. The freeze opens a mixed source container only to project a
+whitelisted public identity, human question, ordered frame references, and
+paired sampled-reference shape. It does not access assistant or GT values.
+
+Hypothesis/observation generation, temporal pyramids and retrieval, spatial
+grounding, verification, Evidence Bank construction, and Final Reasoner remain
+unimplemented.
