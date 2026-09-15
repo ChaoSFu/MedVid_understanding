@@ -1,0 +1,22 @@
+{
+  "format": "relive-v2-tal-event-ontology-v1",
+  "ontology_version": "relive-v2-tal-event-ontology-v1",
+  "events": {
+    "secure_the_base": {
+      "aliases": ["secure the base", "securing the base"],
+      "answer_schema": {
+        "type": "INTERVAL",
+        "timebase": "REQUIRES_VIDEO_INDEX",
+        "cardinality": "ONE_OR_MORE"
+      },
+      "required_evidence": [
+        "BASE_ALIGNED_WITH_TARGET_AREA",
+        "FIXING_OR_PRESSING_ACTION_VISIBLE",
+        "POST_ACTION_ATTACHMENT_VISIBLE"
+      ],
+      "temporal_requirement": "EVENT_INTERVAL",
+      "spatial_requirement": "LOCAL_DYNAMIC_RELATION",
+      "ontology_source": "HUMAN_AUTHORED_TASK_SEMANTICS"
+    }
+  }
+}

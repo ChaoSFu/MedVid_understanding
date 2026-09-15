@@ -28,8 +28,36 @@ class AnswerSchema(str, Enum):
     CLOSED_LABEL = "CLOSED_LABEL"
 
 
+class AnswerTimebase(str, Enum):
+    REQUIRES_VIDEO_INDEX = "REQUIRES_VIDEO_INDEX"
+
+
+class AnswerCardinality(str, Enum):
+    ONE_OR_MORE = "ONE_OR_MORE"
+
+
+@dataclass(frozen=True)
+class AnswerSchemaSpec:
+    """Closed answer requirement, never an inferred temporal answer."""
+    type: AnswerSchema
+    timebase: AnswerTimebase
+    cardinality: AnswerCardinality
+
+    def __post_init__(self) -> None:
+        _enum(self.type, AnswerSchema, "ANSWER_SCHEMA_TYPE_REQUIRED")
+        _enum(self.timebase, AnswerTimebase, "ANSWER_TIMEBASE_REQUIRED")
+        _enum(self.cardinality, AnswerCardinality, "ANSWER_CARDINALITY_REQUIRED")
+
+    def to_canonical_dict(self) -> dict[str, str]:
+        # The legacy enum names the interval class; the v2 wire schema uses the
+        # closed task-facing token requested by the TAL ontology.
+        token = "INTERVAL" if self.type is AnswerSchema.EVENT_INTERVAL else self.type.value
+        return {"type": token, "timebase": self.timebase.value, "cardinality": self.cardinality.value}
+
+
 class TemporalRequirement(str, Enum):
     LOCALIZE_INTERVAL = "LOCALIZE_INTERVAL"
+    EVENT_INTERVAL = "EVENT_INTERVAL"
     ORDERED_CONTEXT = "ORDERED_CONTEXT"
 
 
@@ -37,6 +65,7 @@ class SpatialRequirement(str, Enum):
     NOT_REQUIRED = "NOT_REQUIRED"
     SINGLE_REGION = "SINGLE_REGION"
     RELATIONAL_COMPOSITE = "RELATIONAL_COMPOSITE"
+    LOCAL_DYNAMIC_RELATION = "LOCAL_DYNAMIC_RELATION"
 
 
 class ClaimRole(str, Enum):
@@ -182,6 +211,10 @@ def _content_id(prefix: str, payload: dict[str, Any]) -> str:
     return f"{prefix}_{stable_hash(payload)[:24]}"
 
 
+def _answer_schema_value(value: AnswerSchema | AnswerSchemaSpec) -> Any:
+    return value.value if isinstance(value, AnswerSchema) else value.to_canonical_dict()
+
+
 @dataclass(frozen=True)
 class RequirementSpec:
     requirement_id: str
@@ -189,7 +222,7 @@ class RequirementSpec:
     question_text: str
     question_sha256: str
     target_event: str
-    answer_schema: AnswerSchema
+    answer_schema: AnswerSchema | AnswerSchemaSpec
     required_evidence: tuple[str, ...]
     temporal_requirement: TemporalRequirement
     spatial_requirement: SpatialRequirement
@@ -198,7 +231,8 @@ class RequirementSpec:
 
     def __post_init__(self) -> None:
         _enum(self.task, TaskType, "TASK_TYPE_REQUIRED")
-        _enum(self.answer_schema, AnswerSchema, "ANSWER_SCHEMA_REQUIRED")
+        if not isinstance(self.answer_schema, (AnswerSchema, AnswerSchemaSpec)):
+            raise ContractError("ANSWER_SCHEMA_REQUIRED")
         _enum(self.temporal_requirement, TemporalRequirement, "TEMPORAL_REQUIREMENT_REQUIRED")
         _enum(self.spatial_requirement, SpatialRequirement, "SPATIAL_REQUIREMENT_REQUIRED")
         _required_string(self.question_text, "QUESTION_TEXT_REQUIRED")
@@ -219,7 +253,7 @@ class RequirementSpec:
 
     def _semantic_payload(self) -> dict[str, Any]:
         return {"task": self.task.value, "question_text": self.question_text, "question_sha256": self.question_sha256,
-                "target_event": self.target_event, "answer_schema": self.answer_schema.value,
+                "target_event": self.target_event, "answer_schema": _answer_schema_value(self.answer_schema),
                 "required_evidence": list(self.required_evidence), "temporal_requirement": self.temporal_requirement.value,
                 "spatial_requirement": self.spatial_requirement.value, "planner_version": self.planner_version,
                 "provenance": thaw_json(self.provenance)}
@@ -292,13 +326,13 @@ class ClaimSpec:
         return stable_hash(self.to_canonical_dict())
 
 
-def make_requirement_spec(*, task: TaskType, question_text: str, target_event: str, answer_schema: AnswerSchema,
+def make_requirement_spec(*, task: TaskType, question_text: str, target_event: str, answer_schema: AnswerSchema | AnswerSchemaSpec,
                           required_evidence: Sequence[str], temporal_requirement: TemporalRequirement,
                           spatial_requirement: SpatialRequirement, planner_version: str, provenance: Any) -> RequirementSpec:
     frozen = freeze_json(provenance)
     question_sha256 = _sha256_text(question_text)
     payload = {"task": task.value, "question_text": question_text, "question_sha256": question_sha256,
-               "target_event": target_event, "answer_schema": answer_schema.value, "required_evidence": list(tuple(required_evidence)),
+               "target_event": target_event, "answer_schema": _answer_schema_value(answer_schema), "required_evidence": list(tuple(required_evidence)),
                "temporal_requirement": temporal_requirement.value, "spatial_requirement": spatial_requirement.value,
                "planner_version": planner_version, "provenance": thaw_json(frozen)}
     return RequirementSpec(_content_id("requirement", payload), task, question_text, question_sha256, target_event, answer_schema,

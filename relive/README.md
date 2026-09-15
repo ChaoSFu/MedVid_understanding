@@ -751,3 +751,41 @@ temporal pyramid, claim-conditioned retrieval, typed spatial-proposal execution,
 SAM 2 propagation, geometry-specific verifier, Evidence Bank, and Final
 Reasoner. Controller decision != action success; diagnostic complete != `VERIFIED`; fixture replay != model experiment; and legacy posthoc Phase 4A != a
 formal confirmatory control.
+
+## ReliVE-v2 Stage: TAL Requirement Freeze
+
+This stage implements only the following pre-video path:
+
+```text
+public question → deterministic TAL adapter → frozen RequirementSpec
+```
+
+A `RequirementSpec` states what the public question requires. A future
+`HypothesisClaim` is a video-dependent possible answer, and an
+`ObservationClaim` is a directly visible atomic fact. This stage creates neither
+claim type, opens no frames or videos, and does not execute verification.
+
+Freeze a small, ordered TAL selection from a GT-isolated public selector:
+
+```bash
+PYTHONPATH=src python3 scripts/freeze_v2_tal_requirement_selection.py \
+  --public-question-selector /path/to/medvidu_public_question_selector.jsonl \
+  --output /path/to/tal_requirement_selection.frozen.json \
+  --max-samples 5
+```
+
+Then build immutable requirements using the versioned ontology:
+
+```bash
+PYTHONPATH=src python3 scripts/prepare_v2_tal_requirements.py \
+  --public-question-selector /path/to/medvidu_public_question_selector.jsonl \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --event-ontology configs/v2/tal_event_ontology.yaml \
+  --output-dir /path/to/v2_tal_requirements
+```
+
+The initial ontology defines only the human-authored `secure_the_base` task
+semantics. It does not assert that this event happened in any video. Video
+indexing, temporal pyramids, candidate hypotheses, observation decomposition,
+spatial evidence, verification execution, Evidence Bank construction, and a
+final TAL answer remain unimplemented.
