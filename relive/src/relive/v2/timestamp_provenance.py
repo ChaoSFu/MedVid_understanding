@@ -83,7 +83,7 @@ def validate_timestamp_pair(*, timestamp_manifest_path: Path, provenance_path: P
     """
     rows = _strict_rows(timestamp_manifest_path, "PUBLIC_TIMESTAMP_MANIFEST")
     provenance = _strict_object(provenance_path, "PUBLIC_TIMESTAMP_PROVENANCE")
-    if set(provenance) != PROVENANCE_FIELDS or provenance.get("format") != TIMESTAMP_PROVENANCE_FORMAT:
+    if not PROVENANCE_FIELDS.issubset(provenance) or provenance.get("format") != TIMESTAMP_PROVENANCE_FORMAT:
         raise TimestampProvenanceError("TIMESTAMP_PROVENANCE_SCHEMA_INVALID")
     manifest_sha, provenance_sha = sha256_path(timestamp_manifest_path), sha256_path(provenance_path)
     if provenance["timestamp_manifest_sha256"] != manifest_sha:

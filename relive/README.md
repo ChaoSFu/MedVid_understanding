@@ -837,3 +837,41 @@ paired sampled-reference shape. It does not access assistant or GT values.
 Hypothesis/observation generation, temporal pyramids and retrieval, spatial
 grounding, verification, Evidence Bank construction, and Final Reasoner remain
 unimplemented.
+
+### NurViD dataset-native timebase
+
+For the narrow, audited `NurViD/frames_2fps/<video_id>/000001.jpg` layout,
+ReliVE can derive **clip-relative** seconds from public dataset metadata without
+downloading an original YouTube video. This is a
+`DATASET_INTERNAL_DERIVED` timebase, not decoder PTS verification. The v1
+formula is exact decimal arithmetic:
+
+```text
+source_seconds = (source_frame_reference - 1) / 2
+clip_seconds = source_seconds - metadata.input_video_start_time
+```
+
+It accepts only `frames_2fps`, verifies a one-based bank using `000001.jpg`,
+requires frame paths, `sampled_video_frames`, `metadata.video_id`, and clip
+bounds to agree, and preserves duplicate logical frames. It only reads the
+allowlisted public metadata fields; assistant values and annotations are not
+opened. First run the full-cohort audit and then export one frozen selection:
+
+```bash
+PYTHONPATH=src python scripts/export_v2_tal_dataset_native_timebase.py \
+  --dataset-json /path/to/medvidu_eccv2026_trainval.json \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --media-audit-dir /path/to/previous_v2_video_index \
+  --frame-root /path/to/MedVidU/valdata \
+  --source-prefix /root/data \
+  --frame-bank-layout frames_2fps \
+  --audit-output-dir /path/to/nurvid_timebase_audit \
+  --output-dir /path/to/nurvid_timestamps
+```
+
+On success it writes `public_per_frame_timestamps.jsonl`, its provenance
+sidecar, and `v2_tal_timestamp_source_audit.json`. Supply both timestamp files
+to `prepare_v2_tal_video_index.py`. Any unsupported layout, missing one-based
+evidence, path/reference mismatch, or boundary mismatch fails closed and emits
+no inferred timestamp manifest.
