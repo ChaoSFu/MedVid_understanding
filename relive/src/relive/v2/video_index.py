@@ -369,7 +369,7 @@ def freeze_video_index(*, requirement_dir: Path, selection_manifest_path: Path, 
                  "public_record_sha256": identity["public_record_sha256"], "question_sha256": identity["question_sha256"],
                  "requirement_manifest_sha256": _sha(requirement_dir / "v2_requirement_manifest.json"),
                  "selection_manifest_sha256": selection_sha, "public_media_projection_sha256": projection["public_media_projection_sha256"],
-                 "timebase_status": "RESOLVED_DATASET_NATIVE" if dataset_native else "RESOLVED", "timebase_adapter_version": timestamp_provenance["adapter_version"],
+                 "timebase_status": "RESOLVED_DATASET_NATIVE_CLIP_LOCAL" if dataset_native else "RESOLVED", "timebase_adapter_version": timestamp_provenance["adapter_version"],
                  "timestamp_source": timestamp_provenance["source_type"], "timestamp_unit": "seconds", "timestamp_provenance_sha256": timestamp_provenance_sha, "time_origin": timestamp_provenance["time_origin"], "timestamp_origin": timestamp_provenance.get("timestamp_origin", "CLIP_START" if dataset_native else "CLIP_LOCAL_ZERO"),
                  "frame_count": len(indexed_frames), "duplicate_timestamp_frame_orders": duplicate_timestamps, "frames": indexed_frames}
         index["video_index_id"] = "video_index_" + stable_hash(index)[:24]
@@ -379,9 +379,9 @@ def freeze_video_index(*, requirement_dir: Path, selection_manifest_path: Path, 
     _write(paths["v2_public_media_projection.jsonl"], _jsonl(projection_rows))
     _write(paths["v2_video_index.jsonl"], _jsonl(index_rows))
     _write(paths["v2_video_index_unresolved.jsonl"], _jsonl(unresolved_rows))
-    index_status = ("RESOLVED_DATASET_NATIVE" if index_rows and not unresolved_rows and all(row["timebase_status"] == "RESOLVED_DATASET_NATIVE" for row in index_rows) else "RESOLVED") if index_rows and not unresolved_rows else ("UNRESOLVED_TIMEBASE" if not index_rows else "PARTIAL_UNRESOLVED_TIMEBASE")
+    index_status = ("RESOLVED_DATASET_NATIVE_CLIP_LOCAL" if index_rows and not unresolved_rows and all(row["timebase_status"] == "RESOLVED_DATASET_NATIVE_CLIP_LOCAL" for row in index_rows) else "RESOLVED") if index_rows and not unresolved_rows else ("UNRESOLVED_TIMEBASE" if not index_rows else "PARTIAL_UNRESOLVED_TIMEBASE")
     manifest = {"format": VIDEO_INDEX_FORMAT, "status": "PASS", "index_status": index_status,
-                "ready_for_hypothesis_generation": index_status == "RESOLVED_DATASET_NATIVE", "requirement_manifest_sha256": _sha(requirement_dir / "v2_requirement_manifest.json"),
+                "ready_for_hypothesis_generation": index_status == "RESOLVED_DATASET_NATIVE_CLIP_LOCAL", "requirement_manifest_sha256": _sha(requirement_dir / "v2_requirement_manifest.json"),
                 "selection_manifest_sha256": selection_sha, "timebase_policy_sha256": policy_sha,
                 "public_timestamp_manifest_sha256": _sha(public_timestamp_manifest_path) if public_timestamp_manifest_path else None, "public_timestamp_provenance_sha256": _sha(public_timestamp_provenance_path) if public_timestamp_provenance_path else None,
                 "public_media_projection_count": len(projection_rows), "video_index_count": len(index_rows), "unresolved_count": len(unresolved_rows),
@@ -426,9 +426,9 @@ def validate_video_index_artifacts(output_dir: Path, *, materialize_frames: bool
         raise VideoIndexError("VIDEO_INDEX_COUNT_MISMATCH")
     if manifest["index_status"] == "UNRESOLVED_TIMEBASE" and indexes:
         raise VideoIndexError("VIDEO_INDEX_TIMEBASE_UNRESOLVED")
-    if manifest["index_status"] in {"RESOLVED", "RESOLVED_DATASET_NATIVE"} and (not indexes or unresolved):
+    if manifest["index_status"] in {"RESOLVED", "RESOLVED_DATASET_NATIVE", "RESOLVED_DATASET_NATIVE_CLIP_LOCAL"} and (not indexes or unresolved):
         raise VideoIndexError("VIDEO_INDEX_TIMEBASE_INVALID")
-    if manifest["index_status"] not in {"RESOLVED", "RESOLVED_DATASET_NATIVE", "UNRESOLVED_TIMEBASE", "PARTIAL_UNRESOLVED_TIMEBASE"} or manifest["ready_for_hypothesis_generation"] is not (manifest["index_status"] == "RESOLVED_DATASET_NATIVE"):
+    if manifest["index_status"] not in {"RESOLVED", "RESOLVED_DATASET_NATIVE", "RESOLVED_DATASET_NATIVE_CLIP_LOCAL", "UNRESOLVED_TIMEBASE", "PARTIAL_UNRESOLVED_TIMEBASE"} or manifest["ready_for_hypothesis_generation"] is not (manifest["index_status"] == "RESOLVED_DATASET_NATIVE_CLIP_LOCAL"):
         raise VideoIndexError("VIDEO_INDEX_MANIFEST_SCHEMA_INVALID")
     for name in ("public_timestamp_manifest_sha256", "public_timestamp_provenance_sha256"):
         if manifest[name] is not None and (not isinstance(manifest[name], str) or not _HEX.fullmatch(manifest[name])):
@@ -455,7 +455,7 @@ def validate_video_index_artifacts(output_dir: Path, *, materialize_frames: bool
         projection_by_identity[identity] = row
     index_fields = {"video_index_id", "requirement_id", "sample_id", "source_record_index", "public_record_sha256", "question_sha256", "requirement_manifest_sha256", "selection_manifest_sha256", "public_media_projection_sha256", "timebase_status", "timebase_adapter_version", "timestamp_source", "timestamp_unit", "timestamp_provenance_sha256", "time_origin", "timestamp_origin", "frame_count", "duplicate_timestamp_frame_orders", "frames"}
     for row in indexes:
-        if set(row) != index_fields or row["timebase_status"] not in {"RESOLVED", "RESOLVED_DATASET_NATIVE"} or not isinstance(row["timebase_adapter_version"], str) or not row["timebase_adapter_version"] or row["timestamp_source"] not in ALLOWED_SOURCE_TYPES or row["timestamp_unit"] != "seconds" or row["time_origin"] not in {"CLIP_LOCAL_ZERO", "SOURCE_VIDEO_ABSOLUTE"} or row["timestamp_origin"] not in {"CLIP_START", "CLIP_LOCAL_ZERO", "SOURCE_VIDEO_ABSOLUTE"} or not _HEX.fullmatch(row["timestamp_provenance_sha256"]) or not isinstance(row["frames"], list) or len(row["frames"]) != row["frame_count"]:
+        if set(row) != index_fields or row["timebase_status"] not in {"RESOLVED", "RESOLVED_DATASET_NATIVE", "RESOLVED_DATASET_NATIVE_CLIP_LOCAL"} or not isinstance(row["timebase_adapter_version"], str) or not row["timebase_adapter_version"] or row["timestamp_source"] not in ALLOWED_SOURCE_TYPES or row["timestamp_unit"] != "seconds" or row["time_origin"] not in {"CLIP_LOCAL_ZERO", "SOURCE_VIDEO_ABSOLUTE"} or row["timestamp_origin"] not in {"CLIP_START", "FIRST_PRESENTED_FRAME", "CLIP_LOCAL_ZERO", "SOURCE_VIDEO_ABSOLUTE"} or not _HEX.fullmatch(row["timestamp_provenance_sha256"]) or not isinstance(row["frames"], list) or len(row["frames"]) != row["frame_count"]:
             raise VideoIndexError("VIDEO_INDEX_SCHEMA_INVALID")
         identity = tuple(row[key] for key in ("source_record_index", "sample_id", "public_record_sha256", "question_sha256"))
         projected = projection_by_identity.get(identity)

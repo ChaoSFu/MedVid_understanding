@@ -14,9 +14,7 @@ def main() -> int:
     try:
         if args.audit_output_dir:
             audit = audit_dataset_native_timebase(dataset_json=args.dataset_json,frame_root=args.frame_root,source_prefix=args.source_prefix,output_dir=args.audit_output_dir,frame_bank_layout=args.frame_bank_layout)
-            if audit["status"] != "PASS":
-                print(json.dumps(audit, sort_keys=True)); return 2
-        result=export_dataset_native_timebase(dataset_json=args.dataset_json,selection_manifest=args.selection_manifest,requirement_freeze_dir=args.requirement_freeze_dir,media_audit_dir=args.media_audit_dir,frame_root=args.frame_root,source_prefix=args.source_prefix,output_dir=args.output_dir,frame_bank_layout=args.frame_bank_layout)
+        result=export_dataset_native_timebase(dataset_json=args.dataset_json,selection_manifest=args.selection_manifest,requirement_freeze_dir=args.requirement_freeze_dir,media_audit_dir=args.media_audit_dir,frame_root=args.frame_root,source_prefix=args.source_prefix,output_dir=args.output_dir,frame_bank_layout=args.frame_bank_layout,cohort_audit=audit if args.audit_output_dir else None)
     except DatasetNativeTimebaseError as exc: print(json.dumps({"status":"UNRESOLVED_TIMEBASE_SOURCE","reason_code":str(exc),"model_calls_made":0,"gt_used":False},sort_keys=True));return 2
     print(json.dumps(result,sort_keys=True));return 0
 if __name__=="__main__":raise SystemExit(main())

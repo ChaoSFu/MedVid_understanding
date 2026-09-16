@@ -847,13 +847,15 @@ downloading an original YouTube video. This is a
 formula is exact decimal arithmetic:
 
 ```text
-source_seconds = (source_frame_reference - 1) / 2
-clip_seconds = source_seconds - metadata.input_video_start_time
+anchor_source_frame_reference = sampled_video_frames[0]
+timestamp_seconds = (source_frame_reference - anchor_source_frame_reference) / 2
 ```
 
-It accepts only `frames_2fps`, verifies a one-based bank using `000001.jpg`,
-requires frame paths, `sampled_video_frames`, `metadata.video_id`, and clip
-bounds to agree, and preserves duplicate logical frames. It only reads the
+It accepts only `frames_2fps`, anchors zero seconds to the first presented
+logical frame, verifies frame paths, `sampled_video_frames`, `metadata.video_id`,
+monotonicity, and a preregistered span/tail-gap bound, and preserves duplicate
+logical frames. This does not recover original-video absolute seconds or decoder
+PTS; `000001.jpg` is reported only as a legacy diagnostic and is not a gate. It only reads the
 allowlisted public metadata fields; assistant values and annotations are not
 opened. First run the full-cohort audit and then export one frozen selection:
 
@@ -872,6 +874,7 @@ PYTHONPATH=src python scripts/export_v2_tal_dataset_native_timebase.py \
 
 On success it writes `public_per_frame_timestamps.jsonl`, its provenance
 sidecar, and `v2_tal_timestamp_source_audit.json`. Supply both timestamp files
-to `prepare_v2_tal_video_index.py`. Any unsupported layout, missing one-based
-evidence, path/reference mismatch, or boundary mismatch fails closed and emits
-no inferred timestamp manifest.
+to `prepare_v2_tal_video_index.py`. Cohort exceptions remain reported. Export is permitted only when the already
+frozen selected identity itself passes every clip-local hard condition; an
+unsupported layout, selected path/reference mismatch, non-monotonicity, or
+span/tail-gap failure emits no timestamp manifest.
