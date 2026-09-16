@@ -948,3 +948,43 @@ PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
 
 No Stage 3B command creates an ObservationClaim, ROI, boundary refinement,
 certificate, VERIFIED result, or final answer.
+
+### Stage 3B: independent fresh-run reproducibility audit
+
+Before Stage 3C, run a second GPU fresh inference in a different output root
+and therefore a different empty `cache/` directory.  Do not copy, remove, or
+replay the first run's cache.  The zero-model comparator reads only emitted
+Stage 3B artifacts, first checks their scientific-input projection and fresh
+run counters, then reports either exact numerical/discrete reproduction,
+stable discrete results with numerical variation, or instability.  It never
+creates claims, certificates, or VERIFIED results.
+
+```bash
+# RUN_A is the completed first Stage 3B root.  RUN_B and CMP must be new,
+# empty output directories.  The prepare inputs are the same frozen Stage 1--3A
+# inputs used for RUN_A.
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode prepare --config /path/to/reviewed_qwen_opaque_gray.json \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --stage3a-dir /path/to/v2_tal_temporal_search \
+  --video-index-dir /path/to/v2_video_index \
+  --public-timestamp-manifest /path/to/public_per_frame_timestamps.jsonl \
+  --public-timestamp-provenance /path/to/public_per_frame_timestamps.provenance.json \
+  --output-dir /path/to/RUN_B
+
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode preflight --config /path/to/reviewed_qwen_opaque_gray.json --output-dir /path/to/RUN_B
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode run --config /path/to/reviewed_qwen_opaque_gray.json --output-dir /path/to/RUN_B
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py --mode validate --output-dir /path/to/RUN_B
+
+PYTHONPATH=src python scripts/compare_v2_tal_stage3b_independent_runs.py \
+  --run-a-dir /path/to/RUN_A --run-b-dir /path/to/RUN_B --output-dir /path/to/CMP
+PYTHONPATH=src python scripts/summarize_v2_tal_stage3b_candidates.py --run-dir /path/to/RUN_A
+```
+
+The comparator writes `v2_stage3b_independent_repeat_comparison.json`,
+`v2_stage3b_independent_repeat_window_differences.jsonl`, and
+`v2_stage3b_independent_repeat_audit.json`.  Only a comparison with
+`ready_for_stage3c=true` permits planning the next stage.
