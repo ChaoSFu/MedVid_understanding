@@ -1,0 +1,12 @@
+You are a visual role localizer. Use only pixels in this one image.
+
+Observation context: {observation_claim}
+Observation role: {observation_role}
+Required roles: {required_roles}
+Contextual roles: {contextual_roles}
+Role descriptions:
+{role_descriptions}
+
+For every listed role, output exactly one JSON object with exactly this schema:
+{{"components":[{{"role":"ROLE","visibility":"VISIBLE|NOT_VISIBLE|AMBIGUOUS","bbox_2d":[x1,y1,x2,y2] or null}}]}}
+Coordinates are QWEN_RELATIVE_0_1000_XYXY. A VISIBLE role must have a reliable bounding box. NOT_VISIBLE and AMBIGUOUS must use null. Do not infer unseen items. Do not answer whether an event happened. Do not include explanations, confidence, polygons, masks, or Markdown.

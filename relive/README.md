@@ -1081,3 +1081,32 @@ PYTHONPATH=src python scripts/prepare_v2_tal_spatial_evidence_planning.py \
 A successful freeze has `stage_status=SPATIAL_EVIDENCE_PLANS_FROZEN_UNGROUNDED`
 and `ready_for_stage3g_spatial_grounding=true`; it remains non-evidentiary and
 cannot produce `VERIFIED`.
+
+### Stage 3G-A: native VLM role-labelled anchor grounding
+
+Stage 3G-A consumes only a validated Stage 3F freeze and its bound Stage 3C,
+3D, 3E, and VideoIndex artifacts. It runs one single-image Qwen grounding call
+for every frozen `(grounding task, unique anchor)` pair. The model may return
+only role visibility and a relative-1000 bounding box. Grounding candidates are
+not ObservationClaim verification, support tubes, masks, evidence, certificates,
+or `VERIFIED` results.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding.py \
+  --mode preflight --config /path/to/reviewed_qwen_config.json \
+  --policy configs/v2/tal_spatial_anchor_grounding_policy.json \
+  --stage3f-dir /path/to/v2_tal_stage3f --stage3c-dir /path/to/v2_tal_stage3c \
+  --stage3d-dir /path/to/v2_tal_stage3d --stage3e-dir /path/to/v2_tal_stage3e \
+  --video-index-dir /path/to/v2_video_index --output-dir /path/to/v2_tal_stage3g
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding.py \
+  --mode run --config /path/to/reviewed_qwen_config.json \
+  --policy configs/v2/tal_spatial_anchor_grounding_policy.json --output-dir /path/to/v2_tal_stage3g
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding.py \
+  --mode replay --config /path/to/reviewed_qwen_config.json \
+  --policy configs/v2/tal_spatial_anchor_grounding_policy.json --output-dir /path/to/v2_tal_stage3g
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding.py \
+  --mode validate --output-dir /path/to/v2_tal_stage3g
+```
+
+The review packet is generated for every successful, ambiguous, not-visible,
+or parser-failure candidate. It supports later human development audit only.
