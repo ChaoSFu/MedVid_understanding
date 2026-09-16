@@ -269,7 +269,7 @@ class LocalHFBackend(Backend):
         except Exception:
             raise BackendError("LOCAL_HF_GENERATION_FAILURE") from None
 
-    def forced_choice_token_contract(self, request: dict[str, Any], choices: tuple[str, str, str] = ("A", "B", "C")) -> dict[str, Any]:
+    def forced_choice_token_contract(self, request: dict[str, Any], choices: tuple[str, ...] = ("A", "B", "C")) -> dict[str, Any]:
         """Validate exact one-token diagnostic choices in the real chat context.
 
         This is intentionally separate from :meth:`infer`: it neither calls
@@ -279,7 +279,9 @@ class LocalHFBackend(Backend):
         """
         if not isinstance(request.get("prompt"), str) or not request["prompt"].endswith("\nAnswer:"):
             raise BackendError("CHOICE_PROMPT_MISSING_ANSWER_ANCHOR")
-        if not isinstance(choices, tuple) or choices != ("A", "B", "C"):
+        if (not isinstance(choices, tuple) or not choices or len(set(choices)) != len(choices)
+                or any(not isinstance(label, str) or len(label) != 1 or not label.isascii() or not label.isupper()
+                       for label in choices)):
             raise BackendError("CHOICE_LABEL_CONTRACT_INVALID")
         paths = request.get("image_paths", [])
         if not isinstance(paths, list):
@@ -313,7 +315,8 @@ class LocalHFBackend(Backend):
                 "context_input_ids_sha256": hashlib.sha256(json.dumps(sequence, separators=(",", ":")).encode()).hexdigest(),
                 "context_token_count": len(sequence)}
 
-    def forced_choice_likelihood(self, request: dict[str, Any], *, choice_token_ids: dict[str, int] | None = None) -> dict[str, Any]:
+    def forced_choice_likelihood(self, request: dict[str, Any], *, choice_token_ids: dict[str, int] | None = None,
+                                 choices: tuple[str, ...] = ("A", "B", "C")) -> dict[str, Any]:
         """Score A/B/C at the next token under the exact local-HF chat path.
 
         This diagnostic API shares checkpoint loading, image preparation, chat
@@ -321,7 +324,7 @@ class LocalHFBackend(Backend):
         It does not alter ``infer`` or the semantic verifier protocol.
         """
         self.calls += 1
-        contract = self.forced_choice_token_contract(request)
+        contract = self.forced_choice_token_contract(request, choices=choices)
         if choice_token_ids is not None and choice_token_ids != contract["choice_token_ids"]:
             raise BackendError("CHOICE_TOKEN_CONTRACT_DRIFT")
         paths = request.get("image_paths", [])

@@ -1,0 +1,16 @@
+Target event: {target_event}
+
+Expected visible evidence may include:
+{required_evidence}
+
+This frozen clip-local time window is {window_start} to {window_end} seconds.
+The supplied frames have these clip-local timestamps, in chronological order: {frame_timestamps}.
+
+Use only visible information in the supplied frames. Do not infer the event from procedure order, medical knowledge, or the fact that the action appears in a possible-action list.
+
+A = The visible frames provide clear evidence that the target event occurs within this time window.
+B = The frames contain related, preparatory, partial, or post-event evidence, but do not establish that the target event occurs within this window.
+C = The frames contain no visible evidence relevant to the target event.
+D = The frames are insufficient or unreadable for making this judgment.
+
+Answer:

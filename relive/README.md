@@ -907,3 +907,44 @@ The sole successful terminal state is `FROZEN_PRE_MODEL` with
 `READY_FOR_COARSE_HYPOTHESIS_GENERATION`. That readiness is a planning gate,
 not a hypothesis, score, localized time interval, certificate, or VERIFIED
 result.
+
+### Stage 3B: coarse hypotheses from frozen windows
+
+Stage 3B is the first model-using TAL stage. It may score only the immutable
+Stage 3A windows, once each, with the reviewed local-HF forced-choice API. It
+uses A/B/C/D next-token likelihoods, computes the frozen
+`logP(A)-logsumexp(B,C,D)` margin, and uses that margin only for rank ordering.
+The full-clip packet is diagnostic context and is never eligible for a positive
+interval. Positive candidates use fixed temporal NMS (IoU >= 0.5), retain at
+most five windows, and are accompanied by one `NO_VISIBLE_EVENT` alternative.
+Every emitted hypothesis remains `CANDIDATE_UNVERIFIED`.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode prepare --config /path/to/reviewed_qwen_opaque_gray.json \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --stage3a-dir /path/to/v2_tal_temporal_search \
+  --video-index-dir /path/to/v2_video_index \
+  --public-timestamp-manifest /path/to/public_per_frame_timestamps.jsonl \
+  --public-timestamp-provenance /path/to/public_per_frame_timestamps.provenance.json \
+  --output-dir /path/to/v2_tal_stage3b
+
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode preflight --config /path/to/reviewed_qwen_opaque_gray.json \
+  --output-dir /path/to/v2_tal_stage3b
+
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode run --config /path/to/reviewed_qwen_opaque_gray.json \
+  --output-dir /path/to/v2_tal_stage3b
+
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode replay --config /path/to/reviewed_qwen_opaque_gray.json \
+  --output-dir /path/to/v2_tal_stage3b
+
+PYTHONPATH=src python scripts/prepare_v2_tal_coarse_hypotheses.py \
+  --mode validate --output-dir /path/to/v2_tal_stage3b
+```
+
+No Stage 3B command creates an ObservationClaim, ROI, boundary refinement,
+certificate, VERIFIED result, or final answer.

@@ -134,12 +134,17 @@ def validate_hypothesis_claim(value: Mapping[str, Any]) -> None:
     """Validate a future hypothesis without treating it as evidence."""
     required = {"hypothesis_id", "requirement_id", "parent_claim_id", "claim_role", "target_event", "polarity",
                 "candidate_interval", "generation_source", "status", "supporting_window_ids", "provenance"}
-    if not isinstance(value, Mapping) or set(value) != required or _contains_forbidden(value):
+    optional = {"retrieval_rank", "coarse_support_margin"}
+    if not isinstance(value, Mapping) or not required.issubset(value) or not set(value).issubset(required | optional) or _contains_forbidden(value):
         raise TemporalSearchPlanError("HYPOTHESIS_SCHEMA_INVALID")
     if value["claim_role"] != "TARGET_HYPOTHESIS" or value["status"] != "CANDIDATE_UNVERIFIED" or value["parent_claim_id"] is not None:
         raise TemporalSearchPlanError("HYPOTHESIS_STATUS_INVALID")
     if not all(isinstance(value[key], str) and value[key] for key in ("hypothesis_id", "requirement_id", "target_event", "generation_source")) or not isinstance(value["supporting_window_ids"], list) or not isinstance(value["provenance"], dict):
         raise TemporalSearchPlanError("HYPOTHESIS_VALUE_INVALID")
+    if "retrieval_rank" in value and value["retrieval_rank"] is not None and (type(value["retrieval_rank"]) is not int or value["retrieval_rank"] < 1):
+        raise TemporalSearchPlanError("HYPOTHESIS_RETRIEVAL_RANK_INVALID")
+    if "coarse_support_margin" in value and value["coarse_support_margin"] is not None:
+        _finite(value["coarse_support_margin"], "HYPOTHESIS_SUPPORT_MARGIN_INVALID")
     if value["polarity"] == "NO_VISIBLE_EVENT":
         if value["candidate_interval"] is not None:
             raise TemporalSearchPlanError("NULL_HYPOTHESIS_INTERVAL_FORBIDDEN")
