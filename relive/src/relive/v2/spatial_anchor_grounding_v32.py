@@ -10,7 +10,7 @@ from relive.config import load_config
 from relive.storage.artifacts import ArtifactStore, canonical_json, stable_hash
 from .spatial_evidence_planning import SpatialPlanError, validate as validate_stage3f
 from .task_selection import TALSelectionError, strict_json_loads, strict_jsonl
-from .token_json_constraint import GroundingJsonGrammar, GRAMMAR_VERSION, IMPLEMENTATION_VERSION
+from .token_json_constraint import GroundingJsonGrammar, TokenLevelGroundingConstraint, GRAMMAR_VERSION, IMPLEMENTATION_VERSION
 
 FORMAT="relive-v2-spatial-anchor-grounding-v3.2"
 CANDIDATE="SPATIAL_ANCHOR_GROUNDING_CANDIDATE_UNVERIFIED"
@@ -195,7 +195,7 @@ def preflight(*,stage3f_dir:Path,stage3c_dir:Path,stage3d_dir:Path,stage3e_dir:P
  frozen=[];grammar_audits=[]
  for e in entries:
   grammar=GroundingJsonGrammar(e['required_component_roles']+e['contextual_requirements'])
-  audit=backend.audit_token_constraint(grammar)
+  audit=backend.audit_token_constraint(TokenLevelGroundingConstraint(grammar))
   if (not isinstance(audit,dict) or not isinstance(audit.get('binding'),dict) or not isinstance(audit.get('tokenizer_binding'),dict)
       or audit['binding'].get('grammar_spec_sha256')!=grammar.spec_sha256 or type(audit.get('initial_allowed_token_count')) is not int
       or audit['initial_allowed_token_count'] <= 0):raise SpatialAnchorGroundingError('TOKEN_CONSTRAINT_AUDIT_INVALID')

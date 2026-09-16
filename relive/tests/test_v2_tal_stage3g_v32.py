@@ -24,7 +24,8 @@ class _Tokenizer:
 class _Grounder:
     synthetic = True
     def fingerprint(self): return {'adapter_version':'fake-stage3g-v32','scientific_identity':{'model':'fake','generation':{'do_sample':False}}}
-    def audit_token_constraint(self, grammar):
+    def audit_token_constraint(self, constraint):
+        grammar=constraint.grammar
         return {'binding':{'grammar_spec_sha256':grammar.spec_sha256},'tokenizer_binding':{'tokenizer_class':'fake','tokenizer_vocabulary_sha256':'fake'},'initial_allowed_token_count':1}
     def infer_with_token_constraint(self, request, grammar):
         roles = re.search(r'Required roles: (.*)\n',request['prompt']).group(1).split(', ')
