@@ -1,6 +1,7 @@
 """ReliVE-v2 Stage 3G-A native VLM role-labelled anchor grounding only."""
 from __future__ import annotations
 import hashlib, math, re, shutil
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Protocol
 from PIL import Image, ImageDraw
@@ -74,6 +75,15 @@ def _upstream(stage3f:Path,stage3c:Path,stage3d:Path,stage3e:Path,index:Path)->d
  actual={'stage3c_manifest_sha256':sha(stage3c/'v2_stage3c_manifest.json'),'stage3d_call_plan_sha256':sha(stage3d/'v2_stage3d_call_plan.json'),'stage3d_run_summary_sha256':sha(stage3d/'v2_stage3d_run_summary.json'),'stage3e_manifest_sha256':sha(stage3e/'v2_stage3e_manifest.json'),'video_index_manifest_sha256':sha(index/'v2_video_index_manifest.json')}
  if expected!=actual:raise SpatialAnchorGroundingError('STAGE3F_UPSTREAM_BINDING_MISMATCH')
  return {'stage3f_manifest_sha256':sha(stage3f/'v2_tal_spatial_plan_manifest.json'),**actual}
+
+def _effective_config(config:dict[str,Any],policy:dict[str,Any])->dict[str,Any]:
+ if type(policy.get('max_new_tokens')) is not int or not 128 < policy['max_new_tokens'] <= 1024:
+  raise SpatialAnchorGroundingError('GENERATION_POLICY_INVALID')
+ out=deepcopy(config);generation=out.get('backend',{}).get('generation')
+ if not isinstance(generation,dict) or generation.get('do_sample') is not False:
+  raise SpatialAnchorGroundingError('GENERATION_POLICY_INVALID')
+ generation['max_new_tokens']=policy['max_new_tokens']
+ return out
 
 def _prompt(entry:dict[str,Any])->str:
  required=entry['required_component_roles'];context=entry['contextual_requirements'];all_roles=required+context
@@ -154,11 +164,12 @@ def preflight(*,stage3f_dir:Path,stage3c_dir:Path,stage3d_dir:Path,stage3e_dir:P
  if policy.get('format')!='relive-v2-spatial-anchor-grounding-policy-v1':raise SpatialAnchorGroundingError('POLICY_INVALID')
  config=load_config(config_path)
  if config.get('backend',{}).get('kind')!='local_hf':raise SpatialAnchorGroundingError('NATIVE_LOCAL_HF_REQUIRED')
- entries=_entries(stage3f_dir,stage3c_dir,video_index_dir);backend=backend_factory(config['backend']);fingerprint=backend.fingerprint()
+ effective=_effective_config(config,policy)
+ entries=_entries(stage3f_dir,stage3c_dir,video_index_dir);backend=backend_factory(effective['backend']);fingerprint=backend.fingerprint()
  frozen=[]
  for e in entries:
   frozen.append(e|{'image_path_sha256':hashlib.sha256(e['image_path'].encode()).hexdigest()})
- out={'format':FORMAT,'status':'PASS','mode':'preflight','provider_type':policy['provider_type'],'provider_name':policy['provider_name'],'stage3f_manifest_sha256':upstream['stage3f_manifest_sha256'],'upstream_sha256':upstream,'policy_sha256':sha(policy_path),'config_sha256':sha(config_path),'generation_parameters':config['backend']['generation'],'model_fingerprint':fingerprint,'planned_model_calls':len(entries),'unique_task_anchor_count':len(entries),'frozen_calls':frozen,'model_calls_made':0,'new_model_calls':0,'cache_hits':0,'backend_loaded':True,'cache_opened':False,'frames_read':len(entries),'unique_frame_bytes_opened':len({e['frame_sha256'] for e in entries}),'videos_read':0,'gt_used':False,'assistant_or_gt_values_accessed':False,'boxes_created':0,'points_created':0,'masks_created':0,'masklets_created':0,'support_tubes_created':0,'certificate_created':False,'new_verified_count':0,'certificate_status':'NOT_APPLICABLE'}
+ out={'format':FORMAT,'status':'PASS','mode':'preflight','provider_type':policy['provider_type'],'provider_name':policy['provider_name'],'stage3f_manifest_sha256':upstream['stage3f_manifest_sha256'],'upstream_sha256':upstream,'policy_sha256':sha(policy_path),'config_sha256':sha(config_path),'generation_parameters':effective['backend']['generation'],'model_fingerprint':fingerprint,'planned_model_calls':len(entries),'unique_task_anchor_count':len(entries),'frozen_calls':frozen,'model_calls_made':0,'new_model_calls':0,'cache_hits':0,'backend_loaded':True,'cache_opened':False,'frames_read':len(entries),'unique_frame_bytes_opened':len({e['frame_sha256'] for e in entries}),'videos_read':0,'gt_used':False,'assistant_or_gt_values_accessed':False,'boxes_created':0,'points_created':0,'masks_created':0,'masklets_created':0,'support_tubes_created':0,'certificate_created':False,'new_verified_count':0,'certificate_status':'NOT_APPLICABLE'}
  out['preflight_content_sha256']=stable_hash(out);output_dir.mkdir(parents=True);write(output_dir/'stage3g_preflight.json',out);return out
 
 def _preflight(root:Path)->dict[str,Any]:
@@ -198,7 +209,7 @@ def execute(*,output_dir:Path,config_path:Path,policy_path:Path,mode:str,backend
  if len(entries)!=expected or len({(x['spatial_grounding_task_id'],x['anchor_candidate_id']) for x in entries})!=expected:raise SpatialAnchorGroundingError('FROZEN_CALL_PLAN_INVALID')
  run_dir=output_dir/mode
  if run_dir.exists() and any(run_dir.iterdir()):raise SpatialAnchorGroundingError('IMMUTABLE_RUN_OUTPUT_EXISTS')
- cache=ArtifactStore(output_dir/'cache');backend=backend_factory(load_config(config_path)['backend']);results=[];traces=[];new=hits=0
+ cache=ArtifactStore(output_dir/'cache');backend=backend_factory(_effective_config(load_config(config_path),policy)['backend']);results=[];traces=[];new=hits=0
  for entry in entries:
   _reverify(entry)
   key=_cache_key(entry,pre,policy);stored=None

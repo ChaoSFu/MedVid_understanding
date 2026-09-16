@@ -31,7 +31,7 @@ class Stage3GTests(unittest.TestCase):
  def tearDown(self):self.d.tearDown()
  def pf(self,out=None):return preflight(stage3f_dir=self.f,stage3c_dir=self.d.stage3c,stage3d_dir=self.d.out,stage3e_dir=self.e,video_index_dir=self.d.base.index,config_path=self.d.base.config,policy_path=self.policy,output_dir=out or self.g,backend_factory=lambda _:_Grounder())
  def test_full_anchor_enumeration_run_replay_validation_and_review(self):
-  plan=self.pf();self.assertGreater(plan['planned_model_calls'],0);self.assertEqual(plan['frames_read'],plan['planned_model_calls'])
+  plan=self.pf();self.assertGreater(plan['planned_model_calls'],0);self.assertEqual(plan['frames_read'],plan['planned_model_calls']);self.assertEqual(plan['generation_parameters']['max_new_tokens'],512)
   first=execute(output_dir=self.g,config_path=self.d.base.config,policy_path=self.policy,mode='run',backend_factory=lambda _:_Grounder());second=execute(output_dir=self.g,config_path=self.d.base.config,policy_path=self.policy,mode='replay',backend_factory=lambda _:_Grounder())
   self.assertEqual((first['new_model_calls'],first['cache_hits']),(plan['planned_model_calls'],0));self.assertEqual((second['new_model_calls'],second['cache_hits']),(0,plan['planned_model_calls']));self.assertEqual(first['canonical_grounding_result_sha256'],second['canonical_grounding_result_sha256'])
   rows=[json.loads(x) for x in (self.g/'run/v2_tal_spatial_anchor_groundings.jsonl').read_text().splitlines()]

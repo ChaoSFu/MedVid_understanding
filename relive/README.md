@@ -1110,3 +1110,9 @@ PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding.py \
 
 The review packet is generated for every successful, ambiguous, not-visible,
 or parser-failure candidate. It supports later human development audit only.
+
+The Stage 3G-A v2 policy fixes a deterministic `max_new_tokens=512` budget for
+its multi-role JSON response. This is bound into the effective model generation
+configuration, preflight, cache identity, and result manifest. Earlier runs
+with a lower generation budget remain immutable parser-failure artifacts and
+must not be reused as cache inputs for v2.
