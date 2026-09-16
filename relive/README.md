@@ -1053,3 +1053,31 @@ The fresh run must have `new_model_calls=planned_model_calls` and
 `cache_hits=0`; replay must have `new_model_calls=0` and
 `cache_hits=planned_model_calls`. The four scientific result hashes in the
 run/replay summaries must match before later temporal evidence composition.
+
+### Stage 3F: typed spatial evidence planning freeze
+
+Stage 3F is a metadata-only planning freeze over the immutable Stage 3C
+ObservationClaims, completed Stage 3D retrieval, Stage 3E temporal chains, and
+VideoIndex metadata. It writes only ungrounded composite spatial contracts and
+anchor schedules; it does not open frame/video bytes, generate an ROI or mask,
+call a model, or create a certificate. Each dynamic contract propagates across
+its full physical window and declares a future
+`COMPOSITE_EVIDENCE_UNION` intervention with a matched control requirement.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_evidence_planning.py \
+  --mode prepare \
+  --stage3c-dir /path/to/v2_tal_stage3c \
+  --stage3d-dir /path/to/v2_tal_stage3d \
+  --stage3e-dir /path/to/v2_tal_stage3e \
+  --video-index-dir /path/to/v2_video_index \
+  --policy configs/v2/tal_spatial_evidence_planning_policy.json \
+  --output-dir /path/to/v2_tal_stage3f
+
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_evidence_planning.py \
+  --mode validate --output-dir /path/to/v2_tal_stage3f
+```
+
+A successful freeze has `stage_status=SPATIAL_EVIDENCE_PLANS_FROZEN_UNGROUNDED`
+and `ready_for_stage3g_spatial_grounding=true`; it remains non-evidentiary and
+cannot produce `VERIFIED`.
