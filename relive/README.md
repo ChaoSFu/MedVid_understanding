@@ -878,3 +878,32 @@ to `prepare_v2_tal_video_index.py`. Cohort exceptions remain reported. Export is
 frozen selected identity itself passes every clip-local hard condition; an
 unsupported layout, selected path/reference mismatch, non-monotonicity, or
 span/tail-gap failure emits no timestamp manifest.
+
+### Stage 3A: immutable temporal search plan
+
+Stage 3A consumes only frozen RequirementSpec, selection, VideoIndex, and
+timestamp artifacts. It emits no HypothesisClaim or ObservationClaim instance,
+does not load a model, and does not score windows. It freezes the contracts for
+future claims plus a deterministic 8/16/32-second, 50%-overlap clip-local
+temporal pyramid. A right-aligned tail window closes each scale's coverage gap;
+the full-clip window is always last. Duplicate logical frames remain in the
+index and are represented by an alias map to unique visual frames.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_temporal_search_plan.py \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --video-index-dir /path/to/v2_video_index \
+  --public-timestamp-manifest /path/to/public_per_frame_timestamps.jsonl \
+  --public-timestamp-provenance /path/to/public_per_frame_timestamps.provenance.json \
+  --temporal-policy configs/v2/tal_temporal_pyramid_policy.yaml \
+  --output-dir /path/to/v2_tal_temporal_search
+
+PYTHONPATH=src python scripts/validate_v2_tal_temporal_search_plan.py \
+  --output-dir /path/to/v2_tal_temporal_search
+```
+
+The sole successful terminal state is `FROZEN_PRE_MODEL` with
+`READY_FOR_COARSE_HYPOTHESIS_GENERATION`. That readiness is a planning gate,
+not a hypothesis, score, localized time interval, certificate, or VERIFIED
+result.

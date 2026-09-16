@@ -1,0 +1,1 @@
+{"format":"relive-v2-tal-temporal-pyramid-policy-v1","include_full_clip_window":true,"policy_version":"relive-v2-tal-temporal-pyramid-policy-v1","timestamp_domain":"CLIP_LOCAL","window_overlap_fraction":0.5,"window_scales_seconds":[8,16,32]}
