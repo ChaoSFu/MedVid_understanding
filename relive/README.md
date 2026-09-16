@@ -1195,3 +1195,59 @@ The v3 manifest reports parse/schema compliance, required-role visibility,
 legal boxes, actual unlocalized roles, stopping metadata, and fresh/replay
 cache counts.  It always reports `certificate_status=NOT_APPLICABLE` and
 `new_verified_count=0`.
+
+### Stage 3G-A v3.1: null-bbox output-contract revision
+
+v3.1 is a separate prompt-only contract revision following the immutable v3
+smoke observation that two ACTION results used `[null,null,null,null]` for
+`NOT_VISIBLE`.  Local-HF native generation metadata is available, but reliable
+schema/grammar-constrained decoding is not; the v3.1 policy records
+`PROMPT_ONLY_FAIL_CLOSED`.  The parser still rejects every array-shaped null
+value and does not import boxes from v3 raw output.
+
+v3.1 smoke reuses the exact four v3 smoke anchor IDs in exactly their frozen
+order.  It must run once.  If either ACTION output retains a schema violation,
+do not run the complete 75-anchor cohort or change the prompt again in that
+run.  The PRE cover frame remains part of the smoke and may correctly yield all
+`NOT_VISIBLE` roles.
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+conda activate MedVidU-cu124
+
+V3_SMOKE=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/your_v3_smoke_selection_directory
+SMOKE31=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v31_smoke_selection_$(date +%Y%m%d_%H%M%S)
+OUT31=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v31_smoke_$(date +%Y%m%d_%H%M%S)
+POLICY31=configs/v2/tal_spatial_anchor_grounding_v31_policy.json
+
+PYTHONPATH=src python scripts/freeze_v2_tal_stage3g_v31_smoke_selection.py \
+  --v3-selection-manifest "$V3_SMOKE/v2_tal_stage3g_v3_smoke_selection.jsonl" \
+  --output-dir "$SMOKE31"
+
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v31.py \
+  --mode preflight --config "$CONFIG" --policy "$POLICY31" \
+  --stage3f-dir "$STAGE3F" --stage3c-dir "$STAGE3C" --stage3d-dir "$STAGE3D" \
+  --stage3e-dir "$STAGE3E" --video-index-dir "$INDEX_OUT" \
+  --smoke-selection-manifest "$SMOKE31/v2_tal_stage3g_v31_smoke_selection.jsonl" \
+  --output-dir "$OUT31"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v31.py \
+  --mode run --config "$CONFIG" --policy "$POLICY31" --output-dir "$OUT31"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v31.py \
+  --mode replay --config "$CONFIG" --policy "$POLICY31" --output-dir "$OUT31"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v31.py \
+  --mode validate --output-dir "$OUT31"
+
+cat "$OUT31/run/v2_tal_stage3g_v3_1_manifest.json"
+cat "$OUT31/run/v2_tal_stage3g_v3_1_audit.json"
+cat "$OUT31/run/v2_tal_spatial_anchor_v3_1_review_packet_index.jsonl"
+```
+
+Only if the smoke has zero schema violations should the full frozen cohort be
+run twice in separate output/cache roots without `--smoke-selection-manifest`.
+Then compare the two fresh runs:
+
+```bash
+PYTHONPATH=src python scripts/compare_v2_tal_spatial_anchor_grounding_v31_repeats.py \
+  --run-a-dir "$FULL_A31" --run-b-dir "$FULL_B31" \
+  --output-dir "$COMPARE31"
+```

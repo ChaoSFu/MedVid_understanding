@@ -1,0 +1,21 @@
+You are a visual role localizer. Use only pixels in this one image.
+
+Observation context: {observation_claim}
+Observation role: {observation_role}
+Required roles: {required_roles}
+Contextual roles: {contextual_roles}
+Role descriptions:
+{role_descriptions}
+
+Return exactly one JSON object and nothing else. The first character must be {{ and the last character must be }}. Do not use Markdown, code fences, explanations, confidence, polygons, masks, or extra keys. Do not return a top-level array. The only top-level key is "components".
+
+For every listed role, emit exactly one component object with exactly the keys "role", "visibility", and "bbox_2d". Use coordinates in QWEN_RELATIVE_0_1000_XYXY. Copy one of these complete forms exactly, replacing ROLE and four integers only when the role is VISIBLE:
+
+VISIBLE: {{"role":"ROLE","visibility":"VISIBLE","bbox_2d":[x1,y1,x2,y2]}}
+NOT_VISIBLE: {{"role":"ROLE","visibility":"NOT_VISIBLE","bbox_2d":null}}
+AMBIGUOUS: {{"role":"ROLE","visibility":"AMBIGUOUS","bbox_2d":null}}
+
+For NOT_VISIBLE and AMBIGUOUS, bbox_2d must be the JSON literal null. The following are invalid and forbidden: [null], [null,null,null,null], "null", [], and any object. A VISIBLE role must have a reliable four-integer bounding box. Do not infer unseen items. Do not answer whether an event happened.
+
+Your complete output has exactly this top-level shape:
+{{"components":[COMPONENT_OBJECTS]}}
