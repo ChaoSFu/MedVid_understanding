@@ -384,7 +384,7 @@ def freeze_video_index(*, requirement_dir: Path, selection_manifest_path: Path, 
                 "ready_for_hypothesis_generation": index_status == "RESOLVED_DATASET_NATIVE_CLIP_LOCAL", "requirement_manifest_sha256": _sha(requirement_dir / "v2_requirement_manifest.json"),
                 "selection_manifest_sha256": selection_sha, "timebase_policy_sha256": policy_sha,
                 "public_timestamp_manifest_sha256": _sha(public_timestamp_manifest_path) if public_timestamp_manifest_path else None, "public_timestamp_provenance_sha256": _sha(public_timestamp_provenance_path) if public_timestamp_provenance_path else None,
-                "public_media_projection_count": len(projection_rows), "video_index_count": len(index_rows), "unresolved_count": len(unresolved_rows),
+                "public_media_projection_count": len(projection_rows), "video_index_count": sum(row["frame_count"] for row in index_rows), "video_index_record_count": len(index_rows), "unresolved_count": len(unresolved_rows),
                 "public_media_projection_sha256": _sha(paths["v2_public_media_projection.jsonl"]), "video_index_sha256": _sha(paths["v2_video_index.jsonl"]),
                 "video_index_unresolved_sha256": _sha(paths["v2_video_index_unresolved.jsonl"]), "source_container_opened": True,
                 "assistant_or_gt_values_accessed": False, "gt_used": False, "frames_read": sum(row["frame_count"] for row in projection_rows),
@@ -411,7 +411,7 @@ def validate_video_index_artifacts(output_dir: Path, *, materialize_frames: bool
         raise VideoIndexError("VIDEO_INDEX_ARTIFACT_MISSING")
     manifest = _canonical_object(paths["v2_video_index_manifest.json"], code="VIDEO_INDEX_MANIFEST")
     audit = _canonical_object(paths["v2_video_index_audit.json"], code="VIDEO_INDEX_AUDIT")
-    required = {"format", "status", "index_status", "ready_for_hypothesis_generation", "requirement_manifest_sha256", "selection_manifest_sha256", "timebase_policy_sha256", "public_timestamp_manifest_sha256", "public_timestamp_provenance_sha256", "public_media_projection_count", "video_index_count", "unresolved_count", "public_media_projection_sha256", "video_index_sha256", "video_index_unresolved_sha256", "source_container_opened", "assistant_or_gt_values_accessed", "gt_used", "frames_read", "videos_read", "model_calls_made", "backend_loaded", "cache_opened", "claim_graph_created", "hypothesis_count", "certificate_created", "new_verified_count", "certificate_status", "manifest_content_sha256"}
+    required = {"format", "status", "index_status", "ready_for_hypothesis_generation", "requirement_manifest_sha256", "selection_manifest_sha256", "timebase_policy_sha256", "public_timestamp_manifest_sha256", "public_timestamp_provenance_sha256", "public_media_projection_count", "video_index_count", "video_index_record_count", "unresolved_count", "public_media_projection_sha256", "video_index_sha256", "video_index_unresolved_sha256", "source_container_opened", "assistant_or_gt_values_accessed", "gt_used", "frames_read", "videos_read", "model_calls_made", "backend_loaded", "cache_opened", "claim_graph_created", "hypothesis_count", "certificate_created", "new_verified_count", "certificate_status", "manifest_content_sha256"}
     if set(manifest) != required or manifest["format"] != VIDEO_INDEX_FORMAT:
         raise VideoIndexError("VIDEO_INDEX_MANIFEST_SCHEMA_INVALID")
     if manifest["manifest_content_sha256"] != stable_hash({key: value for key, value in manifest.items() if key != "manifest_content_sha256"}):
@@ -422,7 +422,7 @@ def validate_video_index_artifacts(output_dir: Path, *, materialize_frames: bool
     projection = _strict_rows(paths["v2_public_media_projection.jsonl"], code="MEDIA_PROJECTION", allow_empty=True)
     indexes = _strict_rows(paths["v2_video_index.jsonl"], code="VIDEO_INDEX", allow_empty=True)
     unresolved = _strict_rows(paths["v2_video_index_unresolved.jsonl"], code="VIDEO_INDEX_UNRESOLVED", allow_empty=True)
-    if (len(projection), len(indexes), len(unresolved)) != (manifest["public_media_projection_count"], manifest["video_index_count"], manifest["unresolved_count"]):
+    if (len(projection), len(indexes), len(unresolved)) != (manifest["public_media_projection_count"], manifest["video_index_record_count"], manifest["unresolved_count"]) or manifest["video_index_count"] != sum(row.get("frame_count", 0) for row in indexes):
         raise VideoIndexError("VIDEO_INDEX_COUNT_MISMATCH")
     if manifest["index_status"] == "UNRESOLVED_TIMEBASE" and indexes:
         raise VideoIndexError("VIDEO_INDEX_TIMEBASE_UNRESOLVED")

@@ -91,7 +91,7 @@ class VideoIndexTests(unittest.TestCase):
         index = json.loads((out / "v2_video_index.jsonl").read_text())
         self.assertEqual(len(index["frames"]), 3)
         self.assertEqual(index["frames"][1]["source_frame_reference"], index["frames"][2]["source_frame_reference"])
-        self.assertEqual(validate_video_index_artifacts(out, materialize_frames=True)["video_index_count"], 1)
+        self.assertEqual(validate_video_index_artifacts(out, materialize_frames=True)["video_index_count"], 3)
         duplicate = self.root / "duplicate-timestamps"
         timestamps = self.timestamps((0.0, 0.5, 0.5))
         self.freeze(duplicate, timestamps, self.provenance(timestamps))
