@@ -326,6 +326,113 @@ class LocalHFBackend(Backend):
         except Exception:
             raise BackendError("LOCAL_HF_GENERATION_FAILURE") from None
 
+    def audit_token_constraint(self, constraint: Any) -> dict[str, Any]:
+        """Bind a token grammar to the loaded checkpoint tokenizer without generation."""
+        if not callable(getattr(constraint, "prepare", None)):
+            raise BackendError("TOKEN_CONSTRAINT_REQUEST_INVALID")
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        eos = getattr(getattr(self.model, "generation_config", None), "eos_token_id", None)
+        eos_ids = {eos} if type(eos) is int else set(eos or []) if isinstance(eos, (list, tuple, set)) else set()
+        try:
+            binding = constraint.prepare(tokenizer, 0, eos_ids)
+            initial_allowed = constraint.allowed_token_ids([])
+            if not initial_allowed:
+                raise ValueError("no legal initial grammar token")
+            get_vocab = getattr(tokenizer, "get_vocab", None)
+            vocabulary = get_vocab() if callable(get_vocab) else None
+            template = _processor_template(self.processor)
+            if not isinstance(vocabulary, dict):
+                raise ValueError("tokenizer vocabulary unavailable")
+            return {"binding": binding, "initial_allowed_token_count": len(initial_allowed),
+                    "tokenizer_binding": {"tokenizer_class": tokenizer.__class__.__name__,
+                     "tokenizer_vocab_size": len(vocabulary),
+                     "tokenizer_vocabulary_sha256": _identity_hash(vocabulary),
+                     "tokenizer_chat_template_sha256": hashlib.sha256((template or "").encode("utf-8")).hexdigest(),
+                     "eos_token_ids": sorted(eos_ids)}}
+        except BackendError:
+            raise
+        except Exception:
+            raise BackendError("LOCAL_HF_TOKEN_CONSTRAINT_AUDIT_FAILURE") from None
+
+    def infer_with_token_constraint(self, request: dict[str, Any], constraint: Any) -> dict[str, Any]:
+        """Run the actual multimodal ``generate`` path with a fail-closed token constraint.
+
+        ``constraint`` is a versioned object supplied by a diagnostic caller.  It
+        receives the real tokenizer and prompt token count, masks logits for each
+        generated token, and returns explicit metadata.  This is separate from
+        both existing inference methods so their behavior cannot drift.
+        """
+        self.calls += 1
+        paths = request.get("image_paths", [])
+        if not isinstance(paths, list) or not callable(getattr(constraint, "prepare", None)):
+            raise BackendError("TOKEN_CONSTRAINT_REQUEST_INVALID")
+        images = [self._prepared_image(path) for path in paths]
+        messages = self._messages(request, images)
+        inputs = self._model_inputs(messages, images)
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        input_ids = inputs.get("input_ids")
+        if tokenizer is None or input_ids is None or getattr(input_ids, "shape", None) is None:
+            raise BackendError("TOKEN_CONSTRAINT_TOKENIZER_UNAVAILABLE")
+        if len(input_ids.shape) != 2 or int(input_ids.shape[0]) != 1:
+            raise BackendError("TOKEN_CONSTRAINT_BATCH_UNSUPPORTED")
+        eos = getattr(getattr(self.model, "generation_config", None), "eos_token_id", None)
+        eos_ids = {eos} if type(eos) is int else set(eos or []) if isinstance(eos, (list, tuple, set)) else set()
+        if not eos_ids:
+            raise BackendError("TOKEN_CONSTRAINT_EOS_UNAVAILABLE")
+        try:
+            binding = constraint.prepare(tokenizer, int(input_ids.shape[1]), eos_ids)
+            get_vocab = getattr(tokenizer, "get_vocab", None)
+            vocabulary = get_vocab() if callable(get_vocab) else None
+            if not isinstance(vocabulary, dict) or any(not isinstance(k, str) or type(v) is not int for k, v in vocabulary.items()):
+                raise ValueError("tokenizer vocabulary unavailable")
+            template = _processor_template(self.processor)
+            tokenizer_binding = {"tokenizer_class": tokenizer.__class__.__name__,
+                "tokenizer_vocab_size": len(vocabulary),
+                "tokenizer_vocabulary_sha256": _identity_hash(vocabulary),
+                "tokenizer_chat_template_sha256": hashlib.sha256((template or "").encode("utf-8")).hexdigest(),
+                "prompt_token_count": int(input_ids.shape[1]), "eos_token_ids": sorted(eos_ids)}
+            transformers = self.transformers
+            base = getattr(transformers, "LogitsProcessor", object)
+            outer = constraint
+            class _ConstrainedProcessor(base):
+                def __call__(self, ids: Any, scores: Any) -> Any:
+                    return outer.apply_logits(ids, scores)
+            processor_list = getattr(transformers, "LogitsProcessorList", None)
+            if processor_list is None:
+                raise ValueError("transformers logits processor API unavailable")
+            generation = dict(self.config["generation"])
+            generation["return_dict_in_generate"] = True
+            generation["logits_processor"] = processor_list([_ConstrainedProcessor()])
+            with self.torch.inference_mode():
+                output = self.model.generate(**inputs, **generation)
+            sequences = getattr(output, "sequences", None)
+            if sequences is None:
+                raise ValueError("generate did not return sequences")
+            trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(input_ids, sequences)]
+            token_ids = trimmed[0].detach().to("cpu").tolist() if hasattr(trimmed[0], "detach") else list(trimmed[0])
+            if not isinstance(token_ids, list) or any(type(token) is not int for token in token_ids):
+                raise ValueError("invalid generated token ids")
+            decoded = self.processor.batch_decode(trimmed, skip_special_tokens=True,
+                                                  clean_up_tokenization_spaces=False)
+            if not isinstance(decoded, list) or len(decoded) != 1 or not isinstance(decoded[0], str):
+                raise ValueError("invalid decode")
+            configured_max = generation.get("max_new_tokens")
+            finish_reason = ("EOS_TOKEN" if token_ids and token_ids[-1] in eos_ids
+                             else "MAX_NEW_TOKENS" if len(token_ids) >= configured_max else "OTHER_STOP")
+            return {"raw_response": decoded[0].strip(),
+                    "generation_metadata": {"finish_reason": finish_reason,
+                        "generated_token_count": len(token_ids),
+                        "max_new_tokens": configured_max,
+                        "reached_max_new_tokens": len(token_ids) >= configured_max},
+                    "constraint_metadata": {"binding": binding, "tokenizer_binding": tokenizer_binding,
+                        "execution": constraint.final_metadata(token_ids),
+                        "generated_token_ids_sha256": hashlib.sha256(
+                            json.dumps(token_ids, separators=(",", ":")).encode("utf-8")).hexdigest()}}
+        except BackendError:
+            raise
+        except Exception:
+            raise BackendError("LOCAL_HF_TOKEN_CONSTRAINED_GENERATION_FAILURE") from None
+
     def forced_choice_token_contract(self, request: dict[str, Any], choices: tuple[str, ...] = ("A", "B", "C")) -> dict[str, Any]:
         """Validate exact one-token diagnostic choices in the real chat context.
 

@@ -1251,3 +1251,79 @@ PYTHONPATH=src python scripts/compare_v2_tal_spatial_anchor_grounding_v31_repeat
   --run-a-dir "$FULL_A31" --run-b-dir "$FULL_B31" \
   --output-dir "$COMPARE31"
 ```
+
+### Stage 3G-A v3.2: token-level constrained JSON contract
+
+v3.2 leaves all v2, v3, and v3.1 source code, caches, and run artifacts
+immutable.  It does not trim a trailing character, repair JSON, or import a box
+from a rejected response.  Instead, the Local-HF backend binds a versioned
+compact JSON prefix grammar to the loaded tokenizer and attaches it to the
+actual multimodal `model.generate()` logits path.  Before the object is
+complete, EOS is masked; after the one permitted complete object, only EOS is
+allowed.  If tokenization exposes no legal successor, EOS is used only to end
+that failed attempt and the result records a `TOKEN_CONSTRAINT_FAILURE`; no
+text is completed or repaired.
+
+The grammar freezes the task's exact component-role order, three visibility
+labels, literal `null` for `NOT_VISIBLE`/`AMBIGUOUS`, and relative-1000 integer
+coordinates for `VISIBLE`.  It does not decide visibility or establish that a
+box is visually correct.  The independent strict parser/geometry validator
+still runs after decoding.  The preflight loads the reviewed Local-HF backend,
+audits the actual tokenizer/template binding for every frozen grammar, and
+writes those bindings.  The smoke `run` is the required confirmation that the
+constraint is active in real multimodal generation.
+
+Use the v3.1 smoke-selection file, not a run result, to preserve the exact four
+frozen PRE/ACTION/POST anchor IDs and their order:
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+conda activate MedVidU-cu124
+
+POLICY32=configs/v2/tal_spatial_anchor_grounding_v32_policy.json
+V31_SELECTION=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/your_v31_smoke_selection
+SMOKE32_SELECTION=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v32_smoke_selection_$(date +%Y%m%d_%H%M%S)
+OUT32=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v32_smoke_$(date +%Y%m%d_%H%M%S)
+
+PYTHONPATH=src python scripts/freeze_v2_tal_stage3g_v32_smoke_selection.py \
+  --v31-selection-manifest "$V31_SELECTION/v2_tal_stage3g_v31_smoke_selection.jsonl" \
+  --output-dir "$SMOKE32_SELECTION"
+
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v32.py \
+  --mode preflight --config "$CONFIG" --policy "$POLICY32" \
+  --stage3f-dir "$STAGE3F" --stage3c-dir "$STAGE3C" --stage3d-dir "$STAGE3D" \
+  --stage3e-dir "$STAGE3E" --video-index-dir "$INDEX_OUT" \
+  --smoke-selection-manifest "$SMOKE32_SELECTION/v2_tal_stage3g_v32_smoke_selection.jsonl" \
+  --output-dir "$OUT32"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v32.py \
+  --mode run --config "$CONFIG" --policy "$POLICY32" --output-dir "$OUT32"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v32.py \
+  --mode replay --config "$CONFIG" --policy "$POLICY32" --output-dir "$OUT32"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v32.py \
+  --mode validate --output-dir "$OUT32"
+
+cat "$OUT32/run/v2_tal_stage3g_v3_2_manifest.json"
+cat "$OUT32/run/v2_tal_stage3g_v3_2_audit.json"
+cat "$OUT32/run/v2_tal_spatial_anchor_groundings_v3_2.jsonl"
+cat "$OUT32/run/v2_tal_spatial_anchor_v3_2_review_packet_index.jsonl"
+```
+
+Only proceed to the complete 75-anchor cohort if the smoke manifest reports
+zero `parse_failure_count`, `schema_violation_count`, and
+`constraint_failure_count`.  Do not rerun or modify the smoke in place.  The
+PRE cover frame remains a valid diagnostic all-`NOT_VISIBLE` outcome.
+
+```bash
+FULL_A32=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v32_full_a_$(date +%Y%m%d_%H%M%S)
+FULL_B32=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v32_full_b_$(date +%Y%m%d_%H%M%S)
+# For each root: run preflight, run, replay, validate as above, but omit
+# --smoke-selection-manifest.  Each root has its own fresh cache.
+
+COMPARE32=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v32_compare_$(date +%Y%m%d_%H%M%S)
+PYTHONPATH=src python scripts/compare_v2_tal_spatial_anchor_grounding_v32_repeats.py \
+  --run-a-dir "$FULL_A32" --run-b-dir "$FULL_B32" --output-dir "$COMPARE32"
+```
+
+The comparison reports raw/parsed/status agreement, role visibility, exact
+boxes, and canonical-result equality only.  Every legal box remains subject to
+human overlay review; v3.2 creates neither certificates nor `VERIFIED`.
