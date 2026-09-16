@@ -255,7 +255,7 @@ def execute(*,output_dir:Path,config_path:Path,policy_path:Path,mode:str,backend
    if mode=='replay':raise SpatialAnchorGroundingError('REPLAY_CACHE_MISS')
    grammar=GroundingJsonGrammar(entry['required_component_roles']+entry['contextual_requirements'])
    if grammar.spec_sha256!=entry.get('grammar_spec_sha256') or grammar.spec!=entry.get('grammar_spec'):raise SpatialAnchorGroundingError('GRAMMAR_BINDING_DRIFT')
-   generated=backend.infer_with_token_constraint({'prompt':entry['prompt'],'image_paths':[entry['image_path']],'frame_ids':[entry['unique_visual_frame_id']]},grammar)
+   generated=backend.infer_with_token_constraint({'prompt':entry['prompt'],'image_paths':[entry['image_path']],'frame_ids':[entry['unique_visual_frame_id']]},TokenLevelGroundingConstraint(grammar))
    if (not isinstance(generated,dict) or not isinstance(generated.get('raw_response'),str)
        or not isinstance(generated.get('generation_metadata'),dict) or not isinstance(generated.get('constraint_metadata'),dict)):
     raise SpatialAnchorGroundingError('GENERATION_METADATA_INVALID')

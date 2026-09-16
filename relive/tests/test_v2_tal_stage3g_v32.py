@@ -27,7 +27,8 @@ class _Grounder:
     def audit_token_constraint(self, constraint):
         grammar=constraint.grammar
         return {'binding':{'grammar_spec_sha256':grammar.spec_sha256},'tokenizer_binding':{'tokenizer_class':'fake','tokenizer_vocabulary_sha256':'fake'},'initial_allowed_token_count':1}
-    def infer_with_token_constraint(self, request, grammar):
+    def infer_with_token_constraint(self, request, constraint):
+        grammar=constraint.grammar
         roles = re.search(r'Required roles: (.*)\n',request['prompt']).group(1).split(', ')
         context = re.search(r'Contextual roles: (.*)\n',request['prompt']).group(1)
         roles += [] if context == 'none' else context.split(', ')
