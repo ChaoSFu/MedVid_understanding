@@ -129,6 +129,8 @@ class FakeVisionModel:
 
     def generate(self, **kwargs):
         self.generate_kwargs = kwargs
+        if kwargs.get("return_dict_in_generate"):
+            return types.SimpleNamespace(sequences=[[1, 2, 3]])
         return [[1, 2, 3]]
 
 
@@ -272,6 +274,19 @@ class LocalHFTests(unittest.TestCase):
                 backend.fingerprint()["scientific_identity"]["chat_template_kwargs"],
                 {"enable_thinking": False},
             )
+
+    def test_generation_metadata_interface_is_separate_from_infer(self):
+        processor = FakeProcessor()
+        with patch.dict(sys.modules, fake_modules(processor)):
+            backend = LocalHFBackend(self.config())
+            result = backend.infer_with_generation_metadata(
+                {"prompt": "Return JSON.", "image_paths": [str(self.image)], "frame_ids": ["f0"]}
+            )
+        self.assertEqual(result["raw_response"], '{"status":"SUPPORTED"}')
+        self.assertEqual(result["generation_metadata"]["generated_token_count"], 1)
+        self.assertEqual(result["generation_metadata"]["max_new_tokens"], 8)
+        self.assertEqual(result["generation_metadata"]["finish_reason"], "OTHER_STOP")
+        self.assertTrue(FakeVisionModel.last.generate_kwargs["return_dict_in_generate"])
 
     def test_template_errors_do_not_use_a_fallback_contract(self):
         processor = FakeProcessor()

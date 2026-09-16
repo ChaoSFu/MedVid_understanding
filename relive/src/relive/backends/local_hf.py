@@ -269,6 +269,63 @@ class LocalHFBackend(Backend):
         except Exception:
             raise BackendError("LOCAL_HF_GENERATION_FAILURE") from None
 
+    def infer_with_generation_metadata(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Generate once and expose non-semantic stopping metadata.
+
+        This is deliberately separate from :meth:`infer`, so existing verifier
+        calls retain their exact generation behavior and return type.  It does
+        not attempt grammar/schema constrained decoding: availability of the
+        native ``generate`` metadata is reported by callers independently from
+        any claim that the checkpoint can enforce a JSON schema.
+        """
+        self.calls += 1
+        paths = request.get("image_paths", [])
+        if not isinstance(paths, list):
+            raise BackendError("FRAME_IDENTITY_LENGTH_MISMATCH")
+        images = [self._prepared_image(path) for path in paths]
+        messages = self._messages(request, images)
+        inputs = self._model_inputs(messages, images)
+        generation = dict(self.config["generation"])
+        generation["return_dict_in_generate"] = True
+        try:
+            with self.torch.inference_mode():
+                output = self.model.generate(**inputs, **generation)
+            sequences = getattr(output, "sequences", None)
+            if sequences is None:
+                raise ValueError("generate did not return sequences")
+            input_ids = inputs["input_ids"]
+            trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(input_ids, sequences)]
+            decoded = self.processor.batch_decode(trimmed, skip_special_tokens=True,
+                                                  clean_up_tokenization_spaces=False)
+            if not isinstance(decoded, list) or len(decoded) != 1 or not isinstance(decoded[0], str):
+                raise ValueError("invalid decode")
+            token_ids = trimmed[0].detach().to("cpu").tolist() if hasattr(trimmed[0], "detach") else list(trimmed[0])
+            if not isinstance(token_ids, list) or any(type(token) is not int for token in token_ids):
+                raise ValueError("invalid generated token ids")
+            configured_max = generation.get("max_new_tokens")
+            if type(configured_max) is not int or configured_max <= 0:
+                raise ValueError("missing max_new_tokens")
+            eos = getattr(getattr(self.model, "generation_config", None), "eos_token_id", None)
+            eos_ids = {eos} if type(eos) is int else set(eos or []) if isinstance(eos, (list, tuple, set)) else set()
+            finish_reason = (
+                "EOS_TOKEN" if token_ids and token_ids[-1] in eos_ids
+                else "MAX_NEW_TOKENS" if len(token_ids) >= configured_max
+                else "OTHER_STOP"
+            )
+            return {
+                "raw_response": decoded[0].strip(),
+                "generation_metadata": {
+                    "finish_reason": finish_reason,
+                    "generated_token_count": len(token_ids),
+                    "max_new_tokens": configured_max,
+                    "reached_max_new_tokens": len(token_ids) >= configured_max,
+                },
+            }
+        except BackendError:
+            raise
+        except Exception:
+            raise BackendError("LOCAL_HF_GENERATION_FAILURE") from None
+
     def forced_choice_token_contract(self, request: dict[str, Any], choices: tuple[str, ...] = ("A", "B", "C")) -> dict[str, Any]:
         """Validate exact one-token diagnostic choices in the real chat context.
 

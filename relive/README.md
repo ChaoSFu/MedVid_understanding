@@ -1116,3 +1116,82 @@ its multi-role JSON response. This is bound into the effective model generation
 configuration, preflight, cache identity, and result manifest. Earlier runs
 with a lower generation budget remain immutable parser-failure artifacts and
 must not be reused as cache inputs for v2.
+
+### Stage 3G-A v3: output-contract hardening
+
+Stage 3G-A v3 leaves every v2 run, cache entry, and frozen artifact untouched.  It
+uses a separate prompt, parser version, cache namespace (`stage3g_v3`), and
+artifact names.  Local-HF provides stopping metadata (`EOS_TOKEN`,
+`MAX_NEW_TOKENS`, or `OTHER_STOP`); this is native generation telemetry, not
+schema-constrained decoding.  The reviewed backend does not provide reliable
+JSON-schema/grammar constrained decoding, so v3 freezes a strengthened prompt
+and retains the fail-closed JSON-object parser.  Top-level arrays, bracket
+repair, and LLM repair remain prohibited.
+
+First create the read-only v2 diagnostic and bounded engineering smoke manifest.
+`V2` is the root containing `stage3g_preflight.json` and `run/` from the
+existing 75-call run.  The smoke picks, before a v3 call, one historical
+parse/schema-failure anchor for each PRE/ACTION/POST role plus at most one
+historical schema-failure case.  It is not a scientific cohort.
+
+```bash
+cd /home/huihui/codes/MedVid_understanding/relive
+conda activate MedVidU-cu124
+
+V2=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/your_existing_stage3g_v2
+DIAG=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v2_diagnostic_$(date +%Y%m%d_%H%M%S)
+SMOKE=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v3_smoke_$(date +%Y%m%d_%H%M%S)
+
+PYTHONPATH=src python scripts/diagnose_v2_tal_spatial_anchor_grounding.py \
+  --v2-output-dir "$V2" --output-dir "$DIAG"
+PYTHONPATH=src python scripts/freeze_v2_tal_stage3g_v3_smoke_selection.py \
+  --v2-output-dir "$V2" --output-dir "$SMOKE"
+```
+
+For a real engineering smoke, use the frozen selection file as follows.  The
+v3 preflight writes its full call plan before model execution.  Run, replay,
+and validate use the same new cache.  Review packet overlays are for human
+review only: legal boxes do not support an ObservationClaim and do not create a
+certificate.
+
+```bash
+POLICY=configs/v2/tal_spatial_anchor_grounding_v3_policy.json
+SMOKE_OUT=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v3_smoke_run_$(date +%Y%m%d_%H%M%S)
+
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v3.py \
+  --mode preflight --config "$CONFIG" --policy "$POLICY" \
+  --stage3f-dir "$STAGE3F" --stage3c-dir "$STAGE3C" --stage3d-dir "$STAGE3D" \
+  --stage3e-dir "$STAGE3E" --video-index-dir "$INDEX_OUT" \
+  --smoke-selection-manifest "$SMOKE/v2_tal_stage3g_v3_smoke_selection.jsonl" \
+  --output-dir "$SMOKE_OUT"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v3.py \
+  --mode run --config "$CONFIG" --policy "$POLICY" --output-dir "$SMOKE_OUT"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v3.py \
+  --mode replay --config "$CONFIG" --policy "$POLICY" --output-dir "$SMOKE_OUT"
+PYTHONPATH=src python scripts/prepare_v2_tal_spatial_anchor_grounding_v3.py \
+  --mode validate --output-dir "$SMOKE_OUT"
+```
+
+For the complete frozen 75-anchor cohort, omit
+`--smoke-selection-manifest`.  Make a second distinct output directory and
+fresh cache, then compare the two `run/` directories with this zero-model
+command:
+
+```bash
+FULL_A=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v3_full_a_$(date +%Y%m%d_%H%M%S)
+FULL_B=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v3_full_b_$(date +%Y%m%d_%H%M%S)
+# Run preflight, run, replay, and validate above for FULL_A and FULL_B, without the smoke option.
+CMP=/mnt/hdd/huihui/MedVid_understanding/relive_output/real/v2_tal_stage3g_v3_compare_$(date +%Y%m%d_%H%M%S)
+PYTHONPATH=src python scripts/compare_v2_tal_spatial_anchor_grounding_v3_repeats.py \
+  --run-a-dir "$FULL_A" --run-b-dir "$FULL_B" --output-dir "$CMP"
+
+cat "$FULL_A/run/v2_tal_stage3g_v3_manifest.json"
+cat "$FULL_A/run/v2_tal_stage3g_v3_audit.json"
+cat "$FULL_A/run/v2_tal_spatial_anchor_v3_review_packet_index.jsonl"
+cat "$CMP/v2_tal_stage3g_v3_independent_repeat_comparison.json"
+```
+
+The v3 manifest reports parse/schema compliance, required-role visibility,
+legal boxes, actual unlocalized roles, stopping metadata, and fresh/replay
+cache counts.  It always reports `certificate_status=NOT_APPLICABLE` and
+`new_verified_count=0`.
