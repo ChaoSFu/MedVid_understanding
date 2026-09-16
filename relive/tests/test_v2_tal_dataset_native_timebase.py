@@ -52,3 +52,12 @@ class DatasetNativeIntegrationTests(DatasetNativeTimebaseTests):
   self.assertEqual(result['timebase_status'],'RESOLVED_DATASET_NATIVE')
   resolved=self.root/'resolved';freeze_video_index(requirement_dir=req,selection_manifest_path=selected,source_json=source,frame_root=self.root,source_prefix='/root/data',timebase_policy_path=policy,output_dir=resolved,public_timestamp_manifest_path=timestamps/'public_per_frame_timestamps.jsonl',public_timestamp_provenance_path=timestamps/'public_per_frame_timestamps.provenance.json')
   output=validate_video_index_artifacts(resolved);self.assertEqual(output['index_status'],'RESOLVED_DATASET_NATIVE');self.assertTrue(output['ready_for_hypothesis_generation']);self.assertEqual(len(__import__('json').loads((resolved/'v2_video_index.jsonl').read_text())['frames']),5)
+
+class DatasetNativeCliGateTests(DatasetNativeTimebaseTests):
+ def test_cli_stops_before_export_when_global_audit_is_unresolved(self):
+  import os, subprocess, sys
+  bad=dict(self.row);bad['video']=list(self.paths);bad['video'][0]=bad['video'][0].replace('000040','000041')
+  dataset=self.root/'bad.json';dataset.write_text(canonical_json([bad])+'\n')
+  script=Path(__file__).resolve().parents[1]/'scripts/export_v2_tal_dataset_native_timebase.py'
+  result=subprocess.run([sys.executable,str(script),'--dataset-json',str(dataset),'--selection-manifest',str(self.root/'unused'), '--requirement-freeze-dir',str(self.root/'unused'), '--media-audit-dir',str(self.root/'unused'),'--frame-root',str(self.root),'--source-prefix','/root/data','--frame-bank-layout','frames_2fps','--audit-output-dir',str(self.root/'audit'),'--output-dir',str(self.root/'export')],cwd=script.parents[1],env={**os.environ,'PYTHONPATH':str(script.parents[1]/'src')},capture_output=True,text=True)
+  self.assertEqual(result.returncode,2);self.assertFalse((self.root/'export').exists());self.assertIn('UNRESOLVED_TIMEBASE_SOURCE',result.stdout)
