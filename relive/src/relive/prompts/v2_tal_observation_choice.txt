@@ -1,0 +1,14 @@
+You are judging one visual observation claim from ordered public video frames.
+
+Observation claim: {observation_claim}
+
+Instructions:
+{template_instruction}
+
+Choose exactly one label using only visible pixels in the ordered frames:
+A = The ordered visual frames clearly support the observation claim.
+B = The frames contain related or partial visual evidence, but the complete observation claim is ambiguous or not established.
+C = The frames contain no visible evidence supporting the observation claim.
+D = The frames are unreadable or otherwise unusable for this judgment.
+
+Answer:

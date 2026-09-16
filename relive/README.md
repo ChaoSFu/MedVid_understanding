@@ -1013,3 +1013,43 @@ PYTHONPATH=src python scripts/prepare_v2_tal_observation_planning.py \
 PYTHONPATH=src python scripts/prepare_v2_tal_observation_planning.py \
   --mode validate --output-dir /path/to/v2_tal_stage3c
 ```
+
+### Stage 3D: claim-conditioned observation evidence retrieval
+
+Stage 3D consumes the immutable Stage 3C observation claims, physical windows,
+and binding fan-out. It creates one chronological, de-duplicated packet per
+physical window (at most eight unique frames) and one cached A/B/C/D likelihood
+task per unique `(template, packet, prompt, model, choice-policy)` identity.
+Parent hypotheses are not in prompts or cache identity. A temporal observation
+with too few distinct timestamps is reported as
+`TEMPORAL_PACKET_INSUFFICIENT` without a model call. Results are fanned out to
+all original bindings and ranked only within each ObservationClaim; at most
+three `CANDIDATE_EVIDENCE_UNVERIFIED` candidates are retained. No threshold,
+certificate, status admission, `NO_VISIBLE_EVENT` conclusion, or final TAL
+answer is produced.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_observation_retrieval.py \
+  --mode prepare --config /path/to/reviewed_qwen_opaque_gray.json \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --video-index-dir /path/to/v2_video_index \
+  --stage3c-dir /path/to/v2_tal_stage3c \
+  --policy configs/v2/tal_observation_retrieval_policy.json \
+  --output-dir /path/to/v2_tal_stage3d
+
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/prepare_v2_tal_observation_retrieval.py \
+  --mode preflight --config /path/to/reviewed_qwen_opaque_gray.json \
+  --stage3c-dir /path/to/v2_tal_stage3c --output-dir /path/to/v2_tal_stage3d
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src python scripts/prepare_v2_tal_observation_retrieval.py \
+  --mode run --config /path/to/reviewed_qwen_opaque_gray.json --output-dir /path/to/v2_tal_stage3d
+PYTHONPATH=src python scripts/prepare_v2_tal_observation_retrieval.py \
+  --mode replay --config /path/to/reviewed_qwen_opaque_gray.json --output-dir /path/to/v2_tal_stage3d
+PYTHONPATH=src python scripts/prepare_v2_tal_observation_retrieval.py \
+  --mode validate --output-dir /path/to/v2_tal_stage3d
+```
+
+The fresh run must have `new_model_calls=planned_model_calls` and
+`cache_hits=0`; replay must have `new_model_calls=0` and
+`cache_hits=planned_model_calls`. The four scientific result hashes in the
+run/replay summaries must match before later temporal evidence composition.
