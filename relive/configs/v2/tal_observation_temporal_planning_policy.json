@@ -1,0 +1,1 @@
+{"boundary_context_seconds":"4.0","boundary_zone_seconds":"8.0","fine_window_seconds":"4.0","fine_window_stride_seconds":"2.0","format":"relive-v2-tal-observation-temporal-planning-policy-v1","max_fine_windows_per_claim":16,"policy_version":"relive-v2-tal-observation-temporal-planning-v1","timestamp_domain":"CLIP_LOCAL"}

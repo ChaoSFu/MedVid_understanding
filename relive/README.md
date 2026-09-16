@@ -988,3 +988,28 @@ The comparator writes `v2_stage3b_independent_repeat_comparison.json`,
 `v2_stage3b_independent_repeat_window_differences.jsonl`, and
 `v2_stage3b_independent_repeat_audit.json`.  Only a comparison with
 `ready_for_stage3c=true` permits planning the next stage.
+
+### Stage 3C: immutable ObservationClaim and fine acquisition planning
+
+Stage 3C is a zero-model freeze.  Given an independently reproducible Stage
+3B root, it preserves every parent hypothesis byte-for-byte, creates three
+unverified required-observation claims per positive hypothesis, creates only a
+global-negative-coverage obligation for `NO_VISIBLE_EVENT`, and freezes 4 s /
+2 s fine acquisition windows.  It stops at
+`READY_FOR_OBSERVATION_RETRIEVAL` and never reads images, scores a claim, or
+creates a certificate.
+
+```bash
+PYTHONPATH=src python scripts/prepare_v2_tal_observation_planning.py \
+  --mode prepare \
+  --requirement-freeze-dir /path/to/v2_tal_requirements \
+  --selection-manifest /path/to/tal_requirement_selection.frozen.json \
+  --video-index-dir /path/to/v2_video_index \
+  --stage3b-dir /path/to/completed_stage3b_run \
+  --independent-repeat-comparison /path/to/v2_stage3b_independent_repeat_comparison.json \
+  --policy configs/v2/tal_observation_temporal_planning_policy.json \
+  --output-dir /path/to/v2_tal_stage3c
+
+PYTHONPATH=src python scripts/prepare_v2_tal_observation_planning.py \
+  --mode validate --output-dir /path/to/v2_tal_stage3c
+```
