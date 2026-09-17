@@ -35,7 +35,7 @@ class _Grounder:
         roles += [] if context == 'none' else context.split(', ')
         raw = json.dumps({'components':[{'role':x,'visibility':'NOT_VISIBLE','bbox_2d':None} for x in roles]},separators=(',',':'))
         return {'raw_response':raw,'generation_metadata':{'finish_reason':'EOS_TOKEN','generated_token_count':10,'max_new_tokens':512,'reached_max_new_tokens':False},
-                'constraint_metadata':{'binding':{'fake':True},'tokenizer_binding':{'tokenizer_class':'fake'},'execution':{'grammar_version':'relive-v2-grounding-token-json-grammar-v3.2','grammar_spec_sha256':grammar.spec_sha256,'implementation_version':'relive-v2-token-prefix-constraint-v1','constraint_failure':None,'constraint_failure_step':None,'final_prefix_status':'COMPLETE','final_prefix_reason':None,'initialization_overhead_seconds':self.initialization_overhead_seconds}}}
+                'constraint_metadata':{'binding':{'fake':True,'initialization_overhead_seconds':self.initialization_overhead_seconds},'tokenizer_binding':{'tokenizer_class':'fake'},'execution':{'grammar_version':'relive-v2-grounding-token-json-grammar-v3.2','grammar_spec_sha256':grammar.spec_sha256,'implementation_version':'relive-v2-token-prefix-constraint-v1','constraint_failure':None,'constraint_failure_step':None,'final_prefix_status':'COMPLETE','final_prefix_reason':None,'initialization_overhead_seconds':self.initialization_overhead_seconds}}}
 
 class Stage3GV32Tests(unittest.TestCase):
  def setUp(self):

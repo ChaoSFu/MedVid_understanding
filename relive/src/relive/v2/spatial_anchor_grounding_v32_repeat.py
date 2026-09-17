@@ -14,7 +14,10 @@ from relive.storage.artifacts import canonical_json,stable_hash
 from .task_selection import TALSelectionError,strict_json_loads,strict_jsonl
 class SpatialAnchorRepeatError(ValueError):pass
 SCIENTIFIC_OUTPUT_PROJECTION_VERSION='relive-v2-stage3g-v3.2-scientific-output-projection-v1'
-_DYNAMIC_EXECUTION_FIELDS=('initialization_overhead_seconds',)
+_DYNAMIC_CONSTRAINT_MEASUREMENT_PATHS=(
+    ('constraint_metadata','binding','initialization_overhead_seconds'),
+    ('constraint_metadata','execution','initialization_overhead_seconds'),
+)
 def _sha(p:Path)->str:return hashlib.sha256(p.read_bytes()).hexdigest()
 def _obj(p:Path)->dict[str,Any]:
  try:raw=p.read_bytes();v=strict_json_loads(raw.decode(),error_code='REPEAT')
@@ -35,13 +38,21 @@ def _scientific_output_projection(row:dict[str,Any])->dict[str,Any]:
  """
  value={k:v for k,v in row.items() if k not in {'cache_key','cache_hit','image_path','image_path_sha256','canonical_result_sha256'}}
  metadata=value.get('constraint_metadata')
- if isinstance(metadata,dict) and isinstance(metadata.get('execution'),dict):
-  metadata={**metadata,'execution':{k:v for k,v in metadata['execution'].items() if k not in _DYNAMIC_EXECUTION_FIELDS}}
+ if isinstance(metadata,dict):
+  metadata={**metadata}
+  for section in ('binding','execution'):
+   if isinstance(metadata.get(section),dict):
+    metadata[section]={k:v for k,v in metadata[section].items() if k!='initialization_overhead_seconds'}
   value={**value,'constraint_metadata':metadata}
  return value
 def _dynamic_execution_projection(row:dict[str,Any])->dict[str,Any]:
- execution=row.get('constraint_metadata',{}).get('execution',{}) if isinstance(row.get('constraint_metadata'),dict) else {}
- return {k:execution.get(k) for k in _DYNAMIC_EXECUTION_FIELDS if k in execution}
+ metadata=row.get('constraint_metadata',{}) if isinstance(row.get('constraint_metadata'),dict) else {}
+ result={}
+ for section in ('binding','execution'):
+  value=metadata.get(section,{})
+  if isinstance(value,dict) and 'initialization_overhead_seconds' in value:
+   result[f'constraint_metadata.{section}.initialization_overhead_seconds']=value['initialization_overhead_seconds']
+ return result
 def compare(*,run_a:Path,run_b:Path,output_dir:Path)->dict[str,Any]:
  if output_dir.exists() and any(output_dir.iterdir()):raise SpatialAnchorRepeatError('OUTPUT_DIRECTORY_MUST_BE_EMPTY')
  ma,mb=_obj(run_a/'run'/'v2_tal_stage3g_v3_2_manifest.json'),_obj(run_b/'run'/'v2_tal_stage3g_v3_2_manifest.json')
@@ -64,5 +75,5 @@ def compare(*,run_a:Path,run_b:Path,output_dir:Path)->dict[str,Any]:
  bindings={k:ma.get(k)==mb.get(k) for k in ('stage3f_manifest_sha256','upstream_sha256','policy_sha256','config_sha256')}
  passed=(len(a)==len(b)==len(paired) and raw==len(paired) and scientific_exact==len(paired)
          and status==len(paired) and all(roles) and all(bbox) and all(bindings.values()))
- result={'format':'relive-v2-spatial-anchor-grounding-v3.2-independent-repeat-v2','status':'PASS' if passed else 'FAIL','comparison_contract_version':'relive-v2-stage3g-v3.2-repeat-comparison-v2','scientific_output_projection_version':SCIENTIFIC_OUTPUT_PROJECTION_VERSION,'excluded_dynamic_execution_fields':list(_DYNAMIC_EXECUTION_FIELDS),'task_anchor_count_a':len(a),'task_anchor_count_b':len(b),'missing_or_duplicate_key_count':len(keys)-len(paired),'exact_raw_response_match_count':raw,'exact_artifact_result_match_count':artifact_exact,'exact_parsed_result_match_count':artifact_exact,'scientific_output_exact_match_count':scientific_exact,'scientific_output_hash_a':stable_hash(scientific_a),'scientific_output_hash_b':stable_hash(scientific_b),'scientific_output_hash_equal':stable_hash(scientific_a)==stable_hash(scientific_b),'dynamic_execution_metadata_difference_count':dynamic_differences,'exact_status_failure_match_count':status,'role_visibility_agreement_count':sum(roles),'bbox_exact_match_count':sum(bbox),'max_coordinate_absolute_difference':max(coords,default=0),'legacy_canonical_grounding_result_hash_equal':ma.get('canonical_grounding_result_sha256')==mb.get('canonical_grounding_result_sha256'),'canonical_grounding_result_hash_equal':ma.get('canonical_grounding_result_sha256')==mb.get('canonical_grounding_result_sha256'),'scientific_manifest_bindings_equal':bindings,'model_calls_made':0,'backend_loaded':False,'cache_opened':False,'certificate_created':False,'new_verified_count':0,'gt_used':False}
+ result={'format':'relive-v2-spatial-anchor-grounding-v3.2-independent-repeat-v3','status':'PASS' if passed else 'FAIL','comparison_contract_version':'relive-v2-stage3g-v3.2-repeat-comparison-v3','scientific_output_projection_version':SCIENTIFIC_OUTPUT_PROJECTION_VERSION,'excluded_dynamic_measurement_paths':['.'.join(path) for path in _DYNAMIC_CONSTRAINT_MEASUREMENT_PATHS],'task_anchor_count_a':len(a),'task_anchor_count_b':len(b),'missing_or_duplicate_key_count':len(keys)-len(paired),'exact_raw_response_match_count':raw,'exact_artifact_result_match_count':artifact_exact,'exact_parsed_result_match_count':artifact_exact,'scientific_output_exact_match_count':scientific_exact,'scientific_output_hash_a':stable_hash(scientific_a),'scientific_output_hash_b':stable_hash(scientific_b),'scientific_output_hash_equal':stable_hash(scientific_a)==stable_hash(scientific_b),'dynamic_execution_metadata_difference_count':dynamic_differences,'exact_status_failure_match_count':status,'role_visibility_agreement_count':sum(roles),'bbox_exact_match_count':sum(bbox),'max_coordinate_absolute_difference':max(coords,default=0),'legacy_canonical_grounding_result_hash_equal':ma.get('canonical_grounding_result_sha256')==mb.get('canonical_grounding_result_sha256'),'canonical_grounding_result_hash_equal':ma.get('canonical_grounding_result_sha256')==mb.get('canonical_grounding_result_sha256'),'scientific_manifest_bindings_equal':bindings,'model_calls_made':0,'backend_loaded':False,'cache_opened':False,'certificate_created':False,'new_verified_count':0,'gt_used':False}
  result['comparison_content_sha256']=stable_hash(result);output_dir.mkdir(parents=True);(output_dir/'v2_tal_stage3g_v3_2_independent_repeat_comparison.json').write_bytes((canonical_json(result)+'\n').encode());return result
