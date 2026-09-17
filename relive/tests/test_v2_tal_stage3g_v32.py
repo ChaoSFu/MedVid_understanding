@@ -22,6 +22,7 @@ class _Tokenizer:
         return ''.join('' if i == self.vocab_size - 1 else self.pieces[i] for i in ids)
 
 class _Grounder:
+    def __init__(self, initialization_overhead_seconds=0.0): self.initialization_overhead_seconds=initialization_overhead_seconds
     synthetic = True
     def fingerprint(self): return {'adapter_version':'fake-stage3g-v32','scientific_identity':{'model':'fake','generation':{'do_sample':False}}}
     def audit_token_constraint(self, constraint):
@@ -34,7 +35,7 @@ class _Grounder:
         roles += [] if context == 'none' else context.split(', ')
         raw = json.dumps({'components':[{'role':x,'visibility':'NOT_VISIBLE','bbox_2d':None} for x in roles]},separators=(',',':'))
         return {'raw_response':raw,'generation_metadata':{'finish_reason':'EOS_TOKEN','generated_token_count':10,'max_new_tokens':512,'reached_max_new_tokens':False},
-                'constraint_metadata':{'binding':{'fake':True},'tokenizer_binding':{'tokenizer_class':'fake'},'execution':{'grammar_version':'relive-v2-grounding-token-json-grammar-v3.2','grammar_spec_sha256':grammar.spec_sha256,'implementation_version':'relive-v2-token-prefix-constraint-v1','constraint_failure':None,'constraint_failure_step':None,'final_prefix_status':'COMPLETE','final_prefix_reason':None}}}
+                'constraint_metadata':{'binding':{'fake':True},'tokenizer_binding':{'tokenizer_class':'fake'},'execution':{'grammar_version':'relive-v2-grounding-token-json-grammar-v3.2','grammar_spec_sha256':grammar.spec_sha256,'implementation_version':'relive-v2-token-prefix-constraint-v1','constraint_failure':None,'constraint_failure_step':None,'final_prefix_status':'COMPLETE','final_prefix_reason':None,'initialization_overhead_seconds':self.initialization_overhead_seconds}}}
 
 class Stage3GV32Tests(unittest.TestCase):
  def setUp(self):
@@ -77,6 +78,15 @@ class Stage3GV32Tests(unittest.TestCase):
   plan=self.pf(smoke=smoke/'v2_tal_stage3g_v32_smoke_selection.jsonl');self.assertEqual(plan['generation_contract']['enforcement'],'ACTUAL_GENERATE_LOGITS_MASK_WITH_FAIL_CLOSED_PREFIX_GRAMMAR')
   first=execute(output_dir=self.g,config_path=self.d.base.config,policy_path=self.policy,mode='run',backend_factory=lambda _:_Grounder());second=execute(output_dir=self.g,config_path=self.d.base.config,policy_path=self.policy,mode='replay',backend_factory=lambda _:_Grounder())
   self.assertEqual(first['new_model_calls'],plan['planned_model_calls']);self.assertEqual(second['cache_hits'],plan['planned_model_calls']);self.assertEqual(validate(output_dir=self.g)['status'],'PASS')
-  self.pf(self.g2,smoke=smoke/'v2_tal_stage3g_v32_smoke_selection.jsonl');execute(output_dir=self.g2,config_path=self.d.base.config,policy_path=self.policy,mode='run',backend_factory=lambda _:_Grounder())
-  self.assertTrue(compare(run_a=self.g,run_b=self.g2,output_dir=self.d.base.root/'cmp')['canonical_grounding_result_hash_equal'])
+  self.pf(self.g2,smoke=smoke/'v2_tal_stage3g_v32_smoke_selection.jsonl');execute(output_dir=self.g2,config_path=self.d.base.config,policy_path=self.policy,mode='run',backend_factory=lambda _:_Grounder(0.2))
+  comparison=compare(run_a=self.g,run_b=self.g2,output_dir=self.d.base.root/'cmp')
+  self.assertFalse(comparison['legacy_canonical_grounding_result_hash_equal'])
+  self.assertTrue(comparison['scientific_output_hash_equal'])
+  self.assertEqual(comparison['scientific_output_exact_match_count'],plan['planned_model_calls'])
+  self.assertEqual(comparison['dynamic_execution_metadata_difference_count'],plan['planned_model_calls'])
+  result_path=self.g2/'run'/'v2_tal_spatial_anchor_groundings_v3_2.jsonl'
+  changed=[json.loads(line) for line in result_path.read_text().splitlines()]
+  changed[0]={**changed[0],'raw_response':'{"components":[]}' }
+  result_path.write_text(''.join(canonical_json(row)+'\n' for row in changed))
+  self.assertEqual(compare(run_a=self.g,run_b=self.g2,output_dir=self.d.base.root/'cmp-fail')['status'],'FAIL')
 if __name__=='__main__': unittest.main()

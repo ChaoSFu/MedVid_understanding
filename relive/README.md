@@ -1324,6 +1324,12 @@ PYTHONPATH=src python scripts/compare_v2_tal_spatial_anchor_grounding_v32_repeat
   --run-a-dir "$FULL_A32" --run-b-dir "$FULL_B32" --output-dir "$COMPARE32"
 ```
 
-The comparison reports raw/parsed/status agreement, role visibility, exact
-boxes, and canonical-result equality only.  Every legal box remains subject to
-human overlay review; v3.2 creates neither certificates nor `VERIFIED`.
+The comparison reports raw/status agreement, role visibility, and exact boxes.
+It also reports two identities: the legacy immutable run canonical hash, which
+includes measured constraint-initialization latency, and the versioned
+scientific-output hash, which excludes only that wall-clock measurement while
+retaining raw output, parsed components, generation metadata, frozen bindings,
+and static constraint metadata.  A fresh-repeat `PASS` requires the scientific
+output identity to agree; differing latency remains visible in the audit and
+does not make a model output differ.  Every legal box remains subject to human
+overlay review; v3.2 creates neither certificates nor `VERIFIED`.
