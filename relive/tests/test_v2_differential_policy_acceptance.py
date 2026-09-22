@@ -22,7 +22,8 @@ def write_json(path, value): path.write_text(canonical_json(value) + "\n", encod
 class DifferentialAcceptanceTests(unittest.TestCase):
     def closure(self, root: Path) -> Path:
         row={"status":"PILOT_CLOSED","source_artifacts_unchanged":True,"label_resolution_applied":True,
-             "r0_replay_new_model_calls":0,"r1_replay_new_model_calls":0}
+             "r0_replay_new_model_calls":0,"r1_replay_new_model_calls":0,"cache_opened":False,
+             "certificate_created":False,"new_verified_count":0}
         row["closure_manifest_sha256"]=stable_hash(row); path=root/"closure.json"; write_json(path,row); return path
 
     def test_fixed_fixture_runs_twice_byte_identically(self):
@@ -85,6 +86,13 @@ class DifferentialAcceptanceTests(unittest.TestCase):
             root=Path(temporary); output=root/"out"; output.mkdir(); (output/"existing").write_text("x")
             with self.assertRaisesRegex(DifferentialAcceptanceError,"NOT_EMPTY"):
                 run_acceptance_audit(policy_path=POLICY,fixture_path=FIXTURE,output_dir=output)
+
+    def test_pilot_nonzero_replay_or_write_contract_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); closure=self.closure(root); row=json.loads(closure.read_text()); row["r1_replay_new_model_calls"]=1
+            row.pop("closure_manifest_sha256"); row["closure_manifest_sha256"]=stable_hash(row); write_json(closure,row)
+            with self.assertRaisesRegex(DifferentialAcceptanceError,"PILOT_REPLAY_OR_WRITE"):
+                run_acceptance_audit(policy_path=POLICY,fixture_path=FIXTURE,output_dir=root/"out",pilot_closure=closure)
 
 
 if __name__ == "__main__": unittest.main()

@@ -74,6 +74,10 @@ def run_acceptance_audit(*, policy_path: str | Path, fixture_path: str | Path,
             pilot = verify_closed_pilot(pilot_closure)
         except DifferentialEvidenceError as exc:
             raise DifferentialAcceptanceError("PILOT_REGRESSION_CHECK_FAILED") from exc
+        if (pilot.get("r0_replay_new_model_calls") != 0 or pilot.get("r1_replay_new_model_calls") != 0
+                or pilot.get("cache_opened") is not False or pilot.get("certificate_created") is not False
+                or pilot.get("new_verified_count") != 0):
+            raise DifferentialAcceptanceError("PILOT_REPLAY_OR_WRITE_CONTRACT_INVALID")
     manifest = {"format": FORMAT, "status": "PASS", "fixture_sha256": source_fixture_sha,
                 "policy_sha256": policy_sha, "variant_families": ["ORIGINAL", "KEEP_TARGET", "KEEP_MATCHED_CONTROL[k]", "DROP_TARGET", "DROP_MATCHED_CONTROL[k]"],
                 "control_tier": variants.controls.tier, "control_set_sha256": variants.controls.sha256,
