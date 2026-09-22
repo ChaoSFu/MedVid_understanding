@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from relive.config import load_config
 from relive.v2.reviewed_anchor_formal_intervention import (
-    ReviewedAnchorInterventionError, execute, preflight, prepare_warning_adjudication_template,
+    ReviewedAnchorInterventionError, _trace_summary, execute, preflight, prepare_warning_adjudication_template,
 )
 
 
@@ -130,6 +130,9 @@ class ReviewedAnchorFormalInterventionTests(unittest.TestCase):
         first = execute(output_dir=out, config_path=self.config, mode="run", smoke_candidate_id=plan["candidates"][0]["candidate_id"])
         replay = execute(output_dir=out, config_path=self.config, mode="replay", smoke_candidate_id=plan["candidates"][0]["candidate_id"])
         self.assertEqual(first["summary"]["new_model_calls"], 4)
+        self.assertFalse(first["summary"]["full_formal_cohort_complete"])
+        self.assertIsNone(first["summary"]["cohort_stop_recommendation"])
+        self.assertIsNone(first["summary"]["smoke_observation"])
         self.assertEqual(replay["summary"]["new_model_calls"], 0)
         trace = json.loads((out / "run" / "reviewed_anchor_intervention_trace.jsonl").read_text())
         self.assertFalse(trace["human_labels_in_model_request"])
@@ -160,6 +163,16 @@ class ReviewedAnchorFormalInterventionTests(unittest.TestCase):
         execute(output_dir=second, config_path=self.config, mode="run")
         self.assertEqual((first / "run" / "reviewed_anchor_summary.json").read_bytes(),
                          (second / "run" / "reviewed_anchor_summary.json").read_bytes())
+
+    def test_drop_supported_smoke_never_triggers_five_candidate_stop_rule(self):
+        row = {"certificate": {"final_status": "UNCERTAIN"},
+               "spatial": {"references": {"drop": {"semantic_status": "SUPPORTED"}}},
+               "usage": {"new_calls": 4, "cache_hits": 0}, "new_verified_count": 0}
+        smoke = _trace_summary([row], mode="run", synthetic=False, formal_cohort_count=5)
+        full = _trace_summary([row] * 5, mode="run", synthetic=False, formal_cohort_count=5)
+        self.assertEqual(smoke["smoke_observation"], "DROP_TARGET_SUPPORTED_INTERVENTION_INSENSITIVE")
+        self.assertIsNone(smoke["cohort_stop_recommendation"])
+        self.assertEqual(full["cohort_stop_recommendation"], "PAUSE_FORMAL_EXPANSION_DIAGNOSTIC_REQUIRED")
 
 
 if __name__ == "__main__": unittest.main()

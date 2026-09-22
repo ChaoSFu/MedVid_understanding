@@ -349,18 +349,25 @@ def _run_candidate(row: dict[str, Any], plan_sha: str, config: dict[str, Any], i
     return trace
 
 
-def _trace_summary(rows: list[dict[str, Any]], *, mode: str, synthetic: bool) -> dict[str, Any]:
+def _trace_summary(rows: list[dict[str, Any]], *, mode: str, synthetic: bool,
+                   formal_cohort_count: int) -> dict[str, Any]:
     statuses = Counter()
     for row in rows:
         cert = row["certificate"]
         if isinstance(cert, dict): statuses[cert.get("final_status", cert.get("certificate_status", "UNCERTAIN"))] += 1
     all_drop_supported = bool(rows) and all((row.get("spatial") or {}).get("references", {}).get("drop", {}).get("semantic_status") == "SUPPORTED" for row in rows)
+    full_cohort_complete = len(rows) == formal_cohort_count
     return {"format": FORMAT, "status": "PASS", "mode": mode, "candidate_count": len(rows),
+            "formal_cohort_count": formal_cohort_count, "full_formal_cohort_complete": full_cohort_complete,
             "formal_variants": list(FORMAL_VARIANTS), "certificate_distribution": dict(sorted(statuses.items())),
             "new_model_calls": sum(row["usage"].get("new_calls", 0) for row in rows),
             "cache_hits": sum(row["usage"].get("cache_hits", 0) for row in rows),
             "all_drop_target_supported": all_drop_supported,
-            "cohort_stop_recommendation": "PAUSE_FORMAL_EXPANSION_DIAGNOSTIC_REQUIRED" if all_drop_supported else None,
+            # The research stop rule is defined over all five frozen
+            # observations. A one-candidate engineering smoke is evidence only
+            # about that candidate and must never halt the remaining cohort.
+            "cohort_stop_recommendation": "PAUSE_FORMAL_EXPANSION_DIAGNOSTIC_REQUIRED" if full_cohort_complete and all_drop_supported else None,
+            "smoke_observation": "DROP_TARGET_SUPPORTED_INTERVENTION_INSENSITIVE" if not full_cohort_complete and all_drop_supported else None,
             "diagnostic_only_variants_excluded": True, "synthetic_test": synthetic,
             "certificate_created": not synthetic, "new_verified_count": 0 if synthetic else sum(row["new_verified_count"] for row in rows),
             "gt_used": False}
@@ -389,7 +396,8 @@ def execute(*, output_dir: str | Path, config_path: str | Path, mode: str,
     traces = [_run_candidate(row, plan["plan_content_sha256"], config, inference, synthetic=backend.synthetic) for row in selected]
     if mode == "replay" and sum(row["usage"]["new_calls"] for row in traces) != 0:
         raise ReviewedAnchorInterventionError("REPLAY_NEW_MODEL_CALLS_NONZERO")
-    summary = _trace_summary(traces, mode=mode, synthetic=backend.synthetic)
+    summary = _trace_summary(traces, mode=mode, synthetic=backend.synthetic,
+                             formal_cohort_count=plan["formal_cohort_count"])
     _write(run_dir / "reviewed_anchor_intervention_trace.jsonl", traces)
     _write(run_dir / "reviewed_anchor_certificate_manifest.jsonl", [{"candidate_id": row["candidate_id"], "certificate": row["certificate"], "new_verified_count": row["new_verified_count"]} for row in traces])
     _write(run_dir / "reviewed_anchor_summary.json", summary)
@@ -404,7 +412,14 @@ def execute(*, output_dir: str | Path, config_path: str | Path, mode: str,
 
 
 def summarize(*, output_dir: str | Path, mode: str = "run") -> dict[str, Any]:
-    root = Path(output_dir) / mode
+    output_root = Path(output_dir)
+    root = output_root / mode
     traces = _rows(root / "reviewed_anchor_intervention_trace.jsonl", "FORMAL_TRACE")
-    summary = _trace_summary(traces, mode=mode, synthetic=all(row.get("certificate", {}).get("certificate_status") == "NOT_APPLICABLE_SYNTHETIC_TEST" for row in traces))
+    plan = _object(output_root / "reviewed_anchor_intervention_plan.json", "FORMAL_PLAN")
+    expected = plan.get("plan_content_sha256")
+    payload = dict(plan); payload.pop("plan_content_sha256", None)
+    if not isinstance(expected, str) or stable_hash(payload) != expected:
+        raise ReviewedAnchorInterventionError("FORMAL_PLAN_TAMPERED")
+    summary = _trace_summary(traces, mode=mode, synthetic=all(row.get("certificate", {}).get("certificate_status") == "NOT_APPLICABLE_SYNTHETIC_TEST" for row in traces),
+                             formal_cohort_count=plan["formal_cohort_count"])
     return {"status": "PASS", "summary": summary, "trace_sha256": sha256_path(root / "reviewed_anchor_intervention_trace.jsonl")}
