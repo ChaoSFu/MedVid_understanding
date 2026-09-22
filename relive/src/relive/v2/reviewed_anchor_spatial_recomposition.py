@@ -20,7 +20,7 @@ from relive.types import FinalStatus, SemanticStatus, to_dict
 from .reviewed_anchor_formal_intervention import (
     EXPECTED_ELIGIBLE, FORMAL_VARIANTS, FORMAT as R0_FORMAT,
     ReviewedAnchorInterventionError, _candidate_runtime, _object, _rows, _write,
-    _write_text, sha256_path,
+    _write_text, sha256_path, validate_label_resolution_manifest,
 )
 
 
@@ -72,8 +72,10 @@ def _r0_state(row: dict[str, Any]) -> dict[str, Any]:
                             and item["input_references"].get("candidate_id") == row.get("candidate_id")
                             and item["input_references"].get("claim_id") == row.get("observation_claim_id")
                             for item in references)
-    eligible = (values == {"ORIGINAL": "SUPPORTED", "KEEP_TARGET": "INSUFFICIENT",
-                            "DROP_TARGET": "SUPPORTED", "DROP_MATCHED_CONTROL": "SUPPORTED"}
+    eligible = (values.get("ORIGINAL") == "SUPPORTED"
+                and values.get("KEEP_TARGET") in {"INSUFFICIENT", "CONTRADICTED"}
+                and values.get("DROP_TARGET") == "SUPPORTED"
+                and values.get("DROP_MATCHED_CONTROL") == "SUPPORTED"
                 and spatial.get("expected_control_count") == 1 and spatial.get("observed_control_count") == 1
                 and _pixel_audits_ok(spatial) and reference_binding)
     return {"semantic_results": values, "pixel_audits_pass": _pixel_audits_ok(spatial),
@@ -99,7 +101,8 @@ def audit_r0_cohort(*, r0_output_dir: str | Path, output_dir: str | Path,
                     warning_adjudication: str | Path | None = None,
                     derived_review: str | Path | None = None,
                     recomputed_observation_decisions: str | Path | None = None,
-                    recomputed_eligible_manifest: str | Path | None = None) -> dict[str, Any]:
+                    recomputed_eligible_manifest: str | Path | None = None,
+                    label_resolution_manifest: str | Path | None = None) -> dict[str, Any]:
     """Read R0 without opening model/cache; report completeness and label application."""
     root, out = Path(r0_output_dir), Path(output_dir)
     plan = _as_error(_object, root / "reviewed_anchor_intervention_plan.json", "R0_PLAN")
@@ -129,6 +132,8 @@ def audit_r0_cohort(*, r0_output_dir: str | Path, output_dir: str | Path,
     unify = []
     sources_bound = warning_queue is not None and warning_adjudication is not None
     warning_impacts: list[dict[str, Any]] = []
+    resolution = None
+    resolution_sha = None
     if sources_bound:
         if sha256_path(warning_queue) != bound.get("warning_queue") or sha256_path(warning_adjudication) != bound.get("warning_adjudication"):
             raise ReviewedAnchorRecompositionError("R0_WARNING_ADJUDICATION_BINDING_INVALID")
@@ -142,14 +147,24 @@ def audit_r0_cohort(*, r0_output_dir: str | Path, output_dir: str | Path,
                                and (review.get("anchor_candidate_id"), review.get("role")) in formal_roles})
             warning_impacts.append({"grounding_signature": warning.get("grounding_signature"),
                                     "affects_formal_required_role": bool(impacted), "affected_candidate_ids": impacted})
+        if label_resolution_manifest is not None:
+            resolution_sha = sha256_path(label_resolution_manifest)
+            if resolution_sha != bound.get("label_resolution_manifest"):
+                raise ReviewedAnchorRecompositionError("R0_LABEL_RESOLUTION_BINDING_INVALID")
+            resolution = _as_error(validate_label_resolution_manifest, label_resolution_manifest,
+                raw_grounding_sha256=bound.get("raw_grounding"), derived_human_review_sha256=bound.get("human_review"),
+                validation_report_sha256=bound.get("validation_report"), observation_decisions_sha256=bound.get("observation_decisions"),
+                eligible_manifest_sha256=bound.get("eligible_manifest"), warning_queue_sha256=bound.get("warning_queue"),
+                warning_adjudication_sha256=bound.get("warning_adjudication"))
+        resolved = {item["grounding_signature"]: item["resolved_label"] for item in resolution.get("canonical_labels", [])} if isinstance(resolution, dict) else {}
         for item in _as_error(_rows, warning_adjudication, "R0_WARNING_ADJUDICATION"):
             if item.get("decision") == "UNIFY_LABELS":
                 impact = next((record for record in warning_impacts if record["grounding_signature"] == item.get("grounding_signature")), {})
                 unify.append({"grounding_signature": item.get("grounding_signature"),
-                              "resolved_label_present": "resolved_label" in item,
-                              "derived_review_created": derived_review is not None and Path(derived_review).is_file(),
-                              "routes_recomputed": recomputed_observation_decisions is not None and Path(recomputed_observation_decisions).is_file(),
-                              "eligible_manifest_recomputed": recomputed_eligible_manifest is not None and Path(recomputed_eligible_manifest).is_file(),
+                              "resolved_label_present": item.get("grounding_signature") in resolved,
+                              "derived_review_created": resolution is not None or (derived_review is not None and Path(derived_review).is_file()),
+                              "routes_recomputed": resolution is not None or (recomputed_observation_decisions is not None and Path(recomputed_observation_decisions).is_file()),
+                              "eligible_manifest_recomputed": resolution is not None or (recomputed_eligible_manifest is not None and Path(recomputed_eligible_manifest).is_file()),
                               "affects_formal_required_role": impact.get("affects_formal_required_role", False),
                               "affected_candidate_ids": impact.get("affected_candidate_ids", [])})
     input_adjudication_applied = sources_bound and (not unify or all(
@@ -164,6 +179,7 @@ def audit_r0_cohort(*, r0_output_dir: str | Path, output_dir: str | Path,
               "r0_complete_with_replay": complete, "candidates": rows,
               "duplicate_grounding_signature_impact": sorted(warning_impacts, key=lambda item: str(item["grounding_signature"])),
               "unify_labels_audit": {"warning_sources_bound": sources_bound, "unify_records": unify, "input_adjudication_applied": input_adjudication_applied,
+                  "label_resolution_manifest_sha256": resolution_sha,
                   "status": "APPLIED" if input_adjudication_applied else "DIAGNOSTIC_ONLY_INPUT_ADJUDICATION_NOT_APPLIED"},
               "model_calls_made": 0, "cache_opened": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False}
     report["report_content_sha256"] = stable_hash(report)
@@ -200,13 +216,15 @@ def _r1_candidates(plan: dict[str, Any], r0_rows: list[dict[str, Any]], eligible
 def preflight(*, r0_output_dir: str | Path, eligible_manifest: str | Path, config_path: str | Path,
               output_dir: str | Path, warning_queue: str | Path, warning_adjudication: str | Path,
               derived_review: str | Path | None = None, recomputed_observation_decisions: str | Path | None = None,
-              recomputed_eligible_manifest: str | Path | None = None) -> dict[str, Any]:
+              recomputed_eligible_manifest: str | Path | None = None,
+              label_resolution_manifest: str | Path | None = None) -> dict[str, Any]:
     r0, out = Path(r0_output_dir), Path(output_dir)
     audit_dir = out / "r0_audit"
     audit = audit_r0_cohort(r0_output_dir=r0, output_dir=audit_dir, warning_queue=warning_queue,
                             warning_adjudication=warning_adjudication, derived_review=derived_review,
                             recomputed_observation_decisions=recomputed_observation_decisions,
-                            recomputed_eligible_manifest=recomputed_eligible_manifest)
+                            recomputed_eligible_manifest=recomputed_eligible_manifest,
+                            label_resolution_manifest=label_resolution_manifest)
     if audit["status"] != "PASS":
         raise ReviewedAnchorRecompositionError("R0_COHORT_INCOMPLETE")
     if audit["unify_labels_audit"]["status"] != "APPLIED":
@@ -224,6 +242,7 @@ def preflight(*, r0_output_dir: str | Path, eligible_manifest: str | Path, confi
                        "r0_replay_trace_sha256": sha256_path(r0 / "replay" / "reviewed_anchor_intervention_trace.jsonl"),
                        "r0_cohort_audit_sha256": sha256_path(audit_dir / "reviewed_anchor_r0_cohort_audit.json"),
                        "eligible_manifest_sha256": sha256_path(eligible_manifest), "config_sha256": sha256_path(config_path),
+                       "label_resolution_manifest_sha256": sha256_path(label_resolution_manifest) if label_resolution_manifest is not None else None,
                        "operator": config["spatial"]["intervention"], "policy": config["policy"], "backend": config["backend"],
                        "human_labels_not_in_verifier_prompt": True, "gt_used": False},
           "model_calls_made": 0, "cache_opened": False, "certificate_created": False, "new_verified_count": 0, "gt_used": False}

@@ -20,6 +20,7 @@ def main() -> int:
     parser.add_argument("--derived-review")
     parser.add_argument("--recomputed-observation-decisions")
     parser.add_argument("--recomputed-eligible-manifest")
+    parser.add_argument("--label-resolution-manifest")
     parser.add_argument("--config")
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
@@ -30,7 +31,8 @@ def main() -> int:
             result = audit_r0_cohort(r0_output_dir=args.r0_output_dir, output_dir=args.output_dir,
                 warning_queue=args.warning_queue, warning_adjudication=args.warning_adjudication,
                 derived_review=args.derived_review, recomputed_observation_decisions=args.recomputed_observation_decisions,
-                recomputed_eligible_manifest=args.recomputed_eligible_manifest)
+                recomputed_eligible_manifest=args.recomputed_eligible_manifest,
+                label_resolution_manifest=args.label_resolution_manifest)
         elif args.mode == "preflight":
             needed = ("r0_output_dir", "eligible_manifest", "warning_queue", "warning_adjudication", "config")
             if any(getattr(args, key) is None for key in needed):
@@ -39,7 +41,8 @@ def main() -> int:
                 config_path=args.config, output_dir=args.output_dir, warning_queue=args.warning_queue,
                 warning_adjudication=args.warning_adjudication, derived_review=args.derived_review,
                 recomputed_observation_decisions=args.recomputed_observation_decisions,
-                recomputed_eligible_manifest=args.recomputed_eligible_manifest)
+                recomputed_eligible_manifest=args.recomputed_eligible_manifest,
+                label_resolution_manifest=args.label_resolution_manifest)
         else:
             if not args.config:
                 parser.error("--config is required")

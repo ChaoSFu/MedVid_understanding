@@ -33,6 +33,7 @@ from .task_selection import TALSelectionError, strict_json_loads, strict_jsonl
 
 FORMAT = "reviewed-anchor-formal-intervention-v1"
 WARNING_FORMAT = "reviewed-anchor-duplicate-grounding-adjudication-v1"
+LABEL_RESOLUTION_FORMAT = "reviewed-anchor-duplicate-grounding-label-resolution-v1"
 FORMAL_VARIANTS = ("ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL")
 EXPECTED_RAW_ANCHORS = 75
 EXPECTED_REVIEW_ROLES = 321
@@ -68,6 +69,40 @@ def _object(path: str | Path, code: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ReviewedAnchorInterventionError(f"{code}_MUST_BE_OBJECT")
     return value
+
+
+def validate_label_resolution_manifest(path: str | Path, *, raw_grounding_sha256: str,
+                                       derived_human_review_sha256: str,
+                                       validation_report_sha256: str,
+                                       observation_decisions_sha256: str,
+                                       eligible_manifest_sha256: str,
+                                       warning_queue_sha256: str,
+                                       warning_adjudication_sha256: str | None) -> dict[str, Any]:
+    """Validate an explicit-label derived-review binding without reading frames.
+
+    The original v1 decision records and the v2 canonical-label file are bound
+    by the resolution manifest.  This prevents a later formal plan from
+    treating a prose-only ``UNIFY_LABELS`` decision as a label correction.
+    """
+    manifest = _object(path, "LABEL_RESOLUTION_MANIFEST")
+    expected = manifest.get("manifest_content_sha256")
+    payload = dict(manifest); payload.pop("manifest_content_sha256", None)
+    if manifest.get("format") != LABEL_RESOLUTION_FORMAT or manifest.get("status") != "PASS" or not isinstance(expected, str) or stable_hash(payload) != expected:
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_MANIFEST_INVALID")
+    if (manifest.get("raw_grounding_sha256") != raw_grounding_sha256
+            or manifest.get("derived_human_review_sha256") != derived_human_review_sha256
+            or not isinstance(manifest.get("source_human_review_sha256"), str)):
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_INPUT_BINDING_INVALID")
+    if manifest.get("source_warning_queue_sha256") != warning_queue_sha256 or manifest.get("source_warning_adjudication_sha256") != warning_adjudication_sha256:
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_WARNING_BINDING_INVALID")
+    artifacts = manifest.get("recomputed_artifact_sha256")
+    if not isinstance(artifacts, dict) or artifacts.get("human_review_validation_report.json") != validation_report_sha256 or artifacts.get("observation_anchor_decisions.jsonl") != observation_decisions_sha256 or artifacts.get("eligible_anchor_manifest.jsonl") != eligible_manifest_sha256:
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_RECOMPUTED_BINDING_INVALID")
+    if not isinstance(manifest.get("canonical_labels"), list) or manifest.get("canonical_label_count") != 5 or manifest.get("review_rows_changed", 0) <= 0:
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_CANONICAL_LABELS_INVALID")
+    if not all(manifest.get(key) is True for key in ("source_raw_grounding_unchanged", "source_human_review_unchanged", "source_warning_queue_unchanged", "source_warning_adjudication_unchanged")):
+        raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_SOURCE_MUTATION_DETECTED")
+    return manifest
 
 
 def _write(path: Path, value: Any) -> None:
@@ -216,6 +251,7 @@ def preflight(*, eligible_manifest: str | Path, observation_decisions: str | Pat
               raw_grounding: str | Path, human_review: str | Path, validation_report: str | Path,
               warning_queue: str | Path, warning_adjudication: str | Path | None,
               config_path: str | Path, output_dir: str | Path,
+              label_resolution_manifest: str | Path | None = None,
               raw_sha_prefix: str = EXPECTED_RAW_SHA_PREFIX,
               review_sha_prefix: str = EXPECTED_REVIEW_SHA_PREFIX,
               expected_anchor_count: int = EXPECTED_RAW_ANCHORS,
@@ -234,7 +270,7 @@ def preflight(*, eligible_manifest: str | Path, observation_decisions: str | Pat
     component_count = sum(len(row.get("components", [])) for row in raw_rows)
     if component_count != expected_review_count or len(review_rows) != expected_review_count:
         raise ReviewedAnchorInterventionError("HUMAN_REVIEW_COUNT_MISMATCH")
-    if not hashes["raw_grounding"].startswith(raw_sha_prefix) or not hashes["human_review"].startswith(review_sha_prefix):
+    if not hashes["raw_grounding"].startswith(raw_sha_prefix):
         raise ReviewedAnchorInterventionError("REVIEWED_ANCHOR_INPUT_HASH_MISMATCH")
     report = _object(paths["validation_report"], "VALIDATION_REPORT")
     if report.get("status") != "PASS" or report.get("raw_anchor_manifest_sha256") != hashes["raw_grounding"] or report.get("review_jsonl_sha256") != hashes["human_review"]:
@@ -258,6 +294,22 @@ def preflight(*, eligible_manifest: str | Path, observation_decisions: str | Pat
     if len(warning_rows) != 5:
         raise ReviewedAnchorInterventionError("DUPLICATE_WARNING_COUNT_MISMATCH")
     adjudications, adjudication_sha = _adjudications(warning_adjudication, hashes["warning_queue"], {row["grounding_signature"]: row for row in warning_rows})
+    resolution_sha = None
+    if label_resolution_manifest is None:
+        if not hashes["human_review"].startswith(review_sha_prefix):
+            raise ReviewedAnchorInterventionError("REVIEWED_ANCHOR_INPUT_HASH_MISMATCH")
+    else:
+        resolution_sha = sha256_path(label_resolution_manifest)
+        resolution = validate_label_resolution_manifest(label_resolution_manifest,
+            raw_grounding_sha256=hashes["raw_grounding"], derived_human_review_sha256=hashes["human_review"],
+            validation_report_sha256=hashes["validation_report"], observation_decisions_sha256=hashes["observation_decisions"],
+            eligible_manifest_sha256=hashes["eligible_manifest"], warning_queue_sha256=hashes["warning_queue"],
+            warning_adjudication_sha256=adjudication_sha)
+        if ({row.get("grounding_signature") for row in resolution.get("canonical_labels", [])} != set(adjudications)
+                or any(row.get("decision") != "UNIFY_LABELS" for row in adjudications.values())):
+            raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_UNIFY_DECISION_BINDING_INVALID")
+        if not isinstance(resolution.get("source_human_review_sha256"), str) or not resolution["source_human_review_sha256"].startswith(review_sha_prefix):
+            raise ReviewedAnchorInterventionError("LABEL_RESOLUTION_SOURCE_REVIEW_HASH_INVALID")
     gate = _warning_gate(warning_rows, candidates, adjudications, hashes["warning_queue"], adjudication_sha)
     config = load_config(paths["config"])
     if config["policy"]["name"] != "semantic_spatial" or config["policy"]["version"] != "relive-v1-policy-1" or config["spatial"]["intervention"]["operator"] != "opaque_gray" or config["adaptation"]["enabled"]:
@@ -269,7 +321,7 @@ def preflight(*, eligible_manifest: str | Path, observation_decisions: str | Pat
     _write(gate_path, gate)
     plan = {"format": FORMAT, "status": gate["status"], "formal_cohort_count": len(candidates),
             "formal_variants": list(FORMAL_VARIANTS), "diagnostic_variants_enabled": False,
-            "candidates": candidates, "bindings": {**hashes, "warning_adjudication": adjudication_sha,
+            "candidates": candidates, "bindings": {**hashes, "warning_adjudication": adjudication_sha, "label_resolution_manifest": resolution_sha,
             "warning_adjudication_gate": sha256_path(gate_path), "semantic_prompt_version": PROMPT_VERSIONS["semantic"],
             "intervention_operator_version": config["spatial"]["intervention"]["operator_version"],
             "intervention_version": INTERVENTION_VERSION, "control_version": CONTROL_VERSION,

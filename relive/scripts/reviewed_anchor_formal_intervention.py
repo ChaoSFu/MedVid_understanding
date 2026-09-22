@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--validation-report")
     parser.add_argument("--warning-queue")
     parser.add_argument("--warning-adjudication")
+    parser.add_argument("--label-resolution-manifest")
     parser.add_argument("--warning-template-output")
     parser.add_argument("--config")
     parser.add_argument("--smoke-candidate-id")
@@ -36,7 +37,7 @@ def main() -> int:
             result = preflight(eligible_manifest=args.eligible_manifest, observation_decisions=args.observation_decisions,
                 raw_grounding=args.raw_grounding, human_review=args.human_review, validation_report=args.validation_report,
                 warning_queue=args.warning_queue, warning_adjudication=args.warning_adjudication, config_path=args.config,
-                output_dir=args.output_dir)
+                output_dir=args.output_dir, label_resolution_manifest=args.label_resolution_manifest)
         elif args.mode in {"run", "replay"}:
             if not args.config: parser.error("--config is required")
             result = execute(output_dir=args.output_dir, config_path=args.config, mode=args.mode, smoke_candidate_id=args.smoke_candidate_id)

@@ -55,6 +55,40 @@ reviewer id and rationale.  This does not edit a raw grounding or review label.
 An unresolved duplicate warning that touches an eligible required role makes
 preflight write `FORMAL_RUN_BLOCKED` and prevents `run`.
 
+### Explicit canonical labels after `UNIFY_LABELS`
+
+The v1 warning-decision file records a decision and rationale only. It never
+parses a phrase such as `Canonical label: ACCEPTED` from reviewer prose. When a
+reviewer chooses `UNIFY_LABELS`, create a separate v2 file with one explicit
+`resolved_label` per grounding signature, then derive a new review and new
+diagnostic-only routes:
+
+```bash
+PYTHONPATH=src python scripts/resolve_reviewed_anchor_duplicate_groundings.py \
+  --mode prepare \
+  --warning-adjudication "$MANUAL/duplicate_grounding_adjudication.jsonl" \
+  --output-dir "$RESOLUTION" \
+  --template-output "$RESOLUTION/canonical_label_adjudication.template.jsonl"
+
+# A human fills resolved_label in every row of a copied template. No source
+# review, raw grounding, or warning file is edited.
+PYTHONPATH=src python scripts/resolve_reviewed_anchor_duplicate_groundings.py \
+  --mode apply \
+  --raw-grounding "$RAW" \
+  --human-review "$REVIEW" \
+  --warning-queue "$QUEUE" \
+  --warning-adjudication "$MANUAL/duplicate_grounding_adjudication.jsonl" \
+  --canonical-label-adjudication "$RESOLUTION/canonical_label_adjudication.jsonl" \
+  --output-dir "$RESOLUTION/applied"
+```
+
+`apply` emits a derived review plus a new `adjudicated_anchor_manifest.jsonl`,
+`observation_anchor_decisions.jsonl`, and `eligible_anchor_manifest.jsonl`.
+The formal preflight binds all of those files through
+`canonical_label_resolution_manifest.json`. If the corrected route no longer
+has exactly five eligible observations, preflight fails closed; it does not
+replace the missing candidate.
+
 The frozen plan has exactly `ORIGINAL`, `KEEP_TARGET`, `DROP_TARGET`, and
 `DROP_MATCHED_CONTROL`. `FULL_GRAY` and `MISMATCHED_PUBLIC` are not formal
 variants and cannot enter certificate admission. The machine-generated report
