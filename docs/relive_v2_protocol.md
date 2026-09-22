@@ -13,6 +13,7 @@ anchor selection rule, or action vocabulary.
 | `SPATIAL_RELATION` | `SUBJECT`, `REFERENCE_ENTITY`, `RELATION_INTERFACE` | two regions plus their interface or an explicit occlusion abstention |
 | `CONTACT_ACTION` | `ACTOR`, `ACTION_TARGET`, `CONTACT_INTERFACE` | actor/target masks and a time-bound contact interface |
 | `STATE_CHANGE_OR_PERSISTENCE` | `SUBJECT`, `PRE_STATE`, `POST_STATE`, `CHANGE_INTERFACE` | pre/post evidence tubes and a change interface |
+| `POSTCONDITION_PERSISTENCE` | `SUBJECT`, `POST_STATE`, `PERSISTENCE_INTERFACE` | a post-interaction tube with explicit interaction-end localization |
 
 Every `EvidenceNode` binds a frame hash, role, optional mask hash, and one
 occlusion state: `VISIBLE`, `PARTIALLY_OCCLUDED`, `OCCLUDED`, or `AMBIGUOUS`.
