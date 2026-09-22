@@ -8,6 +8,7 @@ non-overlapping matched controls and RGB/RGBA/L pixel audits are ReliVE-v1 chang
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from typing import Any, Sequence
 
@@ -27,6 +28,7 @@ OPAQUE_GRAY_OPERATOR = "opaque_gray"
 OPAQUE_GRAY_VERSION = "relive-opaque-gray-hard-mask-v1"
 CONTROL_VERSION = "relive-matched-corners-edges-v1"
 VARIANTS = ("ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "DROP_MATCHED_CONTROL")
+COMPOSITE_MASK_GEOMETRY_VERSION = "relive-composite-union-mask-v1"
 
 
 def resolve_intervention_spec(spec: dict[str, Any] | None, blur_radius: float) -> dict[str, Any]:
@@ -145,6 +147,144 @@ def generate_control_regions(region: Sequence[float], count: int) -> dict[str, A
             "geometry_rule": "fixed_corners_then_edge_centers_then_target_adjacent; target/control pairwise disjoint",
             "matching": "identical_normalized_width_and_height",
             "limitation": "Controls may contain other evidence; rasterization can change pixel area by one row/column."}
+
+
+def _regions(regions: Sequence[Sequence[float]]) -> list[tuple[float, float, float, float]]:
+    if not isinstance(regions, (list, tuple)) or not regions:
+        raise ValueError("COMPOSITE_MASK_REQUIRES_NONEMPTY_REGIONS")
+    return [validate_region(region) for region in regions]
+
+
+def _mask_for_regions(size: tuple[int, int], regions: Sequence[Sequence[float]]) -> Image.Image:
+    mask = Image.new("L", size, 0)
+    for region in _regions(regions):
+        mask.paste(255, box=normalized_to_pixel_bbox(region, *size))
+    return mask
+
+
+def _mask_digest(mask: Image.Image) -> str:
+    return hashlib.sha256(mask.tobytes()).hexdigest()
+
+
+def _mask_shape_digest(mask: Image.Image) -> str:
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise ValueError("COMPOSITE_MASK_MUST_NOT_BE_EMPTY")
+    cropped = mask.crop(bbox)
+    return hashlib.sha256((str(cropped.size) + ":").encode("ascii") + cropped.tobytes()).hexdigest()
+
+
+def _mask_stats(original: Image.Image, altered: Image.Image, mask: Image.Image) -> dict[str, Any]:
+    changed_channels = ImageChops.difference(original, altered)
+    changed = Image.new("L", original.size, 0)
+    for band in changed_channels.split():
+        changed = ImageChops.lighter(changed, band)
+    inside = ImageChops.multiply(changed, mask)
+    outside = ImageChops.multiply(changed, ImageChops.invert(mask))
+    inside_unchanged, outside_unchanged = inside.getbbox() is None, outside.getbbox() is None
+    return {"inside_unchanged": inside_unchanged, "outside_unchanged": outside_unchanged,
+            "inside_changed": not inside_unchanged, "outside_changed": not outside_unchanged,
+            "inside_max_channel_delta": inside.getextrema()[1], "outside_max_channel_delta": outside.getextrema()[1],
+            "any_pixel_changed": changed.getbbox() is not None}
+
+
+def generate_composite_control_regions(regions: Sequence[Sequence[float]], count: int = 1,
+                                       image_sizes: Sequence[tuple[int, int]] | None = None) -> dict[str, Any]:
+    """Generate a translated, non-overlapping control with the same union shape.
+
+    The only permitted transform is a uniform normalized translation of every
+    frozen component rectangle.  This preserves the union geometry and avoids
+    silently replacing a sparse composite by its enclosing rectangle.
+    """
+    target = _regions(regions)
+    sizes = list(image_sizes or [])
+    if any(not isinstance(size, tuple) or len(size) != 2 or min(size) <= 0 for size in sizes):
+        raise ValueError("COMPOSITE_CONTROL_IMAGE_SIZES_INVALID")
+    target_shapes = [(_mask_for_regions(size, target).getdata(), _mask_shape_digest(_mask_for_regions(size, target))) for size in sizes]
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError("CONTROL_COUNT_MUST_BE_NONNEGATIVE_INTEGER")
+    x1, y1 = min(box[0] for box in target), min(box[1] for box in target)
+    x2, y2 = max(box[2] for box in target), max(box[3] for box in target)
+    envelope = (x1, y1, x2, y2)
+    selected: list[list[list[float]]] = []
+    placements: list[dict[str, Any]] = []
+    for index, (px, py) in enumerate(_control_placements(envelope)):
+        dx, dy = px - x1, py - y1
+        translated = [[box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy] for box in target]
+        valid = all(0 <= box[0] < box[2] <= 1 and 0 <= box[1] < box[3] <= 1 for box in translated)
+        overlaps_target = any(_intersection_area(source, probe) > 0 for source in target for probe in translated)
+        overlaps_control = any(any(_intersection_area(old, probe) > 0 for old in chosen for probe in translated) for chosen in selected)
+        pixel_match = valid and (not sizes or all(
+            sum(1 for value in _mask_for_regions(size, translated).getdata() if value)
+            == sum(1 for value in target_mask if value)
+            and _mask_shape_digest(_mask_for_regions(size, translated)) == target_shape
+            for size, (target_mask, target_shape) in zip(sizes, target_shapes)))
+        if len(selected) >= count:
+            state = "NOT_EVALUATED_AFTER_REQUEST_SATISFIED"
+        elif not valid:
+            state = "OUT_OF_BOUNDS"
+        elif overlaps_target:
+            state = "OVERLAPS_TARGET"
+        elif overlaps_control:
+            state = "OVERLAPS_PREVIOUS_CONTROL"
+        elif not pixel_match:
+            state = "PIXEL_SHAPE_OR_AREA_MISMATCH"
+        else:
+            selected.append(translated)
+            state = "SELECTED"
+        placements.append({"placement_index": index, "translation_normalized_xy": [dx, dy],
+                           "regions": translated, "state": state})
+    available = len(selected) == count
+    return {"status": "CONTROL_AVAILABLE" if available else "CONTROL_UNAVAILABLE", "available": available,
+            "regions": selected, "requested_count": count, "valid_count": len(selected),
+            "target_regions": [list(box) for box in target], "target_envelope": list(envelope),
+            "candidate_placements": placements, "version": "relive-composite-mask-translated-control-v1",
+            "geometry_rule": "uniform_translation_of_every_target_component; target/control pairwise disjoint",
+            "matching": "identical_composite_mask_shape_and_normalized_area"}
+
+
+def apply_spatial_intervention_mask(image: Image.Image, regions: Sequence[Sequence[float]], variant: str,
+                                    operator_spec: dict[str, Any]) -> tuple[Image.Image, dict[str, Any]]:
+    """Apply the registered operator to a union of frozen rectangles.
+
+    This is a mask geometry extension, not a new visual operator: the emitted
+    operator/version/parameters stay the exact registered core declaration.
+    """
+    canonical = resolve_intervention_spec(operator_spec, float(operator_spec.get("parameters", {}).get("blur_radius", 1.0)))
+    if variant not in VARIANTS:
+        raise ValueError(f"UNSUPPORTED_INTERVENTION: {variant}")
+    if image.mode not in {"RGB", "RGBA", "L"}:
+        raise ValueError("INTERVENTION_IMAGE_MODE_MUST_BE_RGB_RGBA_OR_L")
+    source = image.convert("RGB")
+    mask = _mask_for_regions(source.size, regions)
+    if variant == "ORIGINAL":
+        altered = source.copy()
+    elif canonical["operator"] == OPAQUE_GRAY_OPERATOR:
+        fill = tuple(canonical["parameters"]["fill_rgb"])
+        base = Image.new("RGB", source.size, fill)
+        altered = Image.composite(source, base, mask) if variant == "KEEP_TARGET" else Image.composite(base, source, mask)
+    else:
+        blurred = source.filter(ImageFilter.GaussianBlur(radius=canonical["parameters"]["blur_radius"]))
+        altered = Image.composite(source, blurred, mask) if variant == "KEEP_TARGET" else Image.composite(blurred, source, mask)
+    stats = _mask_stats(source, altered, mask)
+    unchanged_region = "both" if variant == "ORIGINAL" else "inside" if variant == "KEEP_TARGET" else "outside"
+    changed_region = None if variant == "ORIGINAL" else "outside" if variant == "KEEP_TARGET" else "inside"
+    unchanged = ((stats["inside_unchanged"] and stats["outside_unchanged"]) if unchanged_region == "both"
+                 else stats[f"{unchanged_region}_unchanged"])
+    expected_change = False if changed_region is None else stats[f"{changed_region}_changed"]
+    passed = unchanged and (changed_region is None or expected_change) and altered.size == source.size
+    status = "PASS" if passed else ("INTERVENTION_NO_EFFECT" if unchanged else "INTERVENTION_PIXEL_AUDIT_FAILED")
+    return altered, {"version": canonical["operator_version"], "intervention_protocol": canonical,
+                     "variant": variant, "geometry_type": "COMPOSITE_BINARY_MASK_UNION",
+                     "mask_geometry_version": COMPOSITE_MASK_GEOMETRY_VERSION,
+                     "component_regions": [list(box) for box in _regions(regions)],
+                     "mask_sha256": _mask_digest(mask), "mask_pixel_area": sum(1 for value in mask.getdata() if value),
+                     "mask_shape_sha256": _mask_shape_digest(mask),
+                     "original_size": list(source.size), "output_size": list(altered.size),
+                     "resolution_preserved": altered.size == source.size, "unchanged_region": unchanged_region,
+                     "expected_changed_region": changed_region, "unchanged_region_pass": bool(unchanged),
+                     "expected_region_changed": bool(expected_change), "pixel_audit_pass": bool(passed),
+                     "audit_status": status, **stats}
 
 
 def _pixel_stats(original: Image.Image, altered: Image.Image, box) -> dict[str, Any]:

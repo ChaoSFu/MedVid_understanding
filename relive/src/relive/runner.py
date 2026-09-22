@@ -28,7 +28,8 @@ from relive.contrasts import evaluate_contrast
 from relive.coverage import assess_coverage
 from relive.data.frames import select_frames, timing_summary
 from relive.data.schemas import load_runtime, SUPPORTED_TASKS
-from relive.interventions import (apply_spatial_intervention, check_spatial, generate_control_regions,
+from relive.interventions import (apply_spatial_intervention, apply_spatial_intervention_mask, check_spatial,
+                                  generate_composite_control_regions, generate_control_regions,
                                   INTERVENTION_VERSION, CONTROL_VERSION, INTERVENTION_PROTOCOL_VERSION)
 from relive.reasoning import forced_answer, strict_answer
 from relive.spatial import parse_proposal
@@ -91,7 +92,7 @@ class SampleRunner:
         memo_key = None
         if stage == "semantic":
             memo_key = (candidate.candidate_id, claim.claim_id if claim else None, variant,
-                        tuple(actual_paths), tuple(region) if region is not None else None, control_index,
+                        tuple(actual_paths), json.dumps(region, sort_keys=True, separators=(",", ":")) if region is not None else None, control_index,
                         json.dumps(self.intervention, sort_keys=True, separators=(",", ":")))
             prior = self.verification_memo.get(memo_key)
             if prior is not None:
@@ -304,6 +305,96 @@ class SampleRunner:
         result.update(proposal=to_dict(proposal), controls=controls, pixel_audit_refs=pixel_refs,
                       intervention_protocol=self.intervention,
                       support_area_fraction=area, large_region_warning=area >= self.cfg["spatial"]["max_area_warning"])
+        return result
+
+    def spatial_with_composite_regions(self, sample, candidate, claim, original, component_regions, *,
+                                       component_roles, composition_provenance=None):
+        """Run the frozen four-variant protocol over a binary union mask.
+
+        The existing semantic verifier, opaque-gray operator, content-addressed
+        cache, pixel-audit recording and :func:`check_spatial` admission rule
+        remain authoritative.  The only added input is a pre-frozen list of
+        component boxes interpreted as a union, never as an enclosing box.
+        """
+        if len(self.proposals) >= self.cfg["budget"]["max_spatial_proposals"]:
+            return {"pass": False, "status": "MAX_SPATIAL_PROPOSALS", "reasons": ["MAX_SPATIAL_PROPOSALS"],
+                    "require_controls": POLICIES[self.cfg["policy"]["name"]]["controls"],
+                    "intervention_protocol": self.intervention}
+        if not isinstance(component_regions, (list, tuple)) or not component_regions:
+            return {"pass": False, "status": "COMPOSITE_INTERVENTION_OPERATOR_UNAVAILABLE",
+                    "reasons": ["COMPOSITE_INTERVENTION_OPERATOR_UNAVAILABLE"],
+                    "require_controls": True, "intervention_protocol": self.intervention}
+        composition = {"geometry_type": "COMPOSITE_BINARY_MASK_UNION", "component_regions": [list(x) for x in component_regions],
+                       "component_roles": list(component_roles), "provenance": dict(composition_provenance or {})}
+        self.proposals.append(composition)
+        self.record("spatial_compositions", {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
+                                               "claim_id": claim.claim_id, "composition": composition,
+                                               "intervention_protocol": self.intervention})
+        controls_required = POLICIES[self.cfg["policy"]["name"]]["controls"]
+        frame_sizes = []
+        for frame in select_frames(sample, candidate):
+            with Image.open(frame.path) as source:
+                frame_sizes.append(source.size)
+        controls = generate_composite_control_regions(component_regions,
+                    self.cfg["spatial"]["control_count"] if controls_required else 0, frame_sizes)
+        self.record("controls", {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
+                                 "composition": composition, "intervention_protocol": self.intervention, **controls})
+        if controls_required and not controls["available"]:
+            return {"pass": False, "status": "COMPOSITE_INTERVENTION_OPERATOR_UNAVAILABLE",
+                    "reasons": ["COMPOSITE_INTERVENTION_OPERATOR_UNAVAILABLE"], "require_controls": True,
+                    "controls": controls, "composition": composition, "intervention_protocol": self.intervention}
+        variants = [("KEEP_TARGET", component_regions, None), ("DROP_TARGET", component_regions, None)]
+        if controls_required:
+            variants += [("DROP_MATCHED_CONTROL", regions, index) for index, regions in enumerate(controls["regions"])]
+        pixel_refs, original_audits, verdicts, control_verdicts = [], [], {}, []
+        for frame in select_frames(sample, candidate):
+            with Image.open(frame.path) as source:
+                _, audit = apply_spatial_intervention_mask(source.convert("RGB"), component_regions, "ORIGINAL", self.intervention)
+            original_audits.append(audit)
+            pixel_refs.append(self.record("pixel_audits", {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
+                "composition": composition, "frame_id": frame.frame_id, "output_path": None, "control_index": None, **audit}))
+        if not all(audit["pixel_audit_pass"] for audit in original_audits):
+            return {"pass": False, "status": "INTERVENTION_PIXEL_AUDIT_FAILED", "reasons": ["INTERVENTION_PIXEL_AUDIT_FAILED"],
+                    "require_controls": controls_required, "controls": controls, "composition": composition,
+                    "pixel_audit_refs": pixel_refs, "intervention_protocol": self.intervention}
+        for variant, regions, control_index in variants:
+            paths, audits = [], []
+            for frame in select_frames(sample, candidate):
+                with Image.open(frame.path) as source:
+                    altered, audit = apply_spatial_intervention_mask(source.convert("RGB"), regions, variant, self.intervention)
+                path = _image_file(self.inference.store.root, altered)
+                paths.append(path); audits.append(audit)
+                pixel_refs.append(self.record("pixel_audits", {"sample_id": sample.sample_id, "candidate_id": candidate.candidate_id,
+                    "composition": composition, "frame_id": frame.frame_id, "output_path": path, "control_index": control_index, **audit}))
+            if variant == "DROP_MATCHED_CONTROL":
+                shape_match = (len(audits) == len(original_audits) and all(
+                    audit["mask_pixel_area"] == target["mask_pixel_area"]
+                    and audit["mask_shape_sha256"] == target["mask_shape_sha256"]
+                    for audit, target in zip(audits, original_audits)))
+                if not shape_match:
+                    return {"pass": False, "status": "COMPOSITE_CONTROL_MASK_MISMATCH",
+                            "reasons": ["COMPOSITE_CONTROL_MASK_MISMATCH"], "require_controls": controls_required,
+                            "controls": controls, "composition": composition, "pixel_audit_refs": pixel_refs,
+                            "intervention_protocol": self.intervention}
+            if not all(audit["unchanged_region_pass"] and audit["resolution_preserved"] and audit["pixel_audit_pass"] for audit in audits):
+                return {"pass": False, "status": "INTERVENTION_PIXEL_AUDIT_FAILED", "reasons": ["INTERVENTION_PIXEL_AUDIT_FAILED"],
+                        "require_controls": controls_required, "controls": controls, "composition": composition,
+                        "pixel_audit_refs": pixel_refs, "intervention_variant": variant, "intervention_protocol": self.intervention}
+            if not any(audit["expected_region_changed"] for audit in audits):
+                return {"pass": False, "status": "INTERVENTION_NO_EFFECT", "reasons": ["INTERVENTION_NO_EFFECT"],
+                        "require_controls": controls_required, "controls": controls, "composition": composition,
+                        "pixel_audit_refs": pixel_refs, "intervention_variant": variant, "intervention_protocol": self.intervention}
+            verdict = self.infer(sample, candidate, claim, "semantic", variant, paths, list(regions), 0, control_index)
+            if variant == "DROP_MATCHED_CONTROL":
+                control_verdicts.append(verdict)
+            else:
+                verdicts[variant] = verdict
+        result = check_spatial(original, verdicts["KEEP_TARGET"], verdicts["DROP_TARGET"], control_verdicts,
+                               controls["available"], controls_required,
+                               expected_control_count=self.cfg["spatial"]["control_count"] if controls_required else 0)
+        result.update(composition=composition, controls=controls, pixel_audit_refs=pixel_refs,
+                      intervention_protocol=self.intervention, support_area_fraction=None,
+                      large_region_warning=False)
         return result
 
     def spatial(self, sample, candidate, claim, original, proposal_index):

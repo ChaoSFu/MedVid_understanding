@@ -59,3 +59,25 @@ The frozen plan has exactly `ORIGINAL`, `KEEP_TARGET`, `DROP_TARGET`, and
 `DROP_MATCHED_CONTROL`. `FULL_GRAY` and `MISMATCHED_PUBLIC` are not formal
 variants and cannot enter certificate admission. The machine-generated report
 is protocol evidence, not a medical truth assertion.
+
+## Reviewed-anchor R0 audit and one-round R1 recomposition
+
+`reviewed_anchor_spatial_recomposition.py` first audits an immutable R0
+five-candidate run *and replay*. It reports each candidate's four semantic
+outcomes, pixel-audit status, failure reasons, certificate status, and fresh /
+replay call counts. Missing candidates or a replay cache miss stop R1.
+
+`UNIFY_LABELS` is treated conservatively. The historical duplicate-warning
+schema has no `resolved_label`; recording that decision alone does not alter a
+review, recompute routes, or rebuild the eligible manifest. Such an input is
+reported as `DIAGNOSTIC_ONLY_INPUT_ADJUDICATION_NOT_APPLIED` and blocks R1.
+
+For a frozen `ACTION_CORE_PRESSING` R0 failure with `ORIGINAL=SUPPORTED`,
+`KEEP_TARGET=INSUFFICIENT`, `DROP_TARGET=SUPPORTED`, and a supported matched
+control, R1 performs exactly one `SPATIAL_RECOMPOSE`. Its target is the binary
+union of `OPERATOR_HAND`, `BASE_PLATE`, and `HAND_BASE_INTERFACE`; it never
+uses an enclosing rectangle. The matched control is a non-overlapping uniform
+translation of every component rectangle, preserving the composite geometry.
+The opaque-gray operator, semantic verifier, pixel audit, cache and
+`semantic_spatial` certificate policy remain unchanged. `NO_R2_AFTER_R1` is a
+hard cycle guard.
