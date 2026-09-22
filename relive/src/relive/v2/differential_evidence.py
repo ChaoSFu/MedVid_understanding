@@ -207,3 +207,52 @@ def verify_closed_pilot(path: str | Path) -> dict[str, Any]:
     if closure.get("status") != "PILOT_CLOSED" or stable_hash(payload) != expected or closure.get("source_artifacts_unchanged") is not True or closure.get("label_resolution_applied") is not True:
         raise DifferentialEvidenceError("PILOT_CLOSURE_INVALID")
     return closure
+
+@dataclass(frozen=True)
+class DifferentialVariantSet:
+    """The required five formal variant families for one frozen candidate."""
+    original: InterventionVariant
+    keep_target: InterventionVariant
+    drop_target: InterventionVariant
+    controls: MatchedControlSet
+
+    def __post_init__(self) -> None:
+        if self.original.variant != "ORIGINAL" or self.keep_target.variant != "KEEP_TARGET" or self.drop_target.variant != "DROP_TARGET":
+            raise DifferentialEvidenceError("REQUIRED_TARGET_VARIANT_MISSING_OR_MISMATCHED")
+
+    def compute_metrics(self) -> DifferentialEvidenceMetrics:
+        return metrics(original=self.original, keep_target=self.keep_target, drop_target=self.drop_target, controls=self.controls)
+
+
+def _variant_from_mapping(value: Any, expected: str) -> InterventionVariant:
+    if not isinstance(value, dict) or set(value) != {"variant", "score", "semantic_status", "renderer_sha256"}:
+        raise DifferentialEvidenceError("VARIANT_RESULT_UNPARSEABLE")
+    try:
+        result = InterventionVariant(**value)
+    except (TypeError, DifferentialEvidenceError) as exc:
+        raise DifferentialEvidenceError("VARIANT_RESULT_UNPARSEABLE") from exc
+    if result.variant != expected:
+        raise DifferentialEvidenceError("REQUIRED_TARGET_VARIANT_MISSING_OR_MISMATCHED")
+    return result
+
+
+def variant_set_from_mapping(value: Any) -> DifferentialVariantSet:
+    """Parse a closed fixture/runtime result without accepting partial variants."""
+    required = {"ORIGINAL", "KEEP_TARGET", "DROP_TARGET", "KEEP_MATCHED_CONTROL", "DROP_MATCHED_CONTROL", "control_quality"}
+    if not isinstance(value, dict) or set(value) != required:
+        raise DifferentialEvidenceError("REQUIRED_VARIANT_SET_INCOMPLETE")
+    original = _variant_from_mapping(value["ORIGINAL"], "ORIGINAL")
+    keep_target = _variant_from_mapping(value["KEEP_TARGET"], "KEEP_TARGET")
+    drop_target = _variant_from_mapping(value["DROP_TARGET"], "DROP_TARGET")
+    quality = value["control_quality"]
+    if not isinstance(quality, dict) or set(quality) != {"tier", "required_evidence_clean", "same_operator", "same_modified_frames", "same_modified_pixels", "geometry_valid", "area_curve_matched", "connectivity_matched", "foreground_fraction_matched", "salience_matched", "occlusion_matched", "tolerance_source_sha256"}:
+        raise DifferentialEvidenceError("MATCHED_CONTROL_QUALITY_UNPARSEABLE")
+    if not isinstance(value["KEEP_MATCHED_CONTROL"], list) or not isinstance(value["DROP_MATCHED_CONTROL"], list):
+        raise DifferentialEvidenceError("MATCHED_CONTROL_RESULT_UNPARSEABLE")
+    keeps = tuple(_variant_from_mapping(item, "KEEP_MATCHED_CONTROL") for item in value["KEEP_MATCHED_CONTROL"])
+    drops = tuple(_variant_from_mapping(item, "DROP_MATCHED_CONTROL") for item in value["DROP_MATCHED_CONTROL"])
+    try:
+        controls = MatchedControlSet(keep_controls=keeps, drop_controls=drops, **quality)
+    except (TypeError, DifferentialEvidenceError) as exc:
+        raise DifferentialEvidenceError("MATCHED_CONTROL_SET_REJECTED") from exc
+    return DifferentialVariantSet(original, keep_target, drop_target, controls)
