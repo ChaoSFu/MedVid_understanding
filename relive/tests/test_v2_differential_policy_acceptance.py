@@ -94,5 +94,11 @@ class DifferentialAcceptanceTests(unittest.TestCase):
             with self.assertRaisesRegex(DifferentialAcceptanceError,"PILOT_REPLAY_OR_WRITE"):
                 run_acceptance_audit(policy_path=POLICY,fixture_path=FIXTURE,output_dir=root/"out",pilot_closure=closure)
 
+    def test_invalid_closure_preserves_auditable_failure_code(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); closure=root/"closure.json"; closure.write_text("{}")
+            with self.assertRaisesRegex(DifferentialAcceptanceError, "PILOT_REGRESSION_CHECK_FAILED_PILOT_CLOSURE_INVALID"):
+                run_acceptance_audit(policy_path=POLICY,fixture_path=FIXTURE,output_dir=root/"out",pilot_closure=closure)
+
 
 if __name__ == "__main__": unittest.main()

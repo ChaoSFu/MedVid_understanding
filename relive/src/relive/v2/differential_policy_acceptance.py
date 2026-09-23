@@ -73,7 +73,11 @@ def run_acceptance_audit(*, policy_path: str | Path, fixture_path: str | Path,
         try:
             pilot = verify_closed_pilot(pilot_closure)
         except DifferentialEvidenceError as exc:
-            raise DifferentialAcceptanceError("PILOT_REGRESSION_CHECK_FAILED") from exc
+            # Keep the fail-closed outer namespace while exposing the exact
+            # read-only closure failure to an operator.  This is vital when a
+            # server variable accidentally points to a directory or stale
+            # closure file; no historical artifact is changed here.
+            raise DifferentialAcceptanceError(f"PILOT_REGRESSION_CHECK_FAILED_{exc}") from exc
         if (pilot.get("r0_replay_new_model_calls") != 0 or pilot.get("r1_replay_new_model_calls") != 0
                 or pilot.get("cache_opened") is not False or pilot.get("certificate_created") is not False
                 or pilot.get("new_verified_count") != 0):
