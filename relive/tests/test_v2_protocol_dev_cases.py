@@ -7,7 +7,7 @@ from pathlib import Path
 
 from relive.storage.artifacts import canonical_json
 from relive.v2.protocol_dev_cases import (
-    ProtocolDevCaseError, assert_automatic_certificate_input_safe, audit_cases,
+    ProtocolDevCaseError, apply_human_completion, assert_automatic_certificate_input_safe, audit_cases,
     copesd_timebase_audit, ego_candidate_path_resolution, materialize_source_records,
     normalize_draft, prepare_frame_binding_completion_queue, prepare_human_completion,
     resolve_frame_patterns,
@@ -145,6 +145,37 @@ class ProtocolDevCaseTests(unittest.TestCase):
             self.assertNotIn("source_record_canonical_hashes", row["human_required"])
             oracle = json.loads((root / "oracle/PD-S-05.oracle.json").read_text())
             self.assertEqual(oracle["coordinates"], None); self.assertFalse(oracle["runtime_exposed"])
+
+    def test_completed_human_queue_applies_review_fields_without_oracle_or_unbound_timebase(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            queue_dir, oracle = root / "reviews", root / "oracle"
+            prepare_human_completion(cases_dir=cases, reviews_dir=queue_dir, oracle_dir=oracle)
+            queue = queue_dir / "protocol_dev_human_completion_queue.jsonl"
+            rows = [json.loads(line) for line in queue.read_text().splitlines()]
+            for row in rows:
+                row["current_decision"] = "ADMIT"; row["current_rationale"] = "human reviewed"; row["reviewer_id"] = "reviewer-1"
+                if not row["current_keyframe_ids"]:
+                    row["current_keyframe_ids"] = [1683, 1687, 1691] if row["case_id"] == "PD-P-CholecT50-VID68-GBPACK-01" else [1434, 1437, 1441]
+            queue.write_text("".join(canonical_json(row) + "\n" for row in rows))
+            applied = apply_human_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "applied")
+            self.assertEqual(applied["case_count"], 9); self.assertEqual(applied["keyframe_binding_pending_count"], 5)
+            reviewed = json.loads((root / "applied/cases/PD-S-08.json").read_text())
+            self.assertEqual(reviewed["human_review"]["reviewer_id"], "reviewer-1")
+            self.assertEqual(reviewed["frame_locator"]["keyframe_ids"], [])
+            self.assertEqual(reviewed["oracle_annotation"], {"artifact_ref": None, "automatic_certificate_access": "FORBIDDEN", "coordinates_present": False, "status": "PENDING"})
+
+    def test_completed_human_queue_rejects_oracle_payload_and_case_set_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            queue_dir, oracle = root / "reviews", root / "oracle"
+            prepare_human_completion(cases_dir=cases, reviews_dir=queue_dir, oracle_dir=oracle)
+            queue = queue_dir / "protocol_dev_human_completion_queue.jsonl"
+            rows = [json.loads(line) for line in queue.read_text().splitlines()]
+            rows[0]["coordinates"] = [[0, 0, 1, 1]]
+            queue.write_text("".join(canonical_json(row) + "\n" for row in rows))
+            with self.assertRaisesRegex(ProtocolDevCaseError, "HUMAN_ORACLE"):
+                apply_human_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "blocked")
 
     def test_frame_resolver_requires_unambiguous_existing_files(self):
         with tempfile.TemporaryDirectory() as temporary:

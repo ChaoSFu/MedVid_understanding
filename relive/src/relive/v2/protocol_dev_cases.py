@@ -24,6 +24,7 @@ SCHEMA_VERSION = "1.0.0"
 NORMALIZER_VERSION = "relive-v2-protocol-dev-normalizer-v1"
 AUDIT_FORMAT = "relive-v2-protocol-dev-readiness-audit-v1"
 HUMAN_QUEUE_FORMAT = "relive-v2-protocol-dev-human-completion-queue-v1"
+HUMAN_COMPLETION_APPLICATION_FORMAT = "relive-v2-protocol-dev-human-completion-application-v1"
 ORACLE_TEMPLATE_FORMAT = "relive-v2-protocol-dev-oracle-annotation-v1"
 SOURCE_MATERIALIZATION_FORMAT = "relive-v2-protocol-dev-source-materialization-v1"
 CLAIM_TYPES = frozenset({"SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"})
@@ -563,6 +564,111 @@ def prepare_human_completion(*, cases_dir: str | Path, reviews_dir: str | Path, 
     _write(markdown_path, "\n".join(lines))
     return {"format": HUMAN_QUEUE_FORMAT, "status": "PASS", "case_count": len(rows), "queue_sha256": sha256_path(queue_path),
             "oracle_template_count": len(rows), "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+
+
+def _completion_rows(path: str | Path) -> dict[str, dict[str, Any]]:
+    """Read a human-completion queue without accepting oracle payloads."""
+    try:
+        raw = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_INVALID") from exc
+    rows: dict[str, dict[str, Any]] = {}
+    forbidden = {"coordinates", "mask", "bbox", "tube", "oracle_annotation"}
+    for line in raw:
+        if not line.strip():
+            continue
+        try:
+            row = strict_json_loads(line, error_code="HUMAN_COMPLETION_QUEUE")
+        except TALSelectionError as exc:
+            raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_INVALID") from exc
+        if not isinstance(row, dict) or row.get("format") != HUMAN_QUEUE_FORMAT or not _text(row.get("case_id")):
+            raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_SCHEMA_INVALID")
+        if forbidden.intersection(row):
+            raise ProtocolDevCaseError("HUMAN_ORACLE_COMPLETION_QUEUE_FORBIDDEN")
+        case_id = row["case_id"]
+        if case_id in rows:
+            raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_DUPLICATE_CASE")
+        rows[case_id] = row
+    if not rows:
+        raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_EMPTY")
+    return rows
+
+
+def _applyable_keyframes(case: dict[str, Any], row: dict[str, Any]) -> tuple[list[int] | None, str | None]:
+    """Accept human frame IDs only when their coordinate system is already bound.
+
+    A queue can preserve a human's proposed IDs while this function keeps them
+    out of a case if no native frame envelope or existing locator binds them.
+    This prevents seconds, source IDs, and file ordinals from being conflated.
+    """
+    frames = row.get("current_keyframe_ids")
+    if not isinstance(frames, list) or any(type(frame) is not int for frame in frames) or len(set(frames)) != len(frames):
+        return None, "KEYFRAME_SELECTION_INVALID"
+    if not frames:
+        return None, "KEYFRAME_SELECTION_MISSING"
+    locator, temporal = case["frame_locator"], case["temporal_spec"]
+    existing = locator.get("keyframe_ids", [])
+    if existing:
+        return frames, None
+    ranges = [locator.get("evidence_frame_range"), temporal.get("interaction_frame_range"), temporal.get("after_frame_range")]
+    if any(isinstance(bounds, list) and len(bounds) == 2 and all(isinstance(value, int) for value in bounds)
+           and all(bounds[0] <= frame <= bounds[1] for frame in frames) for bounds in ranges):
+        return frames, None
+    return None, "KEYFRAME_REFERENCE_UNBOUND"
+
+
+def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Create immutable reviewed case copies from a completed human queue.
+
+    The source cases and queue remain unchanged.  Oracle coordinates are not a
+    legal input here; timestamps and frame references retain their existing
+    fail-closed status until separately bound.
+    """
+    output = Path(output_dir)
+    if output.exists():
+        raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    source = _read_cases(cases_dir); by_id = {case["case_id"]: (path, case) for path, case in source}
+    rows = _completion_rows(completion_queue)
+    if set(rows) != set(by_id):
+        raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_CASE_SET_MISMATCH")
+    completed = output / "cases"; completed.mkdir(parents=True)
+    application_rows = []
+    source_hashes = {}
+    for case_id in sorted(by_id):
+        path, original = by_id[case_id]; row = rows[case_id]
+        decision, reviewer, rationale = row.get("current_decision"), row.get("reviewer_id"), row.get("current_rationale")
+        if decision not in {"ADMIT", "REJECT", "RESERVE"} or not _text(reviewer) or not _text(rationale):
+            raise ProtocolDevCaseError("HUMAN_COMPLETION_REQUIRED_FIELD_MISSING")
+        value = json.loads(canonical_json(original))
+        keyframes, keyframe_reason = _applyable_keyframes(value, row)
+        value["human_review"] = {**value["human_review"], "decision": decision, "reviewer_id": reviewer.strip(), "rationale": rationale.strip(),
+                                 "source_decision_literal": "HUMAN_COMPLETION_QUEUE_APPLIED"}
+        if keyframes is not None:
+            value["frame_locator"]["keyframe_ids"] = keyframes
+        previous = value.get("case_revision", "draft-normalized-r1")
+        value["case_revision"] = previous + "+human-completion-r1"
+        value["case_status"] = "PENDING"
+        value["provenance"] = {**value["provenance"], "human_completion_queue_sha256": sha256_path(completion_queue),
+                               "human_completion_application": {"decision": decision, "reviewer_id": reviewer.strip(),
+                                   "keyframes_applied": keyframes is not None, "keyframe_status": "APPLIED" if keyframes is not None else "PENDING",
+                                   "keyframe_reason": keyframe_reason}}
+        destination = completed / path.name
+        _write(destination, value)
+        source_hashes[case_id] = sha256_path(path)
+        application_rows.append({"case_id": case_id, "status": "APPLIED" if keyframes is not None else "APPLIED_WITH_PENDING_FRAME_BINDING",
+                                 "source_case_sha256": source_hashes[case_id], "reviewed_case_sha256": sha256_path(destination),
+                                 "keyframes_applied": keyframes is not None, "keyframe_reason": keyframe_reason,
+                                 "oracle_coordinates_accepted": False})
+    manifest_result = rebuild_manifest(cases_dir=completed, manifest_path=output / "protocol_dev_manifest.jsonl")
+    _write(output / "human_completion_application.jsonl", application_rows, jsonl=True)
+    report = {"format": HUMAN_COMPLETION_APPLICATION_FORMAT, "status": "PASS", "case_count": len(application_rows),
+              "completion_queue_sha256": sha256_path(completion_queue), "source_case_sha256": source_hashes,
+              "application_rows_sha256": sha256_path(output / "human_completion_application.jsonl"),
+              "reviewed_manifest_sha256": manifest_result["manifest_sha256"],
+              "keyframe_binding_pending_count": sum(not row["keyframes_applied"] for row in application_rows),
+              "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "human_completion_application_report.json", report)
+    return {**report, "reviewed_cases_dir": str(completed)}
 
 
 def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path,
