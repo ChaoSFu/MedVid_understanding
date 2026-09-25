@@ -6,4 +6,5 @@ __pycache__/
 results/
 outputs/
 logs/
+relive/configs/v2/protocol_dev_data_roots.local.json
 third_party/EVQA/

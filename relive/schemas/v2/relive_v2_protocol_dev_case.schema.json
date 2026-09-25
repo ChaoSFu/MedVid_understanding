@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relive-v2-protocol-dev-case-v1",
+  "title": "ReliVE v2 protocol-development case",
+  "type": "object",
+  "required": ["format", "schema_version", "case_id", "case_revision", "split", "case_status", "source", "task", "frame_locator", "temporal_spec", "entities", "claims", "evidence_contract", "human_review", "oracle_annotation", "provenance"],
+  "properties": {
+    "format": {"const": "relive-v2-protocol-dev-case-v1"},
+    "schema_version": {"const": "1.0.0"},
+    "split": {"const": "protocol_dev"},
+    "case_status": {"enum": ["READY", "PENDING", "INVALID"]},
+    "case_id": {"type": "string", "minLength": 1},
+    "case_revision": {"type": "string", "minLength": 1},
+    "source": true,
+    "task": {"type": "object", "required": ["claim_type"], "properties": {"claim_type": {"enum": ["SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"]}}},
+    "frame_locator": true,
+    "temporal_spec": true,
+    "entities": true,
+    "claims": true,
+    "evidence_contract": true,
+    "human_review": true,
+    "oracle_annotation": {"type": "object", "required": ["artifact_ref", "status", "automatic_certificate_access"], "properties": {"artifact_ref": {"type": ["string", "null"]}, "automatic_certificate_access": {"const": "FORBIDDEN"}}}
+    ,"provenance": true
+  },
+  "oneOf": [
+    {"properties": {"task": {"properties": {"claim_type": {"const": "SPATIAL_RELATION"}}}}},
+    {"properties": {"task": {"properties": {"claim_type": {"const": "CONTACT_ACTION"}}}}},
+    {"properties": {"task": {"properties": {"claim_type": {"const": "POSTCONDITION_PERSISTENCE"}}}}}
+  ],
+  "additionalProperties": false
+}
