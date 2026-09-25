@@ -8,7 +8,8 @@ from pathlib import Path
 from relive.storage.artifacts import canonical_json
 from relive.v2.protocol_dev_cases import (
     ProtocolDevCaseError, assert_automatic_certificate_input_safe, audit_cases,
-    materialize_source_records, normalize_draft, prepare_human_completion,
+    copesd_timebase_audit, ego_candidate_path_resolution, materialize_source_records,
+    normalize_draft, prepare_frame_binding_completion_queue, prepare_human_completion,
     resolve_frame_patterns,
 )
 
@@ -156,6 +157,35 @@ class ProtocolDevCaseTests(unittest.TestCase):
             self.assertEqual(result["resolved_count"], 1)
             row = next(json.loads(line) for line in (root / "resolved/protocol_dev_frame_pattern_resolution.jsonl").read_text().splitlines() if json.loads(line)["case_id"] == "PD-S-05")
             self.assertEqual(row["derived_relative_path_pattern"], "VID110/{frame:04d}.jpg")
+
+    def test_frame_resolver_strictly_fails_until_every_case_is_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root); roots = root / "roots.json"; roots.write_text(canonical_json({"CHOLECTRACK20_ROOT": str(root)}) + "\n")
+            with self.assertRaisesRegex(ProtocolDevCaseError, "FRAME_PATH_BINDING_INCOMPLETE"):
+                resolve_frame_patterns(cases_dir=cases, data_roots=roots, output_dir=root / "resolution", strict=True)
+            self.assertTrue((root / "resolution/protocol_dev_frame_pattern_resolution.jsonl").is_file())
+
+    def test_ego_candidates_and_copesd_timebase_remain_reviewable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root); frames = root / "frames"; ego = frames / "Ego/06_1"; ego.mkdir(parents=True)
+            for frame in [529, 533, 537, 541, 545, 549, 553, 557]: (ego / f"06_1_{frame:04d}.jpg").write_bytes(str(frame).encode())
+            copesd = frames / "CoPESD/012626"; copesd.mkdir(parents=True); (copesd / "0001.jpg").write_bytes(b"image")
+            roots = root / "roots.json"; roots.write_text(canonical_json({"EGOSURGERY_ROOT": str(frames), "COPESD_ROOT": str(frames)}) + "\n")
+            ego_result = ego_candidate_path_resolution(cases_dir=cases, data_roots=roots, output_dir=root / "ego")
+            self.assertEqual(ego_result["common_candidate_directories"], ["Ego/06_1"])
+            timebase = root / "timebase.jsonl"; timebase.write_text(canonical_json({"video_id": "012626", "frame_id": 1, "timestamp_seconds": 1440.0, "relative_path": "CoPESD/012626/0001.jpg", "timebase_source": "DOCUMENTED_SOURCE_FRAME_INDEX_AND_FPS", "source_reference_sha256": "a" * 64}) + "\n")
+            copesd_result = copesd_timebase_audit(cases_dir=cases, data_roots=roots, timebase_manifest=timebase, output_dir=root / "copesd")
+            self.assertEqual(copesd_result["status"], "READY_FOR_HUMAN_KEYFRAME_SELECTION")
+
+    def test_frame_binding_queue_does_not_select_poststate_or_copesd_keyframes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            result = prepare_frame_binding_completion_queue(cases_dir=cases, output_dir=root / "queue")
+            self.assertEqual(result["queue_count"], 4)
+            rows = [json.loads(line) for line in (root / "queue/protocol_dev_frame_binding_completion_queue.jsonl").read_text().splitlines()]
+            post = next(row for row in rows if row["case_id"] == "PD-P-CholecT50-VID68-GBPACK-01")
+            self.assertEqual(post["strongest_poststate_frame"], 1687)
+            self.assertNotIn("keyframe_ids", post)
 
 
 if __name__ == "__main__":

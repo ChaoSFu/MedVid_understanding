@@ -67,3 +67,29 @@ PYTHONPATH=src python scripts/resolve_v2_protocol_dev_frame_paths.py \
   --data-roots configs/v2/protocol_dev_data_roots.local.json \
   --output-dir /path/to/immutable_frame_resolution
 ```
+
+## Frame-path binding is fail-closed
+
+`--strict` on the frame resolver writes its inspection artifacts and then exits
+nonzero unless every one of the nine cases has an unambiguous, existing frame
+pattern. It never changes a canonical case. The derived
+`protocol_dev_frame_pattern_resolution.jsonl` is an audit artifact and must
+not be edited by hand.
+
+```bash
+PYTHONPATH=src python scripts/inspect_v2_protocol_dev_ego_candidates.py \
+  --cases-dir protocol_dev/cases \
+  --data-roots configs/v2/protocol_dev_data_roots.local.json \
+  --render-previews \
+  --output-dir /path/to/immutable_ego_candidate_review
+
+PYTHONPATH=src python scripts/prepare_v2_protocol_dev_frame_binding_queue.py \
+  --cases-dir protocol_dev/cases \
+  --output-dir /path/to/immutable_frame_binding_queue
+```
+
+For CoPESD, the source sample-ID bounds are not image-frame numbers. The
+timebase audit accepts only JSONL rows with `video_id`, `frame_id`,
+`timestamp_seconds`, `relative_path`, `timebase_source`, and a 64-character
+`source_reference_sha256`. It then emits the image/time/file mapping for human
+keyframe selection.

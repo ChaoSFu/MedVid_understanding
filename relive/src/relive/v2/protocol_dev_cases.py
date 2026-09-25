@@ -526,6 +526,7 @@ def _human_queue_row(case: dict[str, Any]) -> dict[str, Any]:
     true_claim = next(item for item in case["claims"] if item["polarity"] == "TRUE")
     false_claim = next(item for item in case["claims"] if item["polarity"] == "FALSE")
     components_missing = any(value is None for value in (true_claim.get("subject"), true_claim.get("predicate"), true_claim.get("object"), false_claim.get("subject"), false_claim.get("predicate"), false_claim.get("object"))) or not case["entities"] or not case["evidence_contract"]["required_evidence_roles"]
+    suggested = case["frame_locator"].get("suggested_keyframes", [])
     return {"format": HUMAN_QUEUE_FORMAT, "case_id": case["case_id"], "claim_type": case["task"]["claim_type"],
             "true_claim": true_claim.get("text"), "matched_false_claim": false_claim.get("text"),
             "evidence_window": case["temporal_spec"]["evidence_window"], "evidence_frame_range": case["frame_locator"]["evidence_frame_range"],
@@ -535,9 +536,10 @@ def _human_queue_row(case: dict[str, Any]) -> dict[str, Any]:
                 "human_review.reviewer_id": not _text(human.get("reviewer_id")),
                 "human_review.rationale": not _text(human.get("rationale")),
                 "entity_and_claim_component_confirmation": components_missing,
-                "exact_keyframe_selection": not bool(case["frame_locator"]["keyframe_ids"]),
+                "exact_keyframe_selection": not bool(case["frame_locator"]["keyframe_ids"] or suggested),
                 "oracle_coordinates": case["oracle_annotation"]["status"] != "READY"},
-            "current_keyframe_ids": case["frame_locator"]["keyframe_ids"], "current_entities": case["entities"],
+            "current_keyframe_ids": case["frame_locator"]["keyframe_ids"], "suggested_keyframes": suggested,
+            "keyframe_selection_constraint": case.get("provenance", {}).get("author_confirmed_keyframe_constraint"), "current_entities": case["entities"],
             "current_required_evidence_roles": case["evidence_contract"]["required_evidence_roles"],
             "machine_derived_not_human_input": ["source_record_canonical_hashes", "derived_timestamps", "frame_counts", "normalized_paths", "manifest_hashes"]}
 
@@ -563,7 +565,8 @@ def prepare_human_completion(*, cases_dir: str | Path, reviews_dir: str | Path, 
             "oracle_template_count": len(rows), "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
 
 
-def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path) -> dict[str, Any]:
+def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path,
+                           strict: bool = False) -> dict[str, Any]:
     """Derive a pattern only from an unambiguous set of existing frame files.
 
     The resolver produces a reviewable proposal and never mutates a frozen case.
@@ -573,7 +576,7 @@ def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, out
     roots = _data_roots(data_roots); rows = []
     for _, case in _read_cases(cases_dir):
         locator, source = case["frame_locator"], case["source"]
-        root = roots.get(locator.get("dataset_root_key")); frames = locator.get("keyframe_ids") or locator.get("sampled_frame_ids")
+        root = roots.get(locator.get("dataset_root_key")); frames = locator.get("keyframe_ids") or locator.get("sampled_frame_ids") or locator.get("suggested_keyframes")
         if root is None: status, reason, pattern = "PENDING", "DATASET_ROOT_MISSING", None
         elif not frames: status, reason, pattern = "PENDING", "FRAME_REFERENCE_MISSING", None
         elif not root.is_dir(): status, reason, pattern = "PENDING", "DATASET_ROOT_UNREADABLE", None
@@ -595,15 +598,133 @@ def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, out
                     else: status, reason, pattern = "PENDING", "FRAME_PATTERN_RECHECK_FAILED", None
         rows.append({"case_id": case["case_id"], "status": status, "reason_code": reason,
                      "dataset_root_key": locator.get("dataset_root_key"), "derived_relative_path_pattern": pattern,
-                     "frame_ids_checked": frames or []})
+                     "frame_ids_checked": frames or [], "frame_reference_kind": "KEYFRAME" if locator.get("keyframe_ids") else ("SAMPLED" if locator.get("sampled_frame_ids") else "SUGGESTED")})
     output.mkdir(parents=True)
     path = output / "protocol_dev_frame_pattern_resolution.jsonl"
     _write(path, sorted(rows, key=lambda item: item["case_id"]), jsonl=True)
-    report = {"format": "relive-v2-protocol-dev-frame-pattern-resolution-v1", "status": "PASS", "case_count": len(rows),
+    report = {"format": "relive-v2-protocol-dev-frame-pattern-resolution-v1", "status": "PASS" if all(row["status"] == "RESOLVED" for row in rows) else "PENDING", "case_count": len(rows),
               "resolved_count": sum(row["status"] == "RESOLVED" for row in rows), "output_sha256": sha256_path(path),
               "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
     _write(output / "protocol_dev_frame_pattern_resolution_report.json", report)
+    if strict and report["status"] != "PASS":
+        raise ProtocolDevCaseError("FRAME_PATH_BINDING_INCOMPLETE")
     return report
+
+
+def ego_candidate_path_resolution(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path,
+                                  case_id: str = "PD-C-EGO-01", render_previews: bool = False) -> dict[str, Any]:
+    """Enumerate every session-frame candidate and leave directory choice to a human."""
+    output = Path(output_dir)
+    if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    cases = {case["case_id"]: case for _, case in _read_cases(cases_dir)}
+    if case_id not in cases: raise ProtocolDevCaseError("EGO_CASE_NOT_FOUND")
+    case, roots = cases[case_id], _data_roots(data_roots); locator, source = case["frame_locator"], case["source"]
+    root, frames = roots.get(locator["dataset_root_key"]), locator.get("keyframe_ids")
+    rows = []; parents: dict[str, set[int]] = {}
+    if root is not None and root.is_dir():
+        for frame in frames:
+            # The session string and frame number must both occur in the file
+            # stem; no ordinal or first-match selection is used.
+            pattern = re.compile(r"(?:^|_)" + re.escape(source["video_id"]) + r"_0*" + str(frame) + r"$")
+            candidates = sorted(path for path in root.rglob("*") if path.is_file() and pattern.search(path.stem))
+            for path in candidates:
+                relative = path.relative_to(root).as_posix(); parent = path.parent.relative_to(root).as_posix()
+                parents.setdefault(parent, set()).add(frame)
+                rows.append({"format": "relive-v2-protocol-dev-candidate-path-resolution-v1", "case_id": case_id,
+                             "video_id": source["video_id"], "frame_id": frame, "candidate_relative_path": relative,
+                             "candidate_parent_directory": parent, "file_sha256": sha256_path(path)})
+    common = sorted(parent for parent, seen in parents.items() if set(frames).issubset(seen))
+    output.mkdir(parents=True)
+    _write(output / "candidate_path_resolution_queue.jsonl", rows, jsonl=True)
+    preview_status = "NOT_REQUESTED"
+    if render_previews and common:
+        try:
+            from PIL import Image, ImageDraw
+            preview_dir = output / "previews"; preview_dir.mkdir()
+            for parent in common:
+                selected = []
+                for frame in (frames[0], frames[-1]):
+                    pattern = re.compile(r"(?:^|_)" + re.escape(source["video_id"]) + r"_0*" + str(frame) + r"$")
+                    choices = [path for path in Path(root).rglob("*") if path.is_file() and path.parent.relative_to(root).as_posix() == parent and pattern.search(path.stem)]
+                    if len(choices) != 1: raise StopIteration
+                    selected.append(choices[0])
+                images = [Image.open(path).convert("RGB") for path in selected]
+                width = max(image.width for image in images); height = max(image.height for image in images)
+                sheet = Image.new("RGB", (width * 2, height + 24), "white")
+                for index, image in enumerate(images): sheet.paste(image, (index * width, 24))
+                draw = ImageDraw.Draw(sheet); draw.text((0, 0), f"{parent}: {frames[0]} | {frames[-1]}", fill="black")
+                digest = hashlib.sha256(parent.encode("utf-8")).hexdigest()[:12]
+                sheet.save(preview_dir / f"{case_id}_{digest}_first_last.png")
+            preview_status = "RENDERED"
+        except (ImportError, OSError, StopIteration): preview_status = "PREVIEW_RENDERER_OR_SOURCE_UNAVAILABLE"
+    report = {"format": "relive-v2-protocol-dev-candidate-path-resolution-v1", "status": "PENDING_HUMAN_DIRECTORY_CONFIRMATION",
+              "case_id": case_id, "frame_ids": frames, "candidate_count": len(rows), "common_candidate_directories": common,
+              "previews": preview_status, "queue_sha256": sha256_path(output / "candidate_path_resolution_queue.jsonl"),
+              "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "candidate_path_resolution_report.json", report)
+    return report
+
+
+def copesd_timebase_audit(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path,
+                         timebase_manifest: str | Path | None, case_id: str = "PD-S-08") -> dict[str, Any]:
+    """Map CoPESD images only through an externally documented timebase manifest."""
+    output = Path(output_dir)
+    if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    cases = {case["case_id"]: case for _, case in _read_cases(cases_dir)}
+    if case_id not in cases: raise ProtocolDevCaseError("COPESD_CASE_NOT_FOUND")
+    case, roots = cases[case_id], _data_roots(data_roots); root = roots.get(case["frame_locator"]["dataset_root_key"])
+    if timebase_manifest is None:
+        mappings, status, reason = [], "PENDING", "TIMEBASE_PROVENANCE_REQUIRED"
+    else:
+        try:
+            raw_rows = [strict_json_loads(line, error_code="COPESD_TIMEBASE") for line in Path(timebase_manifest).read_text(encoding="utf-8").splitlines() if line.strip()]
+        except (OSError, UnicodeDecodeError, TALSelectionError) as exc: raise ProtocolDevCaseError("COPESD_TIMEBASE_INVALID") from exc
+        interval = case["temporal_spec"]["evidence_window"]; mappings = []
+        for row in raw_rows:
+            if not isinstance(row, dict) or row.get("video_id") != case["source"]["video_id"]: continue
+            timestamp, frame = row.get("timestamp_seconds"), row.get("frame_id")
+            relative = row.get("relative_path")
+            if not isinstance(timestamp, (int, float)) or not isinstance(frame, int) or not isinstance(relative, str) or not _text(row.get("timebase_source")) or not _HEX.fullmatch(str(row.get("source_reference_sha256", ""))): continue
+            if interval and interval["start_seconds"] <= float(timestamp) <= interval["end_seconds"]:
+                path = root / relative if root is not None else None
+                mappings.append({"case_id": case_id, "video_id": case["source"]["video_id"], "timestamp_seconds": float(timestamp), "frame_id": frame,
+                                 "relative_path": relative, "file_exists": bool(path and path.is_file())})
+        status, reason = ("READY_FOR_HUMAN_KEYFRAME_SELECTION", None) if mappings and all(item["file_exists"] for item in mappings) else ("PENDING", "NO_VALIDATED_IMAGE_TIME_MAPPING")
+    output.mkdir(parents=True)
+    _write(output / "copesd_image_time_mapping.jsonl", mappings, jsonl=True)
+    queue = {"format": "relive-v2-protocol-dev-copesd-keyframe-selection-v1", "case_id": case_id, "status": status,
+             "reason_code": reason, "evidence_interval": case["temporal_spec"]["evidence_window"],
+             "instruction": "Select exact keyframes only from the validated mapping; source sample-ID numbers are not image-frame identifiers.", "mapping_sha256": sha256_path(output / "copesd_image_time_mapping.jsonl")}
+    _write(output / "copesd_human_keyframe_selection_queue.json", queue)
+    return {**queue, "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+
+
+def prepare_frame_binding_completion_queue(*, cases_dir: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Write only the human/environment decisions still needed for four blocked cases."""
+    output = Path(output_dir)
+    if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    cases = {case["case_id"]: case for _, case in _read_cases(cases_dir)}
+    expected = {"PD-C-EGO-01", "PD-P-CholecT50-VID68-GBPACK-01", "PD-S-05", "PD-S-08"}
+    if not expected.issubset(cases): raise ProtocolDevCaseError("FRAME_BINDING_CASES_MISSING")
+    rows = [
+        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-C-EGO-01", "status": "PENDING_HUMAN_DIRECTORY_CONFIRMATION",
+         "human_required": ["Choose one common 06_1 candidate directory after reviewing every enumerated frame path and preview."], "environment_required": ["EGOSURGERY_ROOT"], "machine_required": ["Run candidate path inspection; do not write the derived queue."], "frame_ids": cases["PD-C-EGO-01"]["frame_locator"]["keyframe_ids"]},
+        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-P-CholecT50-VID68-GBPACK-01", "status": "PENDING_HUMAN_POSTSTATE_KEYFRAMES",
+         "human_required": ["Select at least three post-state keyframes in inclusive range 1683-1691.", "Each selected frame must clearly show gallbladder, specimen bag, and containment after insertion and bag closing."], "environment_required": ["CHOLECT50_ROOT"], "machine_required": ["Derive a relative path only after human keyframes are in the canonical case."], "strongest_poststate_frame": 1687, "forbidden_frame_range": [1692, None]},
+        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-05", "status": "PENDING_AUTHOR_CONFIRMATION_OF_STABLE_WINDOW",
+         "human_required": ["Confirm whether the entire frozen evidence range 18001-18501 is an approved stable evidence window before suggested keyframes can enter the canonical case."], "environment_required": ["CHOLECTRACK20_ROOT"], "machine_required": ["Only then derive path using [18001,18101,18201,18301,18401,18501]."], "proposed_selection_rule": "UNIFORM_KEYFRAMES_WITHIN_HUMAN_APPROVED_EVIDENCE_WINDOW"},
+        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-08", "status": "PENDING_VALIDATED_COPESD_TIMEBASE",
+         "human_required": ["Choose keyframes only after reviewing the validated image/time/file mapping."], "environment_required": ["COPESD_ROOT", "documented CoPESD timebase manifest"], "machine_required": ["Do not use 1408 or 1454 from source sample IDs as image frame numbers."], "evidence_interval_seconds": cases["PD-S-08"]["temporal_spec"]["evidence_window"]},
+    ]
+    output.mkdir(parents=True)
+    _write(output / "protocol_dev_frame_binding_completion_queue.jsonl", rows, jsonl=True)
+    lines = ["# Protocol-dev frame-path binding completion queue", ""]
+    for row in rows:
+        lines.extend([f"## {row['case_id']}", "", f"Status: `{row['status']}`", "", "Human required:"] + [f"- {item}" for item in row["human_required"]] + [""])
+    _write(output / "protocol_dev_frame_binding_completion_queue.md", "\n".join(lines))
+    return {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "status": "PASS", "queue_count": len(rows),
+            "queue_sha256": sha256_path(output / "protocol_dev_frame_binding_completion_queue.jsonl"),
+            "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
 
 
 def audit_cases(*, cases_dir: str | Path, oracle_dir: str | Path | None, data_roots: str | Path | None,

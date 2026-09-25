@@ -1,4 +1,8 @@
 {
   "AVOS_ROOT": "/replace/with/local/avos/root",
-  "CHOLECTRACK20_ROOT": "/replace/with/local/cholectrack20/root"
+  "CHOLECTRACK20_ROOT": "/replace/with/local/cholectrack20/root",
+  "CHOLECT50_ROOT": "/replace/with/local/cholect50/root",
+  "COPESD_ROOT": "/replace/with/local/copesd/root",
+  "EGOSURGERY_ROOT": "/replace/with/local/egosurgery/root",
+  "NURVID_ROOT": "/replace/with/local/nurvid/root"
 }
