@@ -36,6 +36,34 @@ PYTHONPATH=src python scripts/audit_v2_protocol_dev_cases.py \
 ```
 
 `--strict` exits nonzero whenever any case is `PENDING` or `INVALID`. It is
-appropriate only after humans supply canonical source-record hashes, reviewer
-identities/decisions, portable frame patterns, missing predicate components,
-and externally stored oracle references.
+appropriate only after automated source materialization and frame resolution,
+plus human reviewer identities/decisions, predicate components, keyframes, and
+externally stored oracle references.
+
+## Completion responsibilities
+
+`reviews/protocol_dev_human_completion_queue.jsonl` contains only fields that
+need human judgement: review decision, reviewer ID, rationale, entity/claim
+components, exact keyframes, and oracle coordinates. Humans must not write
+record hashes, timestamps, frame counts, normalized paths, or manifest hashes.
+Those are machine-derived after an input source record is available.
+
+`materialize_v2_protocol_dev_source_records.py` reads a QA JSON or JSONL file,
+projects only public binding fields, and emits canonical source-record hashes.
+It neither edits a case nor reads non-human conversation values. A missing or
+ambiguous selector remains unresolved. `resolve_v2_protocol_dev_frame_paths.py`
+derives a relative path pattern only when every selected frame has a unique,
+existing numeric filename beneath its configured dataset root; it never guesses
+or updates a case.
+
+```bash
+PYTHONPATH=src python scripts/materialize_v2_protocol_dev_source_records.py \
+  --cases-dir protocol_dev/cases \
+  --qa-file /path/to/raw_qa.json \
+  --output-dir /path/to/immutable_source_materialization
+
+PYTHONPATH=src python scripts/resolve_v2_protocol_dev_frame_paths.py \
+  --cases-dir protocol_dev/cases \
+  --data-roots configs/v2/protocol_dev_data_roots.local.json \
+  --output-dir /path/to/immutable_frame_resolution
+```

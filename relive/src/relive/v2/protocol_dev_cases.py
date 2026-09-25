@@ -23,6 +23,9 @@ CASE_FORMAT = "relive-v2-protocol-dev-case-v1"
 SCHEMA_VERSION = "1.0.0"
 NORMALIZER_VERSION = "relive-v2-protocol-dev-normalizer-v1"
 AUDIT_FORMAT = "relive-v2-protocol-dev-readiness-audit-v1"
+HUMAN_QUEUE_FORMAT = "relive-v2-protocol-dev-human-completion-queue-v1"
+ORACLE_TEMPLATE_FORMAT = "relive-v2-protocol-dev-oracle-annotation-v1"
+SOURCE_MATERIALIZATION_FORMAT = "relive-v2-protocol-dev-source-materialization-v1"
 CLAIM_TYPES = frozenset({"SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"})
 CASE_STATUSES = frozenset({"READY", "PENDING", "INVALID"})
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -426,6 +429,181 @@ def assert_automatic_certificate_input_safe(value: Any) -> None:
             assert_automatic_certificate_input_safe(nested)
     elif isinstance(value, list):
         for nested in value: assert_automatic_certificate_input_safe(nested)
+
+
+def rebuild_manifest(*, cases_dir: str | Path, manifest_path: str | Path) -> dict[str, Any]:
+    """Build a canonical manifest from case bytes without changing any case."""
+    manifest = Path(manifest_path)
+    if manifest.exists():
+        raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    rows = []
+    for path, case in _read_cases(cases_dir):
+        rows.append({"case_id": case["case_id"], "case_sha256": sha256_path(path), "split": case["split"],
+                     "case_status": case["case_status"], "dataset": case["source"]["dataset"],
+                     "video_id": case["source"]["video_id"], "claim_type": case["task"]["claim_type"],
+                     "case_path": f"cases/{path.name}"})
+    _write(manifest, sorted(rows, key=lambda item: item["case_id"]), jsonl=True)
+    return {"format": CASE_FORMAT, "case_count": len(rows), "manifest": str(manifest),
+            "manifest_sha256": sha256_path(manifest), "model_calls_made": 0, "cache_writes": 0,
+            "certificate_writes": 0, "new_verified_count": 0}
+
+
+def _public_qa_records(path: str | Path) -> list[dict[str, Any]]:
+    """Read candidate records while projecting out non-human conversation values."""
+    try:
+        raw = Path(path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProtocolDevCaseError("SOURCE_QA_UNREADABLE") from exc
+    try:
+        parsed = strict_json_loads(raw, error_code="SOURCE_QA")
+        records = parsed.get("records") if isinstance(parsed, dict) and isinstance(parsed.get("records"), list) else parsed
+        if not isinstance(records, list):
+            raise ProtocolDevCaseError("SOURCE_QA_RECORD_LIST_REQUIRED")
+    except TALSelectionError:
+        records = []
+        for line in raw.splitlines():
+            if line.strip():
+                try: records.append(strict_json_loads(line, error_code="SOURCE_QA_JSONL"))
+                except TALSelectionError as exc: raise ProtocolDevCaseError("SOURCE_QA_INVALID") from exc
+    if any(not isinstance(row, dict) for row in records):
+        raise ProtocolDevCaseError("SOURCE_QA_RECORD_OBJECT_REQUIRED")
+    return records
+
+
+def _public_source_projection(row: dict[str, Any]) -> dict[str, Any]:
+    """Hash only public binding fields, never assistant/answer/annotation values."""
+    conversations = row.get("conversations")
+    human_questions = []
+    if isinstance(conversations, list):
+        for turn in conversations:
+            if isinstance(turn, dict) and turn.get("from") == "human" and isinstance(turn.get("value"), str):
+                human_questions.append(turn["value"])
+    projection = {key: row.get(key) for key in ("id", "sample_id", "source_record_uid", "qa_type", "dataset_name", "video", "sampled_video_frames")}
+    projection["human_questions"] = human_questions
+    return projection
+
+
+def materialize_source_records(*, cases_dir: str | Path, qa_path: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Make an immutable public-field source binding map; it never edits cases."""
+    output = Path(output_dir)
+    if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    records = _public_qa_records(qa_path)
+    candidates = []
+    for index, row in enumerate(records):
+        projection = _public_source_projection(row)
+        public_hash = hashlib.sha256(canonical_json(projection).encode("utf-8")).hexdigest()
+        identifiers = {value for value in (row.get("id"), row.get("sample_id"), row.get("source_record_uid")) if _text(value)}
+        candidates.append({"source_record_index": index, "source_record_uid": "relive-v2-source-v1:" + public_hash,
+                           "source_record_canonical_sha256": public_hash, "identifiers": sorted(identifiers)})
+    rows = []
+    for _, case in _read_cases(cases_dir):
+        source = case["source"]; selectors = set(source.get("source_sample_ids", []))
+        selectors.update(item.get("source_record_uid_hint") for item in source.get("source_record_hints", []) if isinstance(item, dict) and _text(item.get("source_record_uid_hint")))
+        selectors.update(item.get("source_sample_id_hint") for item in source.get("source_record_hints", []) if isinstance(item, dict) and _text(item.get("source_sample_id_hint")))
+        if _text(source.get("source_record_uid")): selectors.add(source["source_record_uid"])
+        matches_by_selector = {selector: [item for item in candidates if item["source_record_uid"] == selector or selector in item["identifiers"]] for selector in selectors}
+        matched_by_index = {item["source_record_index"]: item for matches in matches_by_selector.values() for item in matches}
+        matched = [matched_by_index[index] for index in sorted(matched_by_index)]
+        if not selectors: status, reason = "PENDING", "SOURCE_SELECTOR_MISSING"
+        elif any(len(matches) > 1 for matches in matches_by_selector.values()): status, reason = "INVALID", "SOURCE_RECORD_AMBIGUOUS"
+        elif any(len(matches) == 0 for matches in matches_by_selector.values()): status, reason = "PENDING", "SOURCE_RECORD_NOT_FOUND"
+        else: status, reason = "MATERIALIZED", None
+        rows.append({"case_id": case["case_id"], "status": status, "reason_code": reason,
+                     "selectors": sorted(selectors), "source_records": [{key: item[key] for key in ("source_record_index", "source_record_uid", "source_record_canonical_sha256")} for item in matched]})
+    output.mkdir(parents=True)
+    _write(output / "protocol_dev_source_record_materialization.jsonl", sorted(rows, key=lambda item: item["case_id"]), jsonl=True)
+    report = {"format": SOURCE_MATERIALIZATION_FORMAT, "status": "PASS", "qa_file_sha256": sha256_path(qa_path),
+              "qa_record_count": len(records), "case_count": len(rows), "materialized_case_count": sum(row["status"] == "MATERIALIZED" for row in rows),
+              "output_sha256": sha256_path(output / "protocol_dev_source_record_materialization.jsonl"),
+              "assistant_or_gt_values_accessed": False, "model_calls_made": 0, "cache_writes": 0,
+              "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "protocol_dev_source_record_materialization_report.json", report)
+    return report
+
+
+def _human_queue_row(case: dict[str, Any]) -> dict[str, Any]:
+    human = case["human_review"]
+    true_claim = next(item for item in case["claims"] if item["polarity"] == "TRUE")
+    false_claim = next(item for item in case["claims"] if item["polarity"] == "FALSE")
+    components_missing = any(value is None for value in (true_claim.get("subject"), true_claim.get("predicate"), true_claim.get("object"), false_claim.get("subject"), false_claim.get("predicate"), false_claim.get("object"))) or not case["entities"] or not case["evidence_contract"]["required_evidence_roles"]
+    return {"format": HUMAN_QUEUE_FORMAT, "case_id": case["case_id"], "claim_type": case["task"]["claim_type"],
+            "true_claim": true_claim.get("text"), "matched_false_claim": false_claim.get("text"),
+            "evidence_window": case["temporal_spec"]["evidence_window"], "evidence_frame_range": case["frame_locator"]["evidence_frame_range"],
+            "allowed_decision_values": ["ADMIT", "REJECT", "RESERVE"], "current_decision": human.get("decision"),
+            "current_rationale": human.get("rationale"), "human_required": {
+                "human_review.decision": human.get("decision") == "PENDING",
+                "human_review.reviewer_id": not _text(human.get("reviewer_id")),
+                "human_review.rationale": not _text(human.get("rationale")),
+                "entity_and_claim_component_confirmation": components_missing,
+                "exact_keyframe_selection": not bool(case["frame_locator"]["keyframe_ids"]),
+                "oracle_coordinates": case["oracle_annotation"]["status"] != "READY"},
+            "current_keyframe_ids": case["frame_locator"]["keyframe_ids"], "current_entities": case["entities"],
+            "current_required_evidence_roles": case["evidence_contract"]["required_evidence_roles"],
+            "machine_derived_not_human_input": ["source_record_canonical_hashes", "derived_timestamps", "frame_counts", "normalized_paths", "manifest_hashes"]}
+
+
+def prepare_human_completion(*, cases_dir: str | Path, reviews_dir: str | Path, oracle_dir: str | Path) -> dict[str, Any]:
+    """Write separate human-only queue and coordinate-free oracle templates."""
+    reviews, oracle = Path(reviews_dir), Path(oracle_dir)
+    queue_path, markdown_path = reviews / "protocol_dev_human_completion_queue.jsonl", reviews / "protocol_dev_human_completion_queue.md"
+    if queue_path.exists() or markdown_path.exists() or oracle.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    cases = [case for _, case in _read_cases(cases_dir)]
+    rows = [_human_queue_row(case) for case in sorted(cases, key=lambda item: item["case_id"])]
+    _write(queue_path, rows, jsonl=True)
+    oracle.mkdir(parents=True)
+    for case in sorted(cases, key=lambda item: item["case_id"]):
+        _write(oracle / f"{case['case_id']}.oracle.json", {"format": ORACLE_TEMPLATE_FORMAT, "case_id": case["case_id"],
+               "status": "PENDING", "runtime_exposed": False, "automatic_certificate_access": "FORBIDDEN", "artifact_type": "PENDING", "coordinates": None})
+    lines = ["# Protocol-dev human completion queue", "", "Only fields marked `true` under `human_required` need a human answer. Source hashes, paths, timestamps, counts, and manifest hashes are machine/environment work.", ""]
+    for row in rows:
+        required = [key for key, value in row["human_required"].items() if value]
+        lines.extend([f"## {row['case_id']}", "", f"- True claim: {row['true_claim']}", f"- Matched false claim: {row['matched_false_claim']}", f"- Evidence window: {row['evidence_window']}", f"- Allowed decision: {', '.join(row['allowed_decision_values'])}", f"- Current rationale: {row['current_rationale'] or 'PENDING'}", f"- Needed: {', '.join(required) or 'none'}", ""])
+    _write(markdown_path, "\n".join(lines))
+    return {"format": HUMAN_QUEUE_FORMAT, "status": "PASS", "case_count": len(rows), "queue_sha256": sha256_path(queue_path),
+            "oracle_template_count": len(rows), "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+
+
+def resolve_frame_patterns(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Derive a pattern only from an unambiguous set of existing frame files.
+
+    The resolver produces a reviewable proposal and never mutates a frozen case.
+    """
+    output = Path(output_dir)
+    if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    roots = _data_roots(data_roots); rows = []
+    for _, case in _read_cases(cases_dir):
+        locator, source = case["frame_locator"], case["source"]
+        root = roots.get(locator.get("dataset_root_key")); frames = locator.get("keyframe_ids") or locator.get("sampled_frame_ids")
+        if root is None: status, reason, pattern = "PENDING", "DATASET_ROOT_MISSING", None
+        elif not frames: status, reason, pattern = "PENDING", "FRAME_REFERENCE_MISSING", None
+        elif not root.is_dir(): status, reason, pattern = "PENDING", "DATASET_ROOT_UNREADABLE", None
+        else:
+            candidates: dict[int, list[Path]] = {frame: [] for frame in frames}
+            for path in root.rglob("*"):
+                if not path.is_file() or source["video_id"] not in path.parts: continue
+                if path.stem.isdigit() and int(path.stem) in candidates: candidates[int(path.stem)].append(path)
+            if any(len(paths) != 1 for paths in candidates.values()): status, reason, pattern = "PENDING", "FRAME_PATH_NOT_UNIQUE", None
+            else:
+                selected = [paths[0] for _, paths in sorted(candidates.items())]
+                parents, suffixes, widths = {path.parent for path in selected}, {path.suffix for path in selected}, {len(path.stem) for path in selected}
+                if len(parents) != 1 or len(suffixes) != 1 or len(widths) != 1:
+                    status, reason, pattern = "PENDING", "FRAME_PATTERN_NOT_UNIFORM", None
+                else:
+                    parent, suffix, width = selected[0].parent, selected[0].suffix, next(iter(widths))
+                    pattern = (parent.relative_to(root).as_posix() + "/" if parent != root else "") + "{frame:0" + str(width) + "d}" + suffix
+                    if all((root / pattern.format(frame=frame)).is_file() for frame in frames): status, reason = "RESOLVED", None
+                    else: status, reason, pattern = "PENDING", "FRAME_PATTERN_RECHECK_FAILED", None
+        rows.append({"case_id": case["case_id"], "status": status, "reason_code": reason,
+                     "dataset_root_key": locator.get("dataset_root_key"), "derived_relative_path_pattern": pattern,
+                     "frame_ids_checked": frames or []})
+    output.mkdir(parents=True)
+    path = output / "protocol_dev_frame_pattern_resolution.jsonl"
+    _write(path, sorted(rows, key=lambda item: item["case_id"]), jsonl=True)
+    report = {"format": "relive-v2-protocol-dev-frame-pattern-resolution-v1", "status": "PASS", "case_count": len(rows),
+              "resolved_count": sum(row["status"] == "RESOLVED" for row in rows), "output_sha256": sha256_path(path),
+              "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "protocol_dev_frame_pattern_resolution_report.json", report)
+    return report
 
 
 def audit_cases(*, cases_dir: str | Path, oracle_dir: str | Path | None, data_roots: str | Path | None,

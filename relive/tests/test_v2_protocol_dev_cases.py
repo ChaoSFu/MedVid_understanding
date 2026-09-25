@@ -8,7 +8,8 @@ from pathlib import Path
 from relive.storage.artifacts import canonical_json
 from relive.v2.protocol_dev_cases import (
     ProtocolDevCaseError, assert_automatic_certificate_input_safe, audit_cases,
-    normalize_draft,
+    materialize_source_records, normalize_draft, prepare_human_completion,
+    resolve_frame_patterns,
 )
 
 
@@ -104,6 +105,57 @@ class ProtocolDevCaseTests(unittest.TestCase):
         schema = json.loads((ROOT / "schemas/v2/relive_v2_protocol_dev_case.schema.json").read_text())
         one_of = {item["properties"]["task"]["properties"]["claim_type"]["const"] for item in schema["oneOf"]}
         self.assertEqual(one_of, {"SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"})
+
+    def test_source_materialization_hashes_only_public_fields_and_fails_closed_when_missing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            case = cases / "PD-S-05.json"; value = json.loads(case.read_text())
+            value["source"]["source_sample_ids"] = ["source-1"]; value["source"]["source_record_hints"] = []
+            case.write_text(canonical_json(value) + "\n")
+            qa = root / "qa.json"; qa.write_text(canonical_json([{
+                "id": "source-1", "qa_type": "public", "dataset_name": "X", "video": ["f.jpg"], "sampled_video_frames": [0],
+                "conversations": [{"from": "human", "value": "public question"}, {"from": "gpt", "value": "must not enter hash"}],
+            }]) + "\n")
+            result = materialize_source_records(cases_dir=cases, qa_path=qa, output_dir=root / "materialized")
+            self.assertEqual(result["materialized_case_count"], 1)
+            row = next(json.loads(line) for line in (root / "materialized/protocol_dev_source_record_materialization.jsonl").read_text().splitlines() if json.loads(line)["case_id"] == "PD-S-05")
+            self.assertEqual(row["status"], "MATERIALIZED")
+            self.assertNotIn("must not enter hash", canonical_json(row))
+
+    def test_source_materialization_rejects_ambiguous_selector(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root); case = cases / "PD-S-05.json"; value = json.loads(case.read_text())
+            value["source"]["source_sample_ids"] = ["shared"]; value["source"]["source_record_hints"] = []
+            case.write_text(canonical_json(value) + "\n")
+            qa = root / "qa.json"; qa.write_text(canonical_json([
+                {"id": "shared", "qa_type": "public", "dataset_name": "X", "video": ["a.jpg"], "sampled_video_frames": [0], "conversations": []},
+                {"id": "shared", "qa_type": "public", "dataset_name": "X", "video": ["b.jpg"], "sampled_video_frames": [0], "conversations": []},
+            ]) + "\n")
+            materialize_source_records(cases_dir=cases, qa_path=qa, output_dir=root / "materialized")
+            row = next(json.loads(line) for line in (root / "materialized/protocol_dev_source_record_materialization.jsonl").read_text().splitlines() if json.loads(line)["case_id"] == "PD-S-05")
+            self.assertEqual((row["status"], row["reason_code"]), ("INVALID", "SOURCE_RECORD_AMBIGUOUS"))
+
+    def test_human_queue_excludes_machine_hashes_and_oracle_templates_have_no_coordinates(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            result = prepare_human_completion(cases_dir=cases, reviews_dir=root / "reviews", oracle_dir=root / "oracle")
+            self.assertEqual(result["oracle_template_count"], 9)
+            row = json.loads((root / "reviews/protocol_dev_human_completion_queue.jsonl").read_text().splitlines()[0])
+            self.assertNotIn("source_record_canonical_hashes", row["human_required"])
+            oracle = json.loads((root / "oracle/PD-S-05.oracle.json").read_text())
+            self.assertEqual(oracle["coordinates"], None); self.assertFalse(oracle["runtime_exposed"])
+
+    def test_frame_resolver_requires_unambiguous_existing_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root); case = cases / "PD-S-05.json"; value = json.loads(case.read_text())
+            value["frame_locator"].update({"dataset_root_key": "TEST_ROOT", "keyframe_ids": [1, 2], "sampled_frame_ids": []})
+            case.write_text(canonical_json(value) + "\n")
+            frames = root / "frames/VID110"; frames.mkdir(parents=True); (frames / "0001.jpg").write_bytes(b"one"); (frames / "0002.jpg").write_bytes(b"two")
+            roots = root / "roots.json"; roots.write_text(canonical_json({"TEST_ROOT": str(root / "frames")}) + "\n")
+            result = resolve_frame_patterns(cases_dir=cases, data_roots=roots, output_dir=root / "resolved")
+            self.assertEqual(result["resolved_count"], 1)
+            row = next(json.loads(line) for line in (root / "resolved/protocol_dev_frame_pattern_resolution.jsonl").read_text().splitlines() if json.loads(line)["case_id"] == "PD-S-05")
+            self.assertEqual(row["derived_relative_path_pattern"], "VID110/{frame:04d}.jpg")
 
 
 if __name__ == "__main__":
