@@ -8,9 +8,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--cases-dir", required=True)
 parser.add_argument("--data-roots", required=True)
 parser.add_argument("--timebase-manifest")
+parser.add_argument("--public-frame-registry")
 parser.add_argument("--output-dir", required=True)
 args = parser.parse_args()
 try:
-    print(json.dumps(copesd_timebase_audit(cases_dir=args.cases_dir, data_roots=args.data_roots, timebase_manifest=args.timebase_manifest, output_dir=args.output_dir), sort_keys=True))
+    print(json.dumps(copesd_timebase_audit(cases_dir=args.cases_dir, data_roots=args.data_roots, timebase_manifest=args.timebase_manifest, public_frame_registry=args.public_frame_registry, output_dir=args.output_dir), sort_keys=True))
 except ProtocolDevCaseError as exc:
     print("relive-v2 protocol-dev CoPESD timebase audit error: " + str(exc)); raise SystemExit(2)

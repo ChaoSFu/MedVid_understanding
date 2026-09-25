@@ -93,3 +93,15 @@ timebase audit accepts only JSONL rows with `video_id`, `frame_id`,
 `timestamp_seconds`, `relative_path`, `timebase_source`, and a 64-character
 `source_reference_sha256`. It then emits the image/time/file mapping for human
 keyframe selection.
+
+The checked-in CoPESD public-frame registry records only portable relative
+paths and file numbers supplied for `012626`; it deliberately marks timestamp
+mapping as unresolved. It contains no assistant response or box data.
+
+```bash
+PYTHONPATH=src python scripts/audit_v2_protocol_dev_copesd_timebase.py \
+  --cases-dir protocol_dev/cases \
+  --data-roots configs/v2/protocol_dev_data_roots.local.json \
+  --public-frame-registry protocol_dev/registries/copesd_012626_part0_public_frame_registry.json \
+  --output-dir /path/to/immutable_copesd_public_frame_audit
+```

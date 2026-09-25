@@ -666,15 +666,27 @@ def ego_candidate_path_resolution(*, cases_dir: str | Path, data_roots: str | Pa
 
 
 def copesd_timebase_audit(*, cases_dir: str | Path, data_roots: str | Path, output_dir: str | Path,
-                         timebase_manifest: str | Path | None, case_id: str = "PD-S-08") -> dict[str, Any]:
+                         timebase_manifest: str | Path | None, public_frame_registry: str | Path | None = None,
+                         case_id: str = "PD-S-08") -> dict[str, Any]:
     """Map CoPESD images only through an externally documented timebase manifest."""
     output = Path(output_dir)
     if output.exists(): raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
     cases = {case["case_id"]: case for _, case in _read_cases(cases_dir)}
     if case_id not in cases: raise ProtocolDevCaseError("COPESD_CASE_NOT_FOUND")
     case, roots = cases[case_id], _data_roots(data_roots); root = roots.get(case["frame_locator"]["dataset_root_key"])
+    registry = _json_object(public_frame_registry, "COPESD_PUBLIC_FRAME_REGISTRY") if public_frame_registry else None
+    if registry is not None and (registry.get("dataset") != case["source"]["dataset"] or registry.get("video_id") != case["source"]["video_id"] or registry.get("dataset_root_key") != case["frame_locator"]["dataset_root_key"]):
+        raise ProtocolDevCaseError("COPESD_PUBLIC_FRAME_REGISTRY_BINDING_INVALID")
+    public_ids = registry.get("public_frame_file_ids", []) if isinstance(registry, dict) else []
+    pattern = registry.get("relative_path_pattern") if isinstance(registry, dict) else None
+    if registry is not None and (not isinstance(public_ids, list) or any(type(item) is not int for item in public_ids) or not isinstance(pattern, str)):
+        raise ProtocolDevCaseError("COPESD_PUBLIC_FRAME_REGISTRY_SCHEMA_INVALID")
     if timebase_manifest is None:
-        mappings, status, reason = [], "PENDING", "TIMEBASE_PROVENANCE_REQUIRED"
+        mappings = [{"case_id": case_id, "video_id": case["source"]["video_id"], "public_file_number": frame,
+                     "timestamp_seconds": None, "relative_path": pattern.format(frame=frame) if pattern else None,
+                     "file_exists": bool(root and pattern and (root / pattern.format(frame=frame)).is_file()),
+                     "timebase_status": "UNRESOLVED_DOCUMENTED_TIMEBASE_REQUIRED"} for frame in public_ids]
+        status, reason = "PENDING", "TIMEBASE_PROVENANCE_REQUIRED"
     else:
         try:
             raw_rows = [strict_json_loads(line, error_code="COPESD_TIMEBASE") for line in Path(timebase_manifest).read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -688,13 +700,13 @@ def copesd_timebase_audit(*, cases_dir: str | Path, data_roots: str | Path, outp
             if interval and interval["start_seconds"] <= float(timestamp) <= interval["end_seconds"]:
                 path = root / relative if root is not None else None
                 mappings.append({"case_id": case_id, "video_id": case["source"]["video_id"], "timestamp_seconds": float(timestamp), "frame_id": frame,
-                                 "relative_path": relative, "file_exists": bool(path and path.is_file())})
+                                 "relative_path": relative, "file_exists": bool(path and path.is_file()), "timebase_status": "VALIDATED"})
         status, reason = ("READY_FOR_HUMAN_KEYFRAME_SELECTION", None) if mappings and all(item["file_exists"] for item in mappings) else ("PENDING", "NO_VALIDATED_IMAGE_TIME_MAPPING")
     output.mkdir(parents=True)
     _write(output / "copesd_image_time_mapping.jsonl", mappings, jsonl=True)
     queue = {"format": "relive-v2-protocol-dev-copesd-keyframe-selection-v1", "case_id": case_id, "status": status,
              "reason_code": reason, "evidence_interval": case["temporal_spec"]["evidence_window"],
-             "instruction": "Select exact keyframes only from the validated mapping; source sample-ID numbers are not image-frame identifiers.", "mapping_sha256": sha256_path(output / "copesd_image_time_mapping.jsonl")}
+             "instruction": "Select exact keyframes only from the validated mapping; source sample-ID numbers are not image-frame identifiers.", "mapping_sha256": sha256_path(output / "copesd_image_time_mapping.jsonl"), "public_frame_registry_sha256": sha256_path(public_frame_registry) if public_frame_registry else None}
     _write(output / "copesd_human_keyframe_selection_queue.json", queue)
     return {**queue, "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
 
@@ -706,13 +718,20 @@ def prepare_frame_binding_completion_queue(*, cases_dir: str | Path, output_dir:
     cases = {case["case_id"]: case for _, case in _read_cases(cases_dir)}
     expected = {"PD-C-EGO-01", "PD-P-CholecT50-VID68-GBPACK-01", "PD-S-05", "PD-S-08"}
     if not expected.issubset(cases): raise ProtocolDevCaseError("FRAME_BINDING_CASES_MISSING")
+    s05 = cases["PD-S-05"]
+    s05_suggested = s05["frame_locator"].get("suggested_keyframes", [])
+    s05_row = {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-05",
+               "status": "PENDING_MACHINE_FRAME_PATH_DERIVATION" if s05_suggested else "PENDING_AUTHOR_CONFIRMATION_OF_STABLE_WINDOW",
+               "human_required": [] if s05_suggested else ["Confirm whether the entire frozen evidence range 18001-18501 is an approved stable evidence window before suggested keyframes can enter the canonical case."],
+               "environment_required": ["CHOLECTRACK20_ROOT"],
+               "machine_required": ["Derive a relative path using the author-confirmed suggested keyframes." if s05_suggested else "Only then derive path using [18001,18101,18201,18301,18401,18501]."],
+               "suggested_keyframes": s05_suggested, "proposed_selection_rule": "UNIFORM_KEYFRAMES_WITHIN_HUMAN_APPROVED_EVIDENCE_WINDOW"}
     rows = [
         {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-C-EGO-01", "status": "PENDING_HUMAN_DIRECTORY_CONFIRMATION",
          "human_required": ["Choose one common 06_1 candidate directory after reviewing every enumerated frame path and preview."], "environment_required": ["EGOSURGERY_ROOT"], "machine_required": ["Run candidate path inspection; do not write the derived queue."], "frame_ids": cases["PD-C-EGO-01"]["frame_locator"]["keyframe_ids"]},
         {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-P-CholecT50-VID68-GBPACK-01", "status": "PENDING_HUMAN_POSTSTATE_KEYFRAMES",
          "human_required": ["Select at least three post-state keyframes in inclusive range 1683-1691.", "Each selected frame must clearly show gallbladder, specimen bag, and containment after insertion and bag closing."], "environment_required": ["CHOLECT50_ROOT"], "machine_required": ["Derive a relative path only after human keyframes are in the canonical case."], "strongest_poststate_frame": 1687, "forbidden_frame_range": [1692, None]},
-        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-05", "status": "PENDING_AUTHOR_CONFIRMATION_OF_STABLE_WINDOW",
-         "human_required": ["Confirm whether the entire frozen evidence range 18001-18501 is an approved stable evidence window before suggested keyframes can enter the canonical case."], "environment_required": ["CHOLECTRACK20_ROOT"], "machine_required": ["Only then derive path using [18001,18101,18201,18301,18401,18501]."], "proposed_selection_rule": "UNIFORM_KEYFRAMES_WITHIN_HUMAN_APPROVED_EVIDENCE_WINDOW"},
+        s05_row,
         {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-08", "status": "PENDING_VALIDATED_COPESD_TIMEBASE",
          "human_required": ["Choose keyframes only after reviewing the validated image/time/file mapping."], "environment_required": ["COPESD_ROOT", "documented CoPESD timebase manifest"], "machine_required": ["Do not use 1408 or 1454 from source sample IDs as image frame numbers."], "evidence_interval_seconds": cases["PD-S-08"]["temporal_spec"]["evidence_window"]},
     ]

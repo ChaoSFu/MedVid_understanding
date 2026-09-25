@@ -173,8 +173,11 @@ class ProtocolDevCaseTests(unittest.TestCase):
             roots = root / "roots.json"; roots.write_text(canonical_json({"EGOSURGERY_ROOT": str(frames), "COPESD_ROOT": str(frames)}) + "\n")
             ego_result = ego_candidate_path_resolution(cases_dir=cases, data_roots=roots, output_dir=root / "ego")
             self.assertEqual(ego_result["common_candidate_directories"], ["Ego/06_1"])
+            registry = root / "registry.json"; registry.write_text(canonical_json({"dataset": "CoPESD", "video_id": "012626", "dataset_root_key": "COPESD_ROOT", "relative_path_pattern": "CoPESD/012626/{frame}.jpg", "public_frame_file_ids": [1]}) + "\n")
+            pending = copesd_timebase_audit(cases_dir=cases, data_roots=roots, timebase_manifest=None, public_frame_registry=registry, output_dir=root / "copesd_pending")
+            self.assertEqual((pending["status"], pending["reason_code"]), ("PENDING", "TIMEBASE_PROVENANCE_REQUIRED"))
             timebase = root / "timebase.jsonl"; timebase.write_text(canonical_json({"video_id": "012626", "frame_id": 1, "timestamp_seconds": 1440.0, "relative_path": "CoPESD/012626/0001.jpg", "timebase_source": "DOCUMENTED_SOURCE_FRAME_INDEX_AND_FPS", "source_reference_sha256": "a" * 64}) + "\n")
-            copesd_result = copesd_timebase_audit(cases_dir=cases, data_roots=roots, timebase_manifest=timebase, output_dir=root / "copesd")
+            copesd_result = copesd_timebase_audit(cases_dir=cases, data_roots=roots, timebase_manifest=timebase, public_frame_registry=registry, output_dir=root / "copesd")
             self.assertEqual(copesd_result["status"], "READY_FOR_HUMAN_KEYFRAME_SELECTION")
 
     def test_frame_binding_queue_does_not_select_poststate_or_copesd_keyframes(self):
