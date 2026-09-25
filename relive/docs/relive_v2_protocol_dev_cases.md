@@ -105,3 +105,17 @@ PYTHONPATH=src python scripts/audit_v2_protocol_dev_copesd_timebase.py \
   --public-frame-registry protocol_dev/registries/copesd_012626_part0_public_frame_registry.json \
   --output-dir /path/to/immutable_copesd_public_frame_audit
 ```
+
+## Author-confirmed CoPESD timebase
+
+`registries/copesd_012626_part0_author_confirmed_timebase.jsonl` records the
+portable file/time mapping for `012626` after a human confirmed the 1-FPS base
+sequence and its 1408-to-26-second anchor. The case input samples only even
+base-sequence frame IDs, which is a 0.5-FPS input selection; it does not alter
+the source timestamp formula. The mapping's source-reference SHA-256 binds
+`reviews/author_confirmed_timebase_constraints.jsonl`.
+
+PD-S-08 therefore has a fixed evidence frame range `1434–1446` and a mapped
+seconds interval `52–64`. Exact keyframes remain a human choice only from the
+listed even IDs `1434, 1436, 1438, 1440, 1442, 1444, 1446`; path existence and
+file SHA-256 must still be verified from `COPESD_ROOT` before promotion.

@@ -832,14 +832,26 @@ def prepare_frame_binding_completion_queue(*, cases_dir: str | Path, output_dir:
                "environment_required": ["CHOLECTRACK20_ROOT"],
                "machine_required": ["Derive a relative path using the author-confirmed suggested keyframes." if s05_suggested else "Only then derive path using [18001,18101,18201,18301,18401,18501]."],
                "suggested_keyframes": s05_suggested, "proposed_selection_rule": "UNIFORM_KEYFRAMES_WITHIN_HUMAN_APPROVED_EVIDENCE_WINDOW"}
+    s08 = cases["PD-S-08"]
+    s08_locator, s08_temporal = s08["frame_locator"], s08["temporal_spec"]
+    s08_timebase_bound = (s08_temporal.get("source_timebase") != "PENDING" and
+                           isinstance(s08_locator.get("evidence_frame_range"), list) and
+                           bool(s08_locator.get("sampled_frame_ids")))
+    s08_row = {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-08",
+               "status": "PENDING_HUMAN_KEYFRAME_SELECTION_FROM_BOUND_MAPPING" if s08_timebase_bound else "PENDING_VALIDATED_COPESD_TIMEBASE",
+               "human_required": ["Choose exact keyframes only from the listed frame/time mapping."] if s08_timebase_bound else ["Choose keyframes only after reviewing the validated image/time/file mapping."],
+               "environment_required": ["COPESD_ROOT"],
+               "machine_required": ["Verify selected frame paths and their SHA-256 values before updating a canonical case."],
+               "evidence_interval_seconds": s08_temporal["evidence_window"],
+               "evidence_frame_range": s08_locator.get("evidence_frame_range"),
+               "allowed_frame_ids": s08_locator.get("sampled_frame_ids", [])}
     rows = [
         {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-C-EGO-01", "status": "PENDING_HUMAN_DIRECTORY_CONFIRMATION",
          "human_required": ["Choose one common 06_1 candidate directory after reviewing every enumerated frame path and preview."], "environment_required": ["EGOSURGERY_ROOT"], "machine_required": ["Run candidate path inspection; do not write the derived queue."], "frame_ids": cases["PD-C-EGO-01"]["frame_locator"]["keyframe_ids"]},
         {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-P-CholecT50-VID68-GBPACK-01", "status": "PENDING_HUMAN_POSTSTATE_KEYFRAMES",
          "human_required": ["Select at least three post-state keyframes in inclusive range 1683-1691.", "Each selected frame must clearly show gallbladder, specimen bag, and containment after insertion and bag closing."], "environment_required": ["CHOLECT50_ROOT"], "machine_required": ["Derive a relative path only after human keyframes are in the canonical case."], "strongest_poststate_frame": 1687, "forbidden_frame_range": [1692, None]},
         s05_row,
-        {"format": "relive-v2-protocol-dev-frame-binding-completion-v1", "case_id": "PD-S-08", "status": "PENDING_VALIDATED_COPESD_TIMEBASE",
-         "human_required": ["Choose keyframes only after reviewing the validated image/time/file mapping."], "environment_required": ["COPESD_ROOT", "documented CoPESD timebase manifest"], "machine_required": ["Do not use 1408 or 1454 from source sample IDs as image frame numbers."], "evidence_interval_seconds": cases["PD-S-08"]["temporal_spec"]["evidence_window"]},
+        s08_row,
     ]
     output.mkdir(parents=True)
     _write(output / "protocol_dev_frame_binding_completion_queue.jsonl", rows, jsonl=True)

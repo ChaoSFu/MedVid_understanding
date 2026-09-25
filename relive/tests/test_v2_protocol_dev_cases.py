@@ -221,6 +221,19 @@ class ProtocolDevCaseTests(unittest.TestCase):
             self.assertEqual(post["strongest_poststate_frame"], 1687)
             self.assertNotIn("keyframe_ids", post)
 
+    def test_frame_binding_queue_exposes_only_author_bound_copesd_samples(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            case = cases / "PD-S-08.json"; value = json.loads(case.read_text())
+            value["frame_locator"].update({"evidence_frame_range": [10, 14], "sampled_frame_ids": [10, 12, 14]})
+            value["temporal_spec"]["source_timebase"] = "AUTHOR_CONFIRMED_DOCUMENTED_SOURCE_FRAME_INDEX_AND_FPS"
+            case.write_text(canonical_json(value) + "\n")
+            prepare_frame_binding_completion_queue(cases_dir=cases, output_dir=root / "queue")
+            rows = [json.loads(line) for line in (root / "queue/protocol_dev_frame_binding_completion_queue.jsonl").read_text().splitlines()]
+            copesd = next(row for row in rows if row["case_id"] == "PD-S-08")
+            self.assertEqual(copesd["status"], "PENDING_HUMAN_KEYFRAME_SELECTION_FROM_BOUND_MAPPING")
+            self.assertEqual(copesd["allowed_frame_ids"], [10, 12, 14])
+
 
 if __name__ == "__main__":
     unittest.main()
