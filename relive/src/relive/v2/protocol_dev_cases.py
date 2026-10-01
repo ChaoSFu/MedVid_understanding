@@ -28,6 +28,8 @@ HUMAN_COMPLETION_APPLICATION_FORMAT = "relive-v2-protocol-dev-human-completion-a
 ENTITY_COMPONENT_COMPLETION_FORMAT = "relive-v2-protocol-dev-entity-component-completion-v1"
 ORACLE_TEMPLATE_FORMAT = "relive-v2-protocol-dev-oracle-annotation-v1"
 SOURCE_MATERIALIZATION_FORMAT = "relive-v2-protocol-dev-source-materialization-v1"
+SOURCE_RECORD_CONFIRMATION_FORMAT = "relive-v2-protocol-dev-source-record-confirmation-v1"
+SOURCE_RECORD_CONFIRMATION_APPLICATION_FORMAT = "relive-v2-protocol-dev-source-record-confirmation-application-v1"
 CLAIM_TYPES = frozenset({"SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"})
 CASE_STATUSES = frozenset({"READY", "PENDING", "INVALID"})
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -521,6 +523,157 @@ def materialize_source_records(*, cases_dir: str | Path, qa_path: str | Path, ou
               "certificate_writes": 0, "new_verified_count": 0}
     _write(output / "protocol_dev_source_record_materialization_report.json", report)
     return report
+
+
+def _public_source_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return public-field identities without exposing answer or annotation values."""
+    candidates = []
+    for index, row in enumerate(records):
+        projection = _public_source_projection(row)
+        public_hash = hashlib.sha256(canonical_json(projection).encode("utf-8")).hexdigest()
+        identifiers = {value for value in (row.get("id"), row.get("sample_id"), row.get("source_record_uid")) if _text(value)}
+        candidates.append({"source_record_index": index,
+                           "source_record_uid": "relive-v2-source-v1:" + public_hash,
+                           "source_record_canonical_sha256": public_hash,
+                           "identifiers": sorted(identifiers),
+                           "dataset_name": row.get("dataset_name"),
+                           "video": row.get("video") if isinstance(row.get("video"), list) else [],
+                           "qa_type": row.get("qa_type")})
+    return candidates
+
+
+def _case_selectors(case: dict[str, Any]) -> set[str]:
+    source = case["source"]
+    selectors = {value for value in source.get("source_sample_ids", []) if _text(value)}
+    for hint in source.get("source_record_hints", []):
+        if isinstance(hint, dict):
+            for key in ("source_record_uid_hint", "source_sample_id_hint"):
+                if _text(hint.get(key)):
+                    selectors.add(hint[key])
+    if _text(source.get("source_record_uid")):
+        selectors.add(source["source_record_uid"])
+    return selectors
+
+
+def _candidate_matches_case_identity(candidate: dict[str, Any], case: dict[str, Any]) -> bool:
+    """Use public dataset/video identity only; this does not infer task semantics."""
+    source = case["source"]
+    if candidate.get("dataset_name") != source.get("dataset"):
+        return False
+    video_id = source.get("video_id")
+    return _text(video_id) and any(video_id in path for path in candidate.get("video", []) if isinstance(path, str))
+
+
+def _source_confirmation_rows(path: str | Path, expected_cases: set[str]) -> dict[str, dict[str, Any]]:
+    try:
+        raw = Path(path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_INVALID") from exc
+    rows: dict[str, dict[str, Any]] = {}
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = strict_json_loads(line, error_code="SOURCE_RECORD_CONFIRMATION")
+        except TALSelectionError as exc:
+            raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_INVALID") from exc
+        if not isinstance(row, dict) or set(row) != {"format", "case_id", "selected_source_record_indices", "reviewer_id", "rationale", "qa_file_sha256"}:
+            raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_SCHEMA_INVALID")
+        indices = row.get("selected_source_record_indices")
+        if (row.get("format") != SOURCE_RECORD_CONFIRMATION_FORMAT or not _text(row.get("case_id")) or
+                not isinstance(indices, list) or not indices or any(type(index) is not int or index < 0 for index in indices) or
+                indices != sorted(set(indices)) or not _text(row.get("reviewer_id")) or not _text(row.get("rationale")) or
+                not isinstance(row.get("qa_file_sha256"), str) or not _HEX.fullmatch(row["qa_file_sha256"])):
+            raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_SCHEMA_INVALID")
+        case_id = row["case_id"]
+        if case_id in rows:
+            raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_DUPLICATE_CASE")
+        rows[case_id] = row
+    if set(rows) != expected_cases:
+        raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_CASE_SET_MISMATCH")
+    return rows
+
+
+def apply_source_record_confirmations(*, cases_dir: str | Path, qa_path: str | Path,
+                                      confirmation_path: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Apply human-selected *public* source indices as a new immutable case revision.
+
+    Ambiguous or stale draft selectors remain blocked until a reviewer binds the
+    exact source-record index.  The confirmation file cannot carry answers,
+    annotations, boxes, or oracle evidence.
+    """
+    output = Path(output_dir)
+    if output.exists():
+        raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    qa_sha = sha256_path(qa_path)
+    records = _public_qa_records(qa_path)
+    candidates = _public_source_candidates(records)
+    by_index = {item["source_record_index"]: item for item in candidates}
+    source_cases = _read_cases(cases_dir)
+    ambiguous: set[str] = set()
+    automatic: dict[str, list[dict[str, Any]]] = {}
+    for _, case in source_cases:
+        selectors = _case_selectors(case)
+        matches = {selector: [item for item in candidates if item["source_record_uid"] == selector or selector in item["identifiers"]]
+                   for selector in selectors}
+        if selectors and all(len(items) == 1 for items in matches.values()):
+            selected = {item["source_record_index"]: item for items in matches.values() for item in items}
+            automatic[case["case_id"]] = [selected[index] for index in sorted(selected)]
+        else:
+            ambiguous.add(case["case_id"])
+    confirmations = _source_confirmation_rows(confirmation_path, ambiguous)
+    if any(row["qa_file_sha256"] != qa_sha for row in confirmations.values()):
+        raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_QA_BINDING_INVALID")
+    resolved = output / "cases"; resolved.mkdir(parents=True)
+    binding_rows = []
+    source_hashes = {}
+    for path, original in sorted(source_cases, key=lambda item: item[1]["case_id"]):
+        case_id = original["case_id"]
+        if case_id in automatic:
+            selected, origin, reviewer, rationale = automatic[case_id], "AUTOMATIC_UNIQUE", None, None
+        else:
+            confirmation = confirmations[case_id]
+            try:
+                selected = [by_index[index] for index in confirmation["selected_source_record_indices"]]
+            except KeyError as exc:
+                raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_INDEX_UNKNOWN") from exc
+            if not all(_candidate_matches_case_identity(candidate, original) for candidate in selected):
+                raise ProtocolDevCaseError("SOURCE_RECORD_CONFIRMATION_IDENTITY_MISMATCH")
+            origin, reviewer, rationale = "HUMAN_CONFIRMED", confirmation["reviewer_id"].strip(), confirmation["rationale"].strip()
+        value = json.loads(canonical_json(original))
+        source = value["source"]
+        source["source_record_uid"] = selected[0]["source_record_uid"] if len(selected) == 1 else None
+        source["source_record_uids"] = [item["source_record_uid"] for item in selected]
+        source["source_record_canonical_hashes"] = [item["source_record_canonical_sha256"] for item in selected]
+        source["source_sample_ids"] = sorted({identifier for item in selected for identifier in item["identifiers"]})
+        source["source_task"] = selected[0]["qa_type"] if len({item["qa_type"] for item in selected}) == 1 else "MULTI_SOURCE"
+        source["source_task_types"] = sorted({item["qa_type"] for item in selected if _text(item["qa_type"])})
+        source["source_record_hints"] = [{"role": "SOURCE_RECORD_BINDING", "source_record_uid_hint": item["source_record_uid"],
+                                           "source_sample_id_hint": item["identifiers"][0] if item["identifiers"] else None} for item in selected]
+        value["case_revision"] = value.get("case_revision", "draft-normalized-r1") + "+source-record-confirmation-r1"
+        value["case_status"] = "PENDING"
+        value["provenance"] = {**value["provenance"], "source_record_confirmation": {
+            "format": SOURCE_RECORD_CONFIRMATION_FORMAT, "qa_file_sha256": qa_sha,
+            "confirmation_sha256": sha256_path(confirmation_path), "selection_origin": origin,
+            "selected_source_record_indices": [item["source_record_index"] for item in selected],
+            "reviewer_id": reviewer, "rationale": rationale}}
+        destination = resolved / path.name
+        _write(destination, value)
+        source_hashes[case_id] = sha256_path(path)
+        binding_rows.append({"case_id": case_id, "selection_origin": origin,
+                             "source_case_sha256": source_hashes[case_id], "bound_case_sha256": sha256_path(destination),
+                             "source_records": [{key: item[key] for key in ("source_record_index", "source_record_uid", "source_record_canonical_sha256", "qa_type")} for item in selected]})
+    manifest = rebuild_manifest(cases_dir=resolved, manifest_path=output / "protocol_dev_manifest.jsonl")
+    bindings_path = output / "protocol_dev_source_record_binding_manifest.jsonl"
+    _write(bindings_path, binding_rows, jsonl=True)
+    report = {"format": SOURCE_RECORD_CONFIRMATION_APPLICATION_FORMAT, "status": "PASS", "case_count": len(binding_rows),
+              "human_confirmed_case_count": len(confirmations), "automatic_unique_case_count": len(automatic),
+              "qa_file_sha256": qa_sha, "confirmation_sha256": sha256_path(confirmation_path),
+              "source_case_sha256": source_hashes, "binding_manifest_sha256": sha256_path(bindings_path),
+              "bound_manifest_sha256": manifest["manifest_sha256"], "assistant_or_gt_values_accessed": False,
+              "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "protocol_dev_source_record_confirmation_application_report.json", report)
+    return {**report, "bound_cases_dir": str(resolved)}
 
 
 def _human_queue_row(case: dict[str, Any]) -> dict[str, Any]:

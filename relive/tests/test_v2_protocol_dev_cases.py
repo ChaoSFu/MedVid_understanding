@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
 
 from relive.storage.artifacts import canonical_json
 from relive.v2.protocol_dev_cases import (
-    ProtocolDevCaseError, apply_human_completion, assert_automatic_certificate_input_safe, audit_cases,
+    ProtocolDevCaseError, apply_human_completion, apply_source_record_confirmations, assert_automatic_certificate_input_safe, audit_cases,
     copesd_timebase_audit, ego_candidate_path_resolution, materialize_source_records,
     normalize_draft, prepare_entity_component_completion, prepare_frame_binding_completion_queue, prepare_human_completion,
     resolve_frame_patterns,
@@ -277,6 +278,48 @@ class ProtocolDevCaseTests(unittest.TestCase):
             copesd = next(row for row in rows if row["case_id"] == "PD-S-08")
             self.assertEqual(copesd["status"], "PENDING_HUMAN_KEYFRAME_SELECTION_FROM_BOUND_MAPPING")
             self.assertEqual(copesd["allowed_frame_ids"], [10, 12, 14])
+
+    def _source_confirmation_fixture(self, root: Path) -> tuple[Path, Path, Path]:
+        cases, _ = self.normalize(root)
+        rows = []
+        for index, path in enumerate(sorted(cases.glob("*.json"))):
+            value = json.loads(path.read_text())
+            identifier = "shared" if value["case_id"] == "PD-S-08" else f"public-{index}"
+            value["source"].update({"source_record_uid": None, "source_sample_ids": [identifier], "source_record_hints": []})
+            path.write_text(canonical_json(value) + "\n")
+            rows.append({"id": identifier, "qa_type": "stg", "dataset_name": value["source"]["dataset"],
+                         "video": [f"/public/{value['source']['video_id']}/0001.jpg"], "sampled_video_frames": [1],
+                         "conversations": [{"from": "human", "value": "public question"}, {"from": "gpt", "value": "must not be bound"}]})
+        s08 = next(json.loads(path.read_text()) for path in cases.glob("PD-S-08.json"))
+        rows.append({"id": "shared", "qa_type": "stg", "dataset_name": s08["source"]["dataset"],
+                     "video": [f"/public/{s08['source']['video_id']}/alternate.jpg"], "sampled_video_frames": [2], "conversations": []})
+        qa = root / "qa.json"; qa.write_text(canonical_json(rows) + "\n")
+        confirmation = root / "confirmation.jsonl"
+        confirmation.write_text(canonical_json({"format": "relive-v2-protocol-dev-source-record-confirmation-v1", "case_id": "PD-S-08",
+                                                "selected_source_record_indices": [8], "reviewer_id": "reviewer-1",
+                                                "rationale": "Reviewed exact public record.", "qa_file_sha256": hashlib.sha256(qa.read_bytes()).hexdigest()}) + "\n")
+        return cases, qa, confirmation
+
+    def test_source_record_confirmation_applies_selected_public_binding_immutably(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, qa, confirmation = self._source_confirmation_fixture(root)
+            result = apply_source_record_confirmations(cases_dir=cases, qa_path=qa, confirmation_path=confirmation, output_dir=root / "bound")
+            self.assertEqual((result["case_count"], result["human_confirmed_case_count"], result["automatic_unique_case_count"]), (9, 1, 8))
+            original = json.loads((cases / "PD-S-08.json").read_text())
+            bound = json.loads((root / "bound/cases/PD-S-08.json").read_text())
+            self.assertEqual(original["source"]["source_record_canonical_hashes"], [])
+            self.assertEqual(len(bound["source"]["source_record_canonical_hashes"]), 1)
+            self.assertNotIn("must not be bound", canonical_json(bound))
+            audit = audit_cases(cases_dir=root / "bound/cases", oracle_dir=None, data_roots=None, output_dir=root / "audit")
+            self.assertFalse(any("SOURCE_RECORD_CANONICAL_HASH_PENDING" in row["missing_or_issue_fields"] for row in audit["rows"]))
+
+    def test_source_record_confirmation_fails_closed_on_qa_hash_mismatch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, qa, confirmation = self._source_confirmation_fixture(root)
+            row = json.loads(confirmation.read_text()); row["qa_file_sha256"] = "0" * 64
+            confirmation.write_text(canonical_json(row) + "\n")
+            with self.assertRaisesRegex(ProtocolDevCaseError, "SOURCE_RECORD_CONFIRMATION_QA_BINDING_INVALID"):
+                apply_source_record_confirmations(cases_dir=cases, qa_path=qa, confirmation_path=confirmation, output_dir=root / "blocked")
 
 
 if __name__ == "__main__":
