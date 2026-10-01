@@ -622,6 +622,9 @@ def prepare_entity_component_completion(*, cases_dir: str | Path, completion_que
                      "current_entities": case["entities"], "current_required_evidence_roles": case["evidence_contract"]["required_evidence_roles"],
                      "true_claim": {key: true_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
                      "false_claim": {key: false_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
+                     "entities": [], "required_evidence_roles": [],
+                     "true_claim_components": {"subject": None, "predicate": None, "object": None},
+                     "false_claim_components": {"subject": None, "predicate": None, "object": None},
                      "required_fields": ["decision=CONFIRMED", "entities", "required_evidence_roles", "true_claim_components", "false_claim_components", "rationale"],
                      "rationale": ""})
     output.mkdir(parents=True)
