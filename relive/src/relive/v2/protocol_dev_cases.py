@@ -617,12 +617,17 @@ def prepare_entity_component_completion(*, cases_dir: str | Path, completion_que
             raise ProtocolDevCaseError("ENTITY_COMPONENT_REVIEWER_MISSING")
         true_claim = next(item for item in case["claims"] if item["polarity"] == "TRUE")
         false_claim = next(item for item in case["claims"] if item["polarity"] == "FALSE")
+        # A reviewer may have filled these two snapshot fields in the primary
+        # queue before this dedicated form existed.  Preserve that human input
+        # here, but require the separate form to confirm it before application.
+        proposed_entities = human.get("current_entities") if isinstance(human.get("current_entities"), list) else []
+        proposed_roles = human.get("current_required_evidence_roles") if isinstance(human.get("current_required_evidence_roles"), list) else []
         rows.append({"format": ENTITY_COMPONENT_COMPLETION_FORMAT, "case_id": case["case_id"],
                      "reviewer_id": human["reviewer_id"], "decision": "PENDING",
                      "current_entities": case["entities"], "current_required_evidence_roles": case["evidence_contract"]["required_evidence_roles"],
                      "true_claim": {key: true_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
                      "false_claim": {key: false_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
-                     "entities": [], "required_evidence_roles": [],
+                     "entities": proposed_entities, "required_evidence_roles": proposed_roles,
                      "true_claim_components": {"subject": None, "predicate": None, "object": None},
                      "false_claim_components": {"subject": None, "predicate": None, "object": None},
                      "required_fields": ["decision=CONFIRMED", "entities", "required_evidence_roles", "true_claim_components", "false_claim_components", "rationale"],
