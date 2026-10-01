@@ -332,8 +332,8 @@ def _schema_issues(case: dict[str, Any]) -> list[str]:
     else:
         true = next(item for item in claims if item["polarity"] == "TRUE"); false = next(item for item in claims if item["polarity"] == "FALSE")
         if false.get("matched_to_claim_id") != true.get("claim_id"): issues.append("MATCHED_TO_CLAIM_ID_INVALID")
-        values = (true.get("subject"), false.get("subject"), true.get("object"), false.get("object"), true.get("predicate"), false.get("predicate"))
-        if any(value is None for value in values): issues.append("CLAIM_COMPONENTS_PENDING")
+        claim_type = task.get("claim_type") if isinstance(task, dict) else None
+        if not _claim_components_complete(claim_type, true) or not _claim_components_complete(claim_type, false): issues.append("CLAIM_COMPONENTS_PENDING")
         elif true["subject"] != false["subject"] or true["object"] != false["object"] or true["predicate"] == false["predicate"]: issues.append("FALSE_CLAIM_NOT_PREDICATE_ONLY")
     oracle = case.get("oracle_annotation")
     if not isinstance(oracle, dict) or oracle.get("automatic_certificate_access") != "FORBIDDEN" or oracle.get("coordinates_present") is not False: issues.append("ORACLE_ISOLATION_INVALID")
@@ -527,7 +527,9 @@ def _human_queue_row(case: dict[str, Any]) -> dict[str, Any]:
     human = case["human_review"]
     true_claim = next(item for item in case["claims"] if item["polarity"] == "TRUE")
     false_claim = next(item for item in case["claims"] if item["polarity"] == "FALSE")
-    components_missing = any(value is None for value in (true_claim.get("subject"), true_claim.get("predicate"), true_claim.get("object"), false_claim.get("subject"), false_claim.get("predicate"), false_claim.get("object"))) or not case["entities"] or not case["evidence_contract"]["required_evidence_roles"]
+    components_missing = (not _claim_components_complete(case["task"]["claim_type"], true_claim) or
+                          not _claim_components_complete(case["task"]["claim_type"], false_claim) or
+                          not case["entities"] or not case["evidence_contract"]["required_evidence_roles"])
     suggested = case["frame_locator"].get("suggested_keyframes", [])
     return {"format": HUMAN_QUEUE_FORMAT, "case_id": case["case_id"], "claim_type": case["task"]["claim_type"],
             "true_claim": true_claim.get("text"), "matched_false_claim": false_claim.get("text"),
@@ -597,9 +599,23 @@ def _completion_rows(path: str | Path) -> dict[str, dict[str, Any]]:
 
 def _components_missing(case: dict[str, Any]) -> bool:
     claims = case.get("claims", [])
-    components = [value for claim in claims if isinstance(claim, dict)
-                  for value in (claim.get("subject"), claim.get("predicate"), claim.get("object"))]
-    return not case.get("entities") or not case.get("evidence_contract", {}).get("required_evidence_roles") or any(value is None for value in components)
+    return (not case.get("entities") or not case.get("evidence_contract", {}).get("required_evidence_roles") or
+            any(not _claim_components_complete(case.get("task", {}).get("claim_type"), claim)
+                for claim in claims if isinstance(claim, dict)))
+
+
+def _claim_components_complete(claim_type: Any, components: Any) -> bool:
+    """Validate typed claim components without inventing an object for state.
+
+    Spatial relations and contact actions are binary. A postcondition can be a
+    unary state of one entity (for example, an excision site being open or
+    closed), whose object is deliberately JSON null. The paired-claim check
+    still ensures subject/object match and predicate alone changes.
+    """
+    if not isinstance(components, dict) or not _text(components.get("subject")) or not _text(components.get("predicate")):
+        return False
+    object_ = components.get("object")
+    return _text(object_) or (claim_type == "POSTCONDITION_PERSISTENCE" and object_ is None)
 
 
 def prepare_entity_component_completion(*, cases_dir: str | Path, completion_queue: str | Path, output_dir: str | Path) -> dict[str, Any]:
@@ -628,8 +644,9 @@ def prepare_entity_component_completion(*, cases_dir: str | Path, completion_que
                      "true_claim": {key: true_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
                      "false_claim": {key: false_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
                      "entities": proposed_entities, "required_evidence_roles": proposed_roles,
-                     "true_claim_components": {"subject": None, "predicate": None, "object": None},
-                     "false_claim_components": {"subject": None, "predicate": None, "object": None},
+                     "true_claim_components": {key: true_claim.get(key) for key in ("subject", "predicate", "object")},
+                     "false_claim_components": {key: false_claim.get(key) for key in ("subject", "predicate", "object")},
+                     "object_semantics": "NULL_ALLOWED_FOR_POSTCONDITION_PERSISTENCE_UNARY_STATE" if case["task"]["claim_type"] == "POSTCONDITION_PERSISTENCE" else "REQUIRED_BINARY_ENTITY",
                      "required_fields": ["decision=CONFIRMED", "entities", "required_evidence_roles", "true_claim_components", "false_claim_components", "rationale"],
                      "rationale": ""})
     output.mkdir(parents=True)
@@ -676,8 +693,8 @@ def _apply_components(case: dict[str, Any], row: dict[str, Any], reviewer_id: st
     entities, roles = row.get("entities"), row.get("required_evidence_roles")
     true, false = row.get("true_claim_components"), row.get("false_claim_components")
     if (not isinstance(entities, list) or not entities or not isinstance(roles, list) or not roles or
-            not isinstance(true, dict) or not isinstance(false, dict) or
-            any(not _text(item.get(key)) for item in (true, false) for key in ("subject", "predicate", "object"))):
+            not _claim_components_complete(case["task"]["claim_type"], true) or
+            not _claim_components_complete(case["task"]["claim_type"], false)):
         raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_SCHEMA_INVALID")
     if true["subject"] != false["subject"] or true["object"] != false["object"] or true["predicate"] == false["predicate"]:
         raise ProtocolDevCaseError("ENTITY_COMPONENT_FALSE_CLAIM_INVALID")

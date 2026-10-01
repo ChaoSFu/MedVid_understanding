@@ -189,6 +189,38 @@ class ProtocolDevCaseTests(unittest.TestCase):
             with self.assertRaisesRegex(ProtocolDevCaseError, "HUMAN_ORACLE"):
                 apply_human_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "blocked")
 
+    def test_unary_postcondition_components_keep_null_object_without_invention(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); cases, _ = self.normalize(root)
+            reviews, oracle = root / "reviews", root / "oracle"
+            prepare_human_completion(cases_dir=cases, reviews_dir=reviews, oracle_dir=oracle)
+            queue = reviews / "protocol_dev_human_completion_queue.jsonl"
+            primary = [json.loads(line) for line in queue.read_text().splitlines()]
+            for row in primary:
+                row.update({"current_decision": "ADMIT", "current_rationale": "human reviewed", "reviewer_id": "reviewer-1"})
+                if not row["current_keyframe_ids"]:
+                    row["current_keyframe_ids"] = [1]
+            queue.write_text("".join(canonical_json(row) + "\n" for row in primary))
+            prepare_entity_component_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "components")
+            component_path = root / "components/protocol_dev_entity_component_completion_queue.jsonl"
+            rows = [json.loads(line) for line in component_path.read_text().splitlines()]
+            for row in rows:
+                row.update({"decision": "CONFIRMED", "rationale": "human confirmed", "entities": [{"entity_id": "subject", "definition": "visible subject"}], "required_evidence_roles": ["VISIBLE_SUBJECT_TUBE"]})
+                if row["case_id"] == "PD-P-AVOS-Tg3Pg6f-mjg-01":
+                    self.assertEqual(row["object_semantics"], "NULL_ALLOWED_FOR_POSTCONDITION_PERSISTENCE_UNARY_STATE")
+                    row["true_claim_components"] = {"subject": "resulting excision site", "predicate": "REMAINS_VISIBLY_OPEN", "object": None}
+                    row["false_claim_components"] = {"subject": "resulting excision site", "predicate": "IS_VISIBLY_CLOSED", "object": None}
+                else:
+                    row["true_claim_components"] = {"subject": "subject", "predicate": "TRUE_RELATION", "object": "object"}
+                    row["false_claim_components"] = {"subject": "subject", "predicate": "FALSE_RELATION", "object": "object"}
+            component_path.write_text("".join(canonical_json(row) + "\n" for row in rows))
+            apply_human_completion(cases_dir=cases, completion_queue=queue, component_completion=component_path, output_dir=root / "applied")
+            result = json.loads((root / "applied/cases/PD-P-AVOS-Tg3Pg6f-mjg-01.json").read_text())
+            true = next(item for item in result["claims"] if item["polarity"] == "TRUE")
+            false = next(item for item in result["claims"] if item["polarity"] == "FALSE")
+            self.assertEqual((true["object"], false["object"]), (None, None))
+            self.assertEqual((true["predicate"], false["predicate"]), ("REMAINS_VISIBLY_OPEN", "IS_VISIBLY_CLOSED"))
+
     def test_frame_resolver_requires_unambiguous_existing_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); cases, _ = self.normalize(root); case = cases / "PD-S-05.json"; value = json.loads(case.read_text())
