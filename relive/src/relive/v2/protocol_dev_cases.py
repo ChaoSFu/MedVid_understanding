@@ -25,6 +25,7 @@ NORMALIZER_VERSION = "relive-v2-protocol-dev-normalizer-v1"
 AUDIT_FORMAT = "relive-v2-protocol-dev-readiness-audit-v1"
 HUMAN_QUEUE_FORMAT = "relive-v2-protocol-dev-human-completion-queue-v1"
 HUMAN_COMPLETION_APPLICATION_FORMAT = "relive-v2-protocol-dev-human-completion-application-v1"
+ENTITY_COMPONENT_COMPLETION_FORMAT = "relive-v2-protocol-dev-entity-component-completion-v1"
 ORACLE_TEMPLATE_FORMAT = "relive-v2-protocol-dev-oracle-annotation-v1"
 SOURCE_MATERIALIZATION_FORMAT = "relive-v2-protocol-dev-source-materialization-v1"
 CLAIM_TYPES = frozenset({"SPATIAL_RELATION", "CONTACT_ACTION", "POSTCONDITION_PERSISTENCE"})
@@ -594,6 +595,91 @@ def _completion_rows(path: str | Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
+def _components_missing(case: dict[str, Any]) -> bool:
+    claims = case.get("claims", [])
+    components = [value for claim in claims if isinstance(claim, dict)
+                  for value in (claim.get("subject"), claim.get("predicate"), claim.get("object"))]
+    return not case.get("entities") or not case.get("evidence_contract", {}).get("required_evidence_roles") or any(value is None for value in components)
+
+
+def prepare_entity_component_completion(*, cases_dir: str | Path, completion_queue: str | Path, output_dir: str | Path) -> dict[str, Any]:
+    """Create a separate human-only form for semantic components still absent."""
+    output = Path(output_dir)
+    if output.exists():
+        raise ProtocolDevCaseError("IMMUTABLE_OUTPUT_EXISTS")
+    queue = _completion_rows(completion_queue)
+    rows = []
+    for _, case in _read_cases(cases_dir):
+        if not _components_missing(case):
+            continue
+        human = queue.get(case["case_id"])
+        if human is None or not _text(human.get("reviewer_id")):
+            raise ProtocolDevCaseError("ENTITY_COMPONENT_REVIEWER_MISSING")
+        true_claim = next(item for item in case["claims"] if item["polarity"] == "TRUE")
+        false_claim = next(item for item in case["claims"] if item["polarity"] == "FALSE")
+        rows.append({"format": ENTITY_COMPONENT_COMPLETION_FORMAT, "case_id": case["case_id"],
+                     "reviewer_id": human["reviewer_id"], "decision": "PENDING",
+                     "current_entities": case["entities"], "current_required_evidence_roles": case["evidence_contract"]["required_evidence_roles"],
+                     "true_claim": {key: true_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
+                     "false_claim": {key: false_claim.get(key) for key in ("claim_id", "text", "subject", "predicate", "object")},
+                     "required_fields": ["decision=CONFIRMED", "entities", "required_evidence_roles", "true_claim_components", "false_claim_components", "rationale"],
+                     "rationale": ""})
+    output.mkdir(parents=True)
+    path = output / "protocol_dev_entity_component_completion_queue.jsonl"
+    _write(path, sorted(rows, key=lambda item: item["case_id"]), jsonl=True)
+    report = {"format": ENTITY_COMPONENT_COMPLETION_FORMAT, "status": "PASS", "case_count": len(rows),
+              "completion_queue_sha256": sha256_path(completion_queue), "queue_sha256": sha256_path(path),
+              "model_calls_made": 0, "cache_writes": 0, "certificate_writes": 0, "new_verified_count": 0}
+    _write(output / "protocol_dev_entity_component_completion_report.json", report)
+    return report
+
+
+def _component_rows(path: str | Path | None, required_case_ids: set[str]) -> dict[str, dict[str, Any]]:
+    if not required_case_ids:
+        return {}
+    if path is None:
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_REQUIRED")
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_INVALID") from exc
+    rows = {}
+    forbidden = {"coordinates", "mask", "bbox", "tube", "oracle_annotation"}
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = strict_json_loads(line, error_code="ENTITY_COMPONENT_COMPLETION")
+        except TALSelectionError as exc:
+            raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_INVALID") from exc
+        if not isinstance(row, dict) or row.get("format") != ENTITY_COMPONENT_COMPLETION_FORMAT or not _text(row.get("case_id")):
+            raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_SCHEMA_INVALID")
+        if forbidden.intersection(row) or row["case_id"] in rows:
+            raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_SCHEMA_INVALID")
+        rows[row["case_id"]] = row
+    if set(rows) != required_case_ids:
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_CASE_SET_MISMATCH")
+    return rows
+
+
+def _apply_components(case: dict[str, Any], row: dict[str, Any], reviewer_id: str) -> None:
+    if row.get("decision") != "CONFIRMED" or row.get("reviewer_id") != reviewer_id or not _text(row.get("rationale")):
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_REQUIRED_FIELD_MISSING")
+    entities, roles = row.get("entities"), row.get("required_evidence_roles")
+    true, false = row.get("true_claim_components"), row.get("false_claim_components")
+    if (not isinstance(entities, list) or not entities or not isinstance(roles, list) or not roles or
+            not isinstance(true, dict) or not isinstance(false, dict) or
+            any(not _text(item.get(key)) for item in (true, false) for key in ("subject", "predicate", "object"))):
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_COMPLETION_SCHEMA_INVALID")
+    if true["subject"] != false["subject"] or true["object"] != false["object"] or true["predicate"] == false["predicate"]:
+        raise ProtocolDevCaseError("ENTITY_COMPONENT_FALSE_CLAIM_INVALID")
+    case["entities"] = entities; case["evidence_contract"]["required_evidence_roles"] = roles
+    for claim in case["claims"]:
+        values = true if claim["polarity"] == "TRUE" else false
+        for key in ("subject", "predicate", "object"):
+            claim[key] = values[key]
+
+
 def _applyable_keyframes(case: dict[str, Any], row: dict[str, Any]) -> tuple[list[int] | None, str | None]:
     """Accept human frame IDs only when their coordinate system is already bound.
 
@@ -617,7 +703,8 @@ def _applyable_keyframes(case: dict[str, Any], row: dict[str, Any]) -> tuple[lis
     return None, "KEYFRAME_REFERENCE_UNBOUND"
 
 
-def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Path, output_dir: str | Path) -> dict[str, Any]:
+def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Path, output_dir: str | Path,
+                           component_completion: str | Path | None = None) -> dict[str, Any]:
     """Create immutable reviewed case copies from a completed human queue.
 
     The source cases and queue remain unchanged.  Oracle coordinates are not a
@@ -631,6 +718,7 @@ def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Pat
     rows = _completion_rows(completion_queue)
     if set(rows) != set(by_id):
         raise ProtocolDevCaseError("HUMAN_COMPLETION_QUEUE_CASE_SET_MISMATCH")
+    component_rows = _component_rows(component_completion, {case_id for case_id, (_, case) in by_id.items() if _components_missing(case)})
     completed = output / "cases"; completed.mkdir(parents=True)
     application_rows = []
     source_hashes = {}
@@ -643,12 +731,15 @@ def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Pat
         keyframes, keyframe_reason = _applyable_keyframes(value, row)
         value["human_review"] = {**value["human_review"], "decision": decision, "reviewer_id": reviewer.strip(), "rationale": rationale.strip(),
                                  "source_decision_literal": "HUMAN_COMPLETION_QUEUE_APPLIED"}
+        if case_id in component_rows:
+            _apply_components(value, component_rows[case_id], reviewer.strip())
         if keyframes is not None:
             value["frame_locator"]["keyframe_ids"] = keyframes
         previous = value.get("case_revision", "draft-normalized-r1")
         value["case_revision"] = previous + "+human-completion-r1"
         value["case_status"] = "PENDING"
         value["provenance"] = {**value["provenance"], "human_completion_queue_sha256": sha256_path(completion_queue),
+                               "entity_component_completion_sha256": sha256_path(component_completion) if component_completion else None,
                                "human_completion_application": {"decision": decision, "reviewer_id": reviewer.strip(),
                                    "keyframes_applied": keyframes is not None, "keyframe_status": "APPLIED" if keyframes is not None else "PENDING",
                                    "keyframe_reason": keyframe_reason}}
@@ -663,6 +754,7 @@ def apply_human_completion(*, cases_dir: str | Path, completion_queue: str | Pat
     _write(output / "human_completion_application.jsonl", application_rows, jsonl=True)
     report = {"format": HUMAN_COMPLETION_APPLICATION_FORMAT, "status": "PASS", "case_count": len(application_rows),
               "completion_queue_sha256": sha256_path(completion_queue), "source_case_sha256": source_hashes,
+              "entity_component_completion_sha256": sha256_path(component_completion) if component_completion else None,
               "application_rows_sha256": sha256_path(output / "human_completion_application.jsonl"),
               "reviewed_manifest_sha256": manifest_result["manifest_sha256"],
               "keyframe_binding_pending_count": sum(not row["keyframes_applied"] for row in application_rows),

@@ -9,7 +9,7 @@ from relive.storage.artifacts import canonical_json
 from relive.v2.protocol_dev_cases import (
     ProtocolDevCaseError, apply_human_completion, assert_automatic_certificate_input_safe, audit_cases,
     copesd_timebase_audit, ego_candidate_path_resolution, materialize_source_records,
-    normalize_draft, prepare_frame_binding_completion_queue, prepare_human_completion,
+    normalize_draft, prepare_entity_component_completion, prepare_frame_binding_completion_queue, prepare_human_completion,
     resolve_frame_patterns,
 )
 
@@ -158,7 +158,19 @@ class ProtocolDevCaseTests(unittest.TestCase):
                 if not row["current_keyframe_ids"]:
                     row["current_keyframe_ids"] = [1683, 1687, 1691] if row["case_id"] == "PD-P-CholecT50-VID68-GBPACK-01" else [1434, 1437, 1441]
             queue.write_text("".join(canonical_json(row) + "\n" for row in rows))
-            applied = apply_human_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "applied")
+            with self.assertRaisesRegex(ProtocolDevCaseError, "ENTITY_COMPONENT_COMPLETION_REQUIRED"):
+                apply_human_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "blocked")
+            prepared = prepare_entity_component_completion(cases_dir=cases, completion_queue=queue, output_dir=root / "components")
+            self.assertGreater(prepared["case_count"], 0)
+            component_path = root / "components/protocol_dev_entity_component_completion_queue.jsonl"
+            components = [json.loads(line) for line in component_path.read_text().splitlines()]
+            for item in components:
+                item.update({"decision": "CONFIRMED", "rationale": "human confirmed", "entities": [{"entity_id": "subject", "definition": "visible subject"}],
+                             "required_evidence_roles": ["VISIBLE_SUBJECT_TUBE"],
+                             "true_claim_components": {"subject": "subject", "predicate": "TRUE_RELATION", "object": "object"},
+                             "false_claim_components": {"subject": "subject", "predicate": "FALSE_RELATION", "object": "object"}})
+            component_path.write_text("".join(canonical_json(item) + "\n" for item in components))
+            applied = apply_human_completion(cases_dir=cases, completion_queue=queue, component_completion=component_path, output_dir=root / "applied")
             self.assertEqual(applied["case_count"], 9); self.assertEqual(applied["keyframe_binding_pending_count"], 5)
             reviewed = json.loads((root / "applied/cases/PD-S-08.json").read_text())
             self.assertEqual(reviewed["human_review"]["reviewer_id"], "reviewer-1")
