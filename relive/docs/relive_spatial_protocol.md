@@ -1,0 +1,104 @@
+# ReliVE-Spatial: Spatial Evidence Reliability
+
+Version: `relive-spatial-evidence-reliability-v1` (prospectively frozen)
+
+ReliVE-Spatial studies whether a frozen VLM can identify and test spatial evidence for one local
+claim in one temporally relevant frame. It does not replace historical ReliVE Phase 2/3 results and
+does not perform temporal retrieval.
+
+## Scientific contract
+
+The model is frozen. Only spatial evidence changes. A proposal is tested with the same semantic
+verifier under `ORIGINAL`, `KEEP_TARGET`, `DROP_TARGET`, and a matched control when geometry permits.
+Opaque gray means unavailable information, never negative evidence.
+
+`KEEP=SUPPORTED` establishes sufficiency. It does not establish dependency. If
+`DROP=SUPPORTED`, the region remains valid sufficient evidence and the controller performs exactly
+one neutral residual-support search. At most two evidence regions may be admitted.
+
+The deterministic state transitions are:
+
+- `ORIGINAL != SUPPORTED` → `BASE_UNSUPPORTED` → stop.
+- `KEEP != SUPPORTED` → one `SUFFICIENCY_REPAIR`; a second repair is forbidden.
+- `KEEP = SUPPORTED && DROP != SUPPORTED` → dependency status; if control is geometrically
+  unavailable, the explicit downgraded status is `DEPENDENCY_SUPPORTED_NO_CONTROL`.
+- A constructed control that is not supported → `INTERVENTION_UNSTABLE` → stop.
+- `KEEP = SUPPORTED && DROP = SUPPORTED` → one `RESIDUAL_SUPPORT_SEARCH`.
+- A residual proposal must pass `KEEP_RESIDUAL`; then the union must pass `KEEP_UNION` and
+  fail support under `DROP_UNION` to yield `EVIDENCE_SET_VERIFIED`.
+- Support persisting after `DROP_UNION` yields `DEPENDENCY_UNRESOLVED`, not a hallucination claim.
+
+## Isolation
+
+Dataset preparation writes two physically separate manifests. `runtime_manifest.jsonl` contains a
+single frame and a normalized claim and is automatically scanned for spatial-GT fields.
+`oracle_manifest.jsonl` contains the original caption and GT box. Runtime code does not import the
+oracle runner or evaluation module. Only `run_oracle_feasibility` and `evaluate` accept an oracle
+path.
+
+## Commands
+
+All commands run from `relive/` with `PYTHONPATH=src`.
+
+```bash
+DATASET=/path/to/medvidu_eccv2026_trainval.json
+FRAMES=/path/to/public/frame/root
+DATA_OUT=/path/to/artifacts/relive_spatial/dataset
+
+PYTHONPATH=src python -m relive.spatial_reliability.prepare_rc_dataset \
+  --source-json "$DATASET" \
+  --source-prefix /root/data \
+  --frame-root "$FRAMES" \
+  --dev-count 20 \
+  --output-dir "$DATA_OUT"
+```
+
+Oracle feasibility (GT is opened only by this command):
+
+```bash
+CONFIG=/path/to/frozen_model_config.json
+CACHE=/path/to/immutable_relive_spatial_cache
+ORACLE_OUT=/path/to/artifacts/relive_spatial/oracle_feasibility
+
+PYTHONPATH=src python -m relive.spatial_reliability.run_oracle_feasibility \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --oracle-manifest "$DATA_OUT/oracle_manifest.jsonl" \
+  --config "$CONFIG" --cache-dir "$CACHE" --split development \
+  --output-dir "$ORACLE_OUT"
+```
+
+Formal runtime and exact replay:
+
+```bash
+RUN_OUT=/path/to/artifacts/relive_spatial/dev/run
+REPLAY_OUT=/path/to/artifacts/relive_spatial/dev/replay
+
+PYTHONPATH=src python -m relive.spatial_reliability.run \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --config "$CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
+  --execution-mode run --split development --output-dir "$RUN_OUT"
+
+PYTHONPATH=src python -m relive.spatial_reliability.run \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --config "$CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
+  --execution-mode replay --split development --output-dir "$REPLAY_OUT"
+```
+
+The replay passes only when `cache_audit.json` reports zero new model calls. Baselines use the same
+command with `--mode one_shot`, `verify_only`, or `generic_retry` and separate output directories.
+
+Post-hoc GT evaluation:
+
+```bash
+PYTHONPATH=src python -m relive.spatial_reliability.evaluate \
+  --runtime-results "$RUN_OUT/sample_results.jsonl" \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --oracle-manifest "$DATA_OUT/oracle_manifest.jsonl" \
+  --output-dir /path/to/artifacts/relive_spatial/evaluation
+```
+
+## Limits
+
+The normalizer and scope router are deliberately conservative and may exclude many valid captions.
+Region Caption boxes may be sufficient but non-necessary. Matched control geometry does not prove
+that a control contains no evidence. These are reported outcomes, not silently tuned away.

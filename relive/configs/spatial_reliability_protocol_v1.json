@@ -1,0 +1,28 @@
+{
+  "format": "relive-spatial-evidence-reliability-v1",
+  "frozen": true,
+  "dataset": {
+    "source_task": "MedVidU Region Caption train/val",
+    "dedup_identity": ["dataset_name", "video_id", "RC_info.start_frame", "RC_info.start_frame_bbox"],
+    "dedup_tie_break": "minimum canonical source-record SHA-256, then minimum source_record_index",
+    "development_count": 20,
+    "split_method": "ascending deterministic identity hash"
+  },
+  "claim_scope": {
+    "admitted": ["LOCAL_ATOMIC"],
+    "excluded": ["LOCAL_RELATIONAL", "MULTI_SUPPORT_POSSIBLE", "GLOBAL_DISTRIBUTED", "TEMPORAL", "UNRESOLVED_SCOPE"]
+  },
+  "spatial": {
+    "operator": "opaque_gray",
+    "operator_version": "relive-opaque-gray-hard-mask-v1",
+    "fill_rgb": [127, 127, 127],
+    "control_count": 1,
+    "max_sufficiency_repairs": 1,
+    "max_residual_searches": 1,
+    "max_evidence_regions": 2
+  },
+  "semantic_statuses": ["SUPPORTED", "CONTRADICTED", "INSUFFICIENT"],
+  "baseline_modes": ["one_shot", "verify_only", "generic_retry", "relive_spatial"],
+  "posthoc_iou_thresholds": [0.3, 0.5],
+  "principle": "Sufficiency is not dependency."
+}
