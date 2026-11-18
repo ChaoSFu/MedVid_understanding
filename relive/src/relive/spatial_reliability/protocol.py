@@ -8,7 +8,7 @@ PROTOCOL_VERSION = "relive-spatial-evidence-reliability-v1"
 PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v1"
 REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v1"
 RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v1"
-VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v1"
+VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v2"
 MAX_REPAIR_ATTEMPTS = 1
 MAX_RESIDUAL_ATTEMPTS = 1
 MAX_EVIDENCE_REGIONS = 2
@@ -88,6 +88,22 @@ VERIFIER_MASK_NOTICE = (
     "Gray masked pixels represent unavailable visual information. They must not be interpreted as "
     "visual evidence either for or against the claim."
 )
+
+
+def verifier_prompt(*, claim: str, variant: str) -> str:
+    """Return the frozen, single-image semantic-verifier v2 prompt."""
+    return (
+        "Judge whether the supplied image supports this claim: " + claim + "\n" +
+        VERIFIER_MASK_NOTICE + "\n"
+        "Return exactly one JSON object and no Markdown fence, commentary, or additional text. "
+        "The object must contain exactly these three fields: status, observation, frame_index. "
+        "status must be SUPPORTED, CONTRADICTED, or INSUFFICIENT. "
+        "observation must be one short sentence of at most 40 words. "
+        "Because exactly one image is supplied, frame_index must be the integer 0. "
+        "Do not return frame_references. "
+        "Example: {\"status\":\"SUPPORTED\",\"observation\":\"Visible evidence supports the claim.\",\"frame_index\":0}. "
+        f"The input variant is {variant}; use identical semantics for every variant."
+    )
 
 
 def protocol_manifest() -> dict[str, Any]:

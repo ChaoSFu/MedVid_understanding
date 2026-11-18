@@ -8,9 +8,9 @@ from relive.backends import make_backend
 from relive.config import load_config
 from relive.storage.artifacts import ArtifactStore
 from relive.storage.cache import Budget, CachedInference
-from relive.verification import parse_verification
+from relive.verification import parse_single_frame_verification
 
-from .protocol import VERIFIER_MASK_NOTICE, VERIFIER_PROMPT_VERSION
+from .protocol import VERIFIER_PROMPT_VERSION, verifier_prompt
 
 
 class ModelSession:
@@ -33,12 +33,7 @@ class ModelSession:
 
     def verify(self, *, claim: str, variant: str, image_path: str, frame_id: str,
                identity_fields: dict[str, Any] | None = None) -> dict[str, Any]:
-        prompt = (
-            "Judge whether the supplied image supports this claim: " + claim + "\n" +
-            VERIFIER_MASK_NOTICE + "\nReturn only strict JSON with fields status, observation, and "
-            "frame_references. status must be SUPPORTED, CONTRADICTED, or INSUFFICIENT. "
-            f"The input variant is {variant}; use identical semantics for every variant."
-        )
+        prompt = verifier_prompt(claim=claim, variant=variant)
         result = self.raw(stage="relive_spatial_verify", prompt=prompt,
                           prompt_version=VERIFIER_PROMPT_VERSION, image_path=image_path, frame_id=frame_id,
                           identity_fields={"verification_mode": variant, **(identity_fields or {})})
@@ -46,8 +41,10 @@ class ModelSession:
             return {"semantic_status": None, "execution_status": result["execution_status"],
                     "failure_reason": result["failure_reason"], "cache_hit": result["cache_hit"],
                     "cache_key": result["cache_key"], "raw_response_ref": result["raw_response_ref"]}
-        parsed = parse_verification(result["raw_text"], result["raw_response_ref"], VERIFIER_PROMPT_VERSION,
-                                    {"frame_ids": [frame_id], "image_paths": [image_path], "variant": variant})
+        parsed = parse_single_frame_verification(
+            result["raw_text"], result["raw_response_ref"], VERIFIER_PROMPT_VERSION,
+            {"frame_ids": [frame_id], "image_paths": [image_path], "variant": variant},
+        )
         return {"semantic_status": parsed.semantic_status.value if parsed.semantic_status else None,
                 "execution_status": parsed.execution_status.value, "failure_reason": parsed.failure_reason,
                 "cache_hit": result["cache_hit"], "cache_key": result["cache_key"],

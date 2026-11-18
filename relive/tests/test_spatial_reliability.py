@@ -8,16 +8,25 @@ import unittest
 from PIL import Image
 
 from relive.backends.base import Backend
+from relive.config import load_config
 from relive.interventions import OPAQUE_GRAY_OPERATOR, OPAQUE_GRAY_VERSION, resolve_intervention_spec
 from relive.spatial_reliability.common import runtime_gt_audit
 from relive.spatial_reliability.dataset import normalize_caption, parse_proposal, prepare_rc_dataset, route_claim_scope
 from relive.spatial_reliability.engine import oracle_classification, run_state_machine
 from relive.spatial_reliability.operators import apply_union_intervention, keep_residual
 from relive.spatial_reliability.oracle import run_oracle_feasibility
-from relive.spatial_reliability.protocol import ScientificStatus, classify_formal_result, controller_action
+from relive.spatial_reliability.protocol import (
+    VERIFIER_PROMPT_VERSION,
+    ScientificStatus,
+    classify_formal_result,
+    controller_action,
+    verifier_prompt,
+)
 from relive.spatial_reliability.runtime import run_runtime
 from relive.storage.artifacts import ArtifactStore
 from relive.storage.cache import Budget, CachedInference
+from relive.types import ExecutionStatus, SemanticStatus
+from relive.verification import parse_single_frame_verification
 
 
 OPERATOR = resolve_intervention_spec({"operator": OPAQUE_GRAY_OPERATOR,
@@ -174,6 +183,42 @@ class SpatialReliabilityTests(unittest.TestCase):
     def test_oracle_classification(self):
         self.assertEqual(oracle_classification("SUPPORTED", "SUPPORTED", "SUPPORTED"), "ORACLE_RESIDUAL_SUPPORT")
         self.assertEqual(oracle_classification("SUPPORTED", "SUPPORTED", "INSUFFICIENT"), "ORACLE_SINGLE_REGION_FEASIBLE")
+        self.assertEqual(oracle_classification(None, "SUPPORTED", "INSUFFICIENT"), "ORACLE_TECHNICAL_FAILURE")
+
+    def test_spatial_verifier_v2_closed_single_frame_contract(self):
+        inputs = {"frame_ids": ["opaque-frame-id"], "image_paths": ["frame.png"], "variant": "ORIGINAL"}
+        valid = parse_single_frame_verification(
+            '{"status":"SUPPORTED","observation":"Visible evidence supports the claim.","frame_index":0}',
+            input_references=inputs,
+        )
+        self.assertEqual(valid.execution_status, ExecutionStatus.OK)
+        self.assertEqual(valid.semantic_status, SemanticStatus.SUPPORTED)
+        self.assertEqual(valid.frame_references, ("opaque-frame-id",))
+
+        invalid = {
+            "legacy_numeric_references": '{"status":"SUPPORTED","observation":"evidence","frame_references":[0]}',
+            "markdown_fence": '```json\n{"status":"SUPPORTED","observation":"evidence","frame_index":0}\n```',
+            "truncated": '{"status":"SUPPORTED","observation":"unfinished',
+            "wrong_index": '{"status":"SUPPORTED","observation":"evidence","frame_index":1}',
+            "missing_observation": '{"status":"SUPPORTED","frame_index":0}',
+        }
+        for name, raw in invalid.items():
+            with self.subTest(name=name):
+                self.assertEqual(
+                    parse_single_frame_verification(raw, input_references=inputs).execution_status,
+                    ExecutionStatus.PARSE_ERROR,
+                )
+
+    def test_spatial_verifier_v2_prompt_and_config_are_versioned(self):
+        prompt = verifier_prompt(claim="A needle is visible.", variant="ORIGINAL")
+        self.assertEqual(VERIFIER_PROMPT_VERSION, "relive-spatial-semantic-verifier-v2")
+        self.assertIn("frame_index must be the integer 0", prompt)
+        self.assertIn("Do not return frame_references", prompt)
+        self.assertIn("no Markdown fence", prompt)
+        config_path = Path(__file__).parents[1] / "configs/qwen35_9b_relive_spatial_verifier_v2.yaml"
+        config = load_config(config_path)
+        self.assertEqual(config["backend"]["generation"]["max_new_tokens"], 256)
+        self.assertEqual(config["spatial"]["intervention"]["operator"], "opaque_gray")
 
     def test_exact_cache_replay(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -253,6 +298,45 @@ class SpatialReliabilityTests(unittest.TestCase):
             for name in ("protocol.json", "sample_results.jsonl", "summary.json", "summary.md",
                          "failure_breakdown.json", "cache_audit.json", "gt_isolation_audit.json"):
                 self.assertTrue((root / "oracle-run" / name).is_file())
+
+    def test_oracle_parse_failures_are_technical_not_base_unsupported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            frame = root / "frame.png"
+            Image.new("RGB", (32, 32), "red").save(frame)
+            public = {
+                "sample_id": "s", "source_record_sha256": "a" * 64, "split": "development",
+                "frame_path": str(frame), "frame_sha256": "b" * 64,
+                "claim_id": "c", "claim_text": "A metallic needle is visible.",
+            }
+            hidden = {"sample_id": "s", "source_record_sha256": "a" * 64, "gt_bbox": [2, 2, 20, 20]}
+            runtime = root / "runtime.jsonl"
+            runtime.write_text(json.dumps(public) + "\n")
+            oracle = root / "oracle.jsonl"
+            oracle.write_text(json.dumps(hidden) + "\n")
+            config = root / "config.json"
+            config.write_text(json.dumps({
+                "backend": {"kind": "mock", "rules": [{
+                    "match": {"stage": "relive_spatial_verify"},
+                    "response": {"status": "SUPPORTED", "observation": "fixture", "frame_references": [0]},
+                }]},
+                "spatial": {"intervention": {
+                    "operator": "opaque_gray",
+                    "operator_version": "relive-opaque-gray-hard-mask-v1",
+                    "parameters": {"fill_rgb": [127, 127, 127]},
+                }},
+            }))
+            report = run_oracle_feasibility(
+                runtime_manifest=runtime, oracle_manifest=oracle, config_path=config,
+                cache_dir=root / "cache", output_dir=root / "oracle-run",
+            )
+            self.assertEqual(report["status"], "FAIL")
+            self.assertFalse(report["scientific_result_available"])
+            self.assertEqual(report["classification_counts"], {"ORACLE_TECHNICAL_FAILURE": 1})
+            self.assertEqual(report["N_technical_failure_cases"], 1)
+            self.assertEqual(report["N_technical_failure_verdicts"], 3)
+            self.assertEqual(report["N_gt_keep_failed"], 0)
+            self.assertEqual(report["N_gt_drop_not_supported"], 0)
 
 
 if __name__ == "__main__":

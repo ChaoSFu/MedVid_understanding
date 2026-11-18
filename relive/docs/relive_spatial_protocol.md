@@ -18,6 +18,8 @@ one neutral residual-support search. At most two evidence regions may be admitte
 
 The deterministic state transitions are:
 
+- Any unparseable or technically failed verifier result → `TECHNICAL_FAILURE`; it must never be
+  reported as `BASE_UNSUPPORTED` or used in an oracle feasibility rate.
 - `ORIGINAL != SUPPORTED` → `BASE_UNSUPPORTED` → stop.
 - `KEEP != SUPPORTED` → one `SUFFICIENCY_REPAIR`; a second repair is forbidden.
 - `KEEP = SUPPORTED && DROP != SUPPORTED` → dependency status; if control is geometrically
@@ -56,7 +58,7 @@ PYTHONPATH=src python -m relive.spatial_reliability.prepare_rc_dataset \
 Oracle feasibility (GT is opened only by this command):
 
 ```bash
-CONFIG=/path/to/frozen_model_config.json
+CONFIG=configs/qwen35_9b_relive_spatial_verifier_v2.yaml
 CACHE=/path/to/immutable_relive_spatial_cache
 ORACLE_OUT=/path/to/artifacts/relive_spatial/oracle_feasibility
 
@@ -66,6 +68,13 @@ PYTHONPATH=src python -m relive.spatial_reliability.run_oracle_feasibility \
   --config "$CONFIG" --cache-dir "$CACHE" --split development \
   --output-dir "$ORACLE_OUT"
 ```
+
+The spatial semantic verifier v2 is a single-image closed JSON contract. It requires exactly
+`status`, a short `observation`, and integer `frame_index: 0`; Markdown fences and the legacy
+`frame_references` field are rejected. The reviewed Qwen3.5-9B config freezes deterministic
+generation at 256 new tokens. Its prompt version and generation settings are part of cache identity,
+so verifier-v1 responses are neither reused nor repaired. Oracle CLI status is nonzero when any
+verdict has a technical or parse failure, and scientific rates remain unavailable in that case.
 
 Formal runtime and exact replay:
 

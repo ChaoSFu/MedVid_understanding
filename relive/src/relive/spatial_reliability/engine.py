@@ -32,7 +32,10 @@ class SpatialState:
         self.regions.append(region)
 
 
-def oracle_classification(original: str, keep: str, drop: str) -> str:
+def oracle_classification(original: str | None, keep: str | None, drop: str | None) -> str:
+    semantic_statuses = {"SUPPORTED", "CONTRADICTED", "INSUFFICIENT"}
+    if any(value not in semantic_statuses for value in (original, keep, drop)):
+        return "ORACLE_TECHNICAL_FAILURE"
     if original != "SUPPORTED":
         return "BASE_UNSUPPORTED"
     if keep != "SUPPORTED":

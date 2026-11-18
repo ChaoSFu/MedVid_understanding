@@ -45,6 +45,8 @@ def _summary_markdown(summary: dict[str, Any]) -> str:
 This is an oracle-only protocol feasibility audit. It is not a runtime grounding result.
 
 - Total eligible samples: {summary['N_total']}
+- Technical-failure samples: {summary['N_technical_failure_cases']}
+- Technical-failure verdicts: {summary['N_technical_failure_verdicts']}
 - Original supported: {summary['N_original_supported']}
 - GT KEEP supported: {summary['N_gt_keep_supported']}
 - GT KEEP failed: {summary['N_gt_keep_failed']}
@@ -110,21 +112,61 @@ def run_oracle_feasibility(*, runtime_manifest: str | Path, oracle_manifest: str
     counts = Counter(row["classification"] for row in results)
     original_supported = sum(row["semantic"]["ORIGINAL"] == "SUPPORTED" for row in results)
     keep_supported = sum(row["semantic"]["KEEP_GT"] == "SUPPORTED" for row in results)
+    keep_failed = sum(
+        row["semantic"]["KEEP_GT"] in {"CONTRADICTED", "INSUFFICIENT"} for row in results
+    )
     keep_condition = [row for row in results if row["semantic"]["ORIGINAL"] == "SUPPORTED"]
     dependency_condition = [row for row in keep_condition if row["semantic"]["KEEP_GT"] == "SUPPORTED"]
     drop_supported = sum(row["semantic"]["DROP_GT"] == "SUPPORTED" for row in results)
+    drop_not_supported = sum(
+        row["semantic"]["DROP_GT"] in {"CONTRADICTED", "INSUFFICIENT"} for row in results
+    )
+    technical_failure_verdicts = [
+        verdict
+        for row in results
+        for verdict in row["verification"].values()
+        if verdict.get("execution_status") != "OK"
+    ]
+    technical_failure_cases = sum(
+        row["classification"] == "ORACLE_TECHNICAL_FAILURE" for row in results
+    )
+    failure_reasons = Counter(
+        verdict.get("failure_reason") or "UNSPECIFIED_TECHNICAL_FAILURE"
+        for verdict in technical_failure_verdicts
+    )
+    sufficiency_rate = (
+        sum(row["semantic"]["KEEP_GT"] == "SUPPORTED" for row in keep_condition) / len(keep_condition)
+        if keep_condition and not technical_failure_verdicts else None
+    )
+    dependency_rate = (
+        sum(row["semantic"]["DROP_GT"] != "SUPPORTED" for row in dependency_condition) / len(dependency_condition)
+        if dependency_condition and not technical_failure_verdicts else None
+    )
+    residual_rate = (
+        sum(row["semantic"]["DROP_GT"] == "SUPPORTED" for row in dependency_condition) / len(dependency_condition)
+        if dependency_condition and not technical_failure_verdicts else None
+    )
     summary = {
-        "format": ORACLE_FORMAT, "protocol_version": PROTOCOL_VERSION, "status": "PASS", "N_total": len(results),
+        "format": ORACLE_FORMAT, "protocol_version": PROTOCOL_VERSION,
+        "status": "PASS" if not technical_failure_verdicts else "FAIL",
+        "scientific_result_available": not technical_failure_verdicts,
+        "N_total": len(results),
+        "N_technical_failure_cases": technical_failure_cases,
+        "N_technical_failure_verdicts": len(technical_failure_verdicts),
         "N_original_supported": original_supported, "N_gt_keep_supported": keep_supported,
-        "N_gt_keep_failed": len(results) - keep_supported, "N_gt_drop_supported": drop_supported,
-        "N_gt_drop_not_supported": len(results) - drop_supported,
-        "oracle_sufficiency_rate": (sum(row["semantic"]["KEEP_GT"] == "SUPPORTED" for row in keep_condition) / len(keep_condition)) if keep_condition else None,
-        "oracle_single_region_dependency_rate": (sum(row["semantic"]["DROP_GT"] != "SUPPORTED" for row in dependency_condition) / len(dependency_condition)) if dependency_condition else None,
-        "oracle_residual_support_rate": (sum(row["semantic"]["DROP_GT"] == "SUPPORTED" for row in dependency_condition) / len(dependency_condition)) if dependency_condition else None,
+        "N_gt_keep_failed": keep_failed, "N_gt_drop_supported": drop_supported,
+        "N_gt_drop_not_supported": drop_not_supported,
+        "oracle_sufficiency_rate": sufficiency_rate,
+        "oracle_single_region_dependency_rate": dependency_rate,
+        "oracle_residual_support_rate": residual_rate,
         "classification_counts": dict(sorted(counts.items())), "usage": session.snapshot(),
         "certificate_created": False, "new_verified_count": 0, "gt_used": True,
     }
-    failure = {"format": ORACLE_FORMAT + "-failure-breakdown", "classification_counts": dict(sorted(counts.items()))}
+    failure = {
+        "format": ORACLE_FORMAT + "-failure-breakdown",
+        "classification_counts": dict(sorted(counts.items())),
+        "technical_failure_reason_counts": dict(sorted(failure_reasons.items())),
+    }
     cache_audit = {"format": ORACLE_FORMAT + "-cache-audit", **session.snapshot(),
                    "exact_replay_requires_new_model_calls": 0}
     isolation = {"format": ORACLE_FORMAT + "-isolation", "status": "PASS", "gt_used": True,

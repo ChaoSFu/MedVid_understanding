@@ -20,7 +20,7 @@ def main() -> int:
                                     config_path=args.config, cache_dir=args.cache_dir, output_dir=args.output_dir,
                                     split=args.split, max_samples=args.max_samples)
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 0 if result["status"] == "PASS" else 2
 
 
 if __name__ == "__main__":

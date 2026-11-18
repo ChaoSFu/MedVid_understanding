@@ -68,3 +68,40 @@ def parse_verification(
                                  prompt_version, references)
     return VerificationResult(status, ExecutionStatus.OK, raw_response_ref, prompt_version,
                               references, observation=observation, frame_references=tuple(frame_refs))
+
+
+def parse_single_frame_verification(
+    raw: str,
+    raw_response_ref: str | None = None,
+    prompt_version: str = "relive-spatial-semantic-verifier-v2",
+    input_references: dict[str, Any] | None = None,
+) -> VerificationResult:
+    """Parse the closed v2 contract used by one-image spatial verification.
+
+    The model is given exactly one image, so an integer ``frame_index`` is both
+    sufficient and less error-prone than asking it to reproduce an opaque frame
+    identifier.  This parser deliberately rejects Markdown fences, legacy
+    ``frame_references`` arrays, missing fields, and any attempt to append text.
+    Historical v1 responses are never repaired or reinterpreted through this
+    path.
+    """
+    references = dict(input_references or {})
+    try:
+        if not isinstance(raw, str):
+            raise ValueError("RESPONSE_MUST_BE_TEXT")
+        if raw.strip().startswith("```"):
+            raise ValueError("MARKDOWN_FENCE_FORBIDDEN")
+        parsed = strict_json(raw)
+        required = {"status", "observation", "frame_index"}
+        if not isinstance(parsed, dict) or set(parsed) != required:
+            raise ValueError("SINGLE_FRAME_VERIFICATION_FIELDS_INVALID")
+        observation = parsed["observation"]
+        if not isinstance(observation, str) or not observation.strip():
+            raise ValueError("OBSERVATION_MUST_BE_NONEMPTY_TEXT")
+        index = parsed["frame_index"]
+        if isinstance(index, bool) or not isinstance(index, int) or index != 0:
+            raise ValueError("SINGLE_FRAME_INDEX_MUST_BE_ZERO")
+    except (ValueError, TypeError) as exc:
+        return execution_failure(ExecutionStatus.PARSE_ERROR, str(exc), raw_response_ref,
+                                 prompt_version, references)
+    return parse_verification(raw, raw_response_ref, prompt_version, references)
