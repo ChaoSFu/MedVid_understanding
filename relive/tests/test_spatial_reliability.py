@@ -16,6 +16,8 @@ from relive.spatial_reliability.engine import oracle_classification, run_state_m
 from relive.spatial_reliability.operators import apply_union_intervention, keep_residual
 from relive.spatial_reliability.oracle import run_oracle_feasibility
 from relive.spatial_reliability.protocol import (
+    PROPOSAL_PROMPT,
+    PROPOSAL_PROMPT_VERSION,
     VERIFIER_PROMPT_VERSION,
     ScientificStatus,
     classify_formal_result,
@@ -93,8 +95,28 @@ class SpatialReliabilityTests(unittest.TestCase):
 
     def test_bbox_schema(self):
         self.assertEqual(parse_proposal(proposal())["status"], "PROPOSED")
+        fenced = "```json\n" + proposal() + "\n```"
+        self.assertEqual(parse_proposal(fenced)["status"], "PROPOSED")
         self.assertEqual(parse_proposal(proposal((100, 100, 100, 400)))["status"], "PARSE_FAILURE")
         self.assertEqual(parse_proposal('{"status":"UNRESOLVED","bbox_normalized_0_1000":null,"reason":"none"}')["status"], "UNRESOLVED")
+        self.assertEqual(parse_proposal('{"status":"SUPPORTED","bbox_normalized_0_1000":[1,1,2,2],"reason":"bad"}')["status"], "PARSE_FAILURE")
+        self.assertEqual(parse_proposal('{"status":"UNRESOLVED","bbox_normalized_0_1000":[0,0,1000,1000],"reason":"bad"}')["status"], "PARSE_FAILURE")
+        self.assertEqual(parse_proposal('```json\n' + proposal()), {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None, "reason": "INVALID_JSON"})
+
+    def test_proposal_v2_prompt_and_parse_failures_are_technical(self):
+        self.assertEqual(PROPOSAL_PROMPT_VERSION, "relive-spatial-sufficiency-proposal-v2")
+        self.assertIn("localization task, not a semantic support judgment", PROPOSAL_PROMPT)
+        self.assertIn("never return SUPPORTED", PROPOSAL_PROMPT)
+        self.assertIn("bbox_2d", PROPOSAL_PROMPT)
+        failed = run_state_machine(sample_id="s", initial_proposal_raw='{"status":"SUPPORTED"}',
+                                   verify_region=lambda _: formal())
+        self.assertEqual(failed["status"], "TECHNICAL_FAILURE")
+        unresolved = run_state_machine(
+            sample_id="s",
+            initial_proposal_raw='{"status":"UNRESOLVED","bbox_normalized_0_1000":null,"reason":"none"}',
+            verify_region=lambda _: formal(),
+        )
+        self.assertEqual(unresolved["status"], "PROPOSAL_UNRESOLVED")
 
     def test_keep_operator(self):
         image = Image.new("RGB", (20, 20), "red")

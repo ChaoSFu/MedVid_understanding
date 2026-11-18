@@ -58,6 +58,9 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
     state = SpatialState(sample_id)
     proposal = parse_proposal(initial_proposal_raw)
     state.trace.append({"stage": "R0_PROPOSAL", "result": proposal})
+    if proposal["status"] == "PARSE_FAILURE":
+        state.status = ScientificStatus.TECHNICAL_FAILURE.value
+        return state.__dict__
     if proposal["status"] != "PROPOSED":
         state.status = ScientificStatus.PROPOSAL_UNRESOLVED.value
         return state.__dict__
@@ -85,6 +88,9 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
             return state.__dict__
         repaired = parse_proposal(refine(current))
         state.trace.append({"stage": "R1_PROPOSAL", "result": repaired, "reason_specific": action == "SUFFICIENCY_REPAIR"})
+        if repaired["status"] == "PARSE_FAILURE":
+            state.status = ScientificStatus.TECHNICAL_FAILURE.value
+            return state.__dict__
         if repaired["status"] != "PROPOSED":
             state.status = ScientificStatus.SPATIAL_SUFFICIENCY_UNRESOLVED.value
             return state.__dict__
@@ -112,6 +118,9 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
             return state.__dict__
         result = parse_proposal(residual(current))
         state.trace.append({"stage": "R2_RESIDUAL_PROPOSAL", "result": result})
+        if result["status"] == "PARSE_FAILURE":
+            state.status = ScientificStatus.TECHNICAL_FAILURE.value
+            return state.__dict__
         if result["status"] != "PROPOSED":
             state.status = ScientificStatus.DEPENDENCY_UNRESOLVED.value
             return state.__dict__

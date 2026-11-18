@@ -36,7 +36,7 @@ def _rows(path: str | Path) -> list[dict[str, Any]]:
 
 
 def _proposal_prompt(claim: str, extra: str = "") -> str:
-    return f"Claim: {claim}\n{extra}\n{PROPOSAL_PROMPT}\nReturn no text outside the JSON object."
+    return f"Claim: {claim}\n{extra}\n{PROPOSAL_PROMPT}"
 
 
 def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_dir: str | Path,

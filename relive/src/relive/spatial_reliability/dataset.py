@@ -7,6 +7,8 @@ from pathlib import Path, PurePosixPath
 import re
 from typing import Any
 
+from relive.json_protocol import strict_json
+
 from .common import SpatialReliabilityError, canonical_bytes, runtime_gt_audit, stable_hash, strict_json_load, write_once
 from .protocol import PROTOCOL_VERSION, protocol_manifest
 
@@ -113,8 +115,8 @@ def normalize_caption(caption: str) -> dict[str, Any]:
 
 def parse_proposal(raw: str | None) -> dict[str, Any]:
     try:
-        value = json.loads(raw or "")
-    except (json.JSONDecodeError, TypeError):
+        value = strict_json(raw or "")
+    except (json.JSONDecodeError, TypeError, ValueError):
         return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None, "reason": "INVALID_JSON"}
     if not isinstance(value, dict) or set(value) != {"status", "bbox_normalized_0_1000", "reason"}:
         return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None, "reason": "SCHEMA_VIOLATION"}

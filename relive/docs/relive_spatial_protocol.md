@@ -77,6 +77,13 @@ generation at 256 new tokens. Its prompt version and generation settings are par
 so verifier-v1/v2 responses are neither reused nor repaired. Oracle CLI status is nonzero when any
 verdict has a technical or parse failure, and scientific rates remain unavailable in that case.
 
+Runtime localization uses the separately versioned sufficiency-proposal v2 contract. It is a
+localization task, not a semantic verdict: only `PROPOSED` with an ordered integer
+`bbox_normalized_0_1000`, or `UNRESOLVED` with a null bbox, is valid. One complete JSON fence is
+tolerated, but legacy `image_id`/`bbox_2d`, semantic statuses such as `SUPPORTED`, partial fences,
+extra fields, and non-null unresolved boxes fail closed as technical failures. The prompt-version
+change creates a new cache identity and does not reinterpret earlier runtime artifacts.
+
 Formal runtime and exact replay:
 
 ```bash

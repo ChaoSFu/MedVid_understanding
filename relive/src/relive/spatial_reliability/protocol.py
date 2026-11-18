@@ -5,7 +5,7 @@ from typing import Any
 
 
 PROTOCOL_VERSION = "relive-spatial-evidence-reliability-v1"
-PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v1"
+PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v2"
 REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v1"
 RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v1"
 VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v3"
@@ -67,11 +67,18 @@ def controller_action(status: ScientificStatus, *, repair_attempts: int = 0,
 
 
 PROPOSAL_PROMPT = (
-    "Propose one compact visual region that contains all visible information needed to determine "
-    "whether the claim is supported. The region should be sufficient for judging the claim, not "
-    "merely the smallest possible object box. Return strict JSON with status, "
-    "bbox_normalized_0_1000, and reason. Return UNRESOLVED with a null bbox if no concrete local "
-    "region can be identified."
+    "This is a localization task, not a semantic support judgment. Propose one compact visual region "
+    "that contains all visible information needed to determine whether the claim is supported. The "
+    "region should be sufficient for judging the claim, not merely the smallest object box. Return "
+    "exactly one JSON object containing exactly status, bbox_normalized_0_1000, and reason. status "
+    "must be PROPOSED or UNRESOLVED; never return SUPPORTED, CONTRADICTED, or INSUFFICIENT. For "
+    "PROPOSED, bbox_normalized_0_1000 must be four ordered integer coordinates [x1,y1,x2,y2] in "
+    "0..1000. For UNRESOLVED, bbox_normalized_0_1000 must be JSON null. Do not return image_id, "
+    "bbox_2d, labels, or extra keys. A single complete ```json wrapper is allowed, but bare JSON is "
+    "preferred. PROPOSED example: {\"status\":\"PROPOSED\",\"bbox_normalized_0_1000\":[100,100,700,700],"
+    "\"reason\":\"The region contains the visible evidence needed to judge the claim.\"}. UNRESOLVED "
+    "example: {\"status\":\"UNRESOLVED\",\"bbox_normalized_0_1000\":null,\"reason\":\"No concrete local "
+    "region can be identified.\"}."
 )
 REFINEMENT_PROMPT = (
     "Revise the previous region so that it contains all visible information necessary to judge the "
@@ -91,7 +98,7 @@ VERIFIER_MASK_NOTICE = (
 
 
 def verifier_prompt(*, claim: str, variant: str) -> str:
-    """Return the frozen, single-image semantic-verifier v2 prompt."""
+    """Return the frozen, single-image semantic-verifier v3 prompt."""
     return (
         "Judge whether the supplied image supports this claim: " + claim + "\n" +
         VERIFIER_MASK_NOTICE + "\n"
