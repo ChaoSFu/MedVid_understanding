@@ -77,31 +77,35 @@ generation at 256 new tokens. Its prompt version and generation settings are par
 so verifier-v1/v2 responses are neither reused nor repaired. Oracle CLI status is nonzero when any
 verdict has a technical or parse failure, and scientific rates remain unavailable in that case.
 
-Runtime localization uses the separately versioned sufficiency-proposal v2 contract. It is a
-localization task, not a semantic verdict: only `PROPOSED` with an ordered integer
-`bbox_normalized_0_1000`, or `UNRESOLVED` with a null bbox, is valid. One complete JSON fence is
-tolerated, but legacy `image_id`/`bbox_2d`, semantic statuses such as `SUPPORTED`, partial fences,
-extra fields, and non-null unresolved boxes fail closed as technical failures. The prompt-version
-change creates a new cache identity and does not reinterpret earlier runtime artifacts.
-The same closed schema is frozen into sufficiency-repair v2 and residual-search v2. Residual search
-may return a second `PROPOSED` region outside the masked primary region, or the complete structured
-`UNRESOLVED` object; bare `UNRESOLVED` text and native `image_id`/`bbox_2d` output are technical
-failures rather than scientific outcomes.
+Runtime localization uses the separately versioned sufficiency-proposal v3 token-JSON contract.
+The actual LocalHF `generate()` logits are masked by a prefix grammar: only a compact `PROPOSED`
+object with four integer coordinates, or a compact `UNRESOLVED` object with a null box, can reach
+EOS. Markdown fences, aliases, trailing text, semantic verdicts, and the legacy `image_id`/`bbox_2d`
+surface have no legal token continuation. The independent parser then rechecks exact fields, reason
+codes, coordinate order, and range; grammar validity is not evidence that a localized box is
+correct. Premature EOS, token-limit termination, or no legal successor is recorded as a constraint
+failure and routed to `TECHNICAL_FAILURE` without repair.
+
+The grammar version, grammar-spec SHA-256, prompt version, checkpoint/generation fingerprint,
+tokenizer vocabulary SHA-256, and chat-template SHA-256 are retained in cache/run provenance. The
+same contract applies to initial proposal, sufficiency repair, and residual search. Existing v2
+development artifacts and caches remain unchanged and are not reinterpreted.
 
 Formal runtime and exact replay:
 
 ```bash
 RUN_OUT=/path/to/artifacts/relive_spatial/dev/run
 REPLAY_OUT=/path/to/artifacts/relive_spatial/dev/replay
+RUNTIME_CONFIG=configs/qwen35_9b_relive_spatial_proposal_v3.yaml
 
 PYTHONPATH=src python -m relive.spatial_reliability.run \
   --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
-  --config "$CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
+  --config "$RUNTIME_CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
   --execution-mode run --split development --output-dir "$RUN_OUT"
 
 PYTHONPATH=src python -m relive.spatial_reliability.run \
   --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
-  --config "$CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
+  --config "$RUNTIME_CONFIG" --cache-dir "$CACHE" --mode relive_spatial \
   --execution-mode replay --split development --output-dir "$REPLAY_OUT"
 ```
 

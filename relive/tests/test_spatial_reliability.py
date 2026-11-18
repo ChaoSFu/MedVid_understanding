@@ -11,7 +11,9 @@ from relive.backends.base import Backend
 from relive.config import load_config
 from relive.interventions import OPAQUE_GRAY_OPERATOR, OPAQUE_GRAY_VERSION, resolve_intervention_spec
 from relive.spatial_reliability.common import runtime_gt_audit
-from relive.spatial_reliability.dataset import normalize_caption, parse_proposal, prepare_rc_dataset, route_claim_scope
+from relive.spatial_reliability.dataset import (normalize_caption, parse_proposal,
+                                                 parse_token_constrained_proposal,
+                                                 prepare_rc_dataset, route_claim_scope)
 from relive.spatial_reliability.engine import oracle_classification, run_state_machine
 from relive.spatial_reliability.operators import apply_union_intervention, keep_residual
 from relive.spatial_reliability.oracle import run_oracle_feasibility
@@ -106,13 +108,31 @@ class SpatialReliabilityTests(unittest.TestCase):
         self.assertEqual(parse_proposal('{"status":"UNRESOLVED","bbox_normalized_0_1000":[0,0,1000,1000],"reason":"bad"}')["status"], "PARSE_FAILURE")
         self.assertEqual(parse_proposal('```json\n' + proposal()), {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None, "reason": "INVALID_JSON"})
 
-    def test_proposal_v2_prompt_and_parse_failures_are_technical(self):
-        self.assertEqual(PROPOSAL_PROMPT_VERSION, "relive-spatial-sufficiency-proposal-v2")
-        self.assertEqual(REFINEMENT_PROMPT_VERSION, "relive-spatial-sufficiency-repair-v2")
-        self.assertEqual(RESIDUAL_PROMPT_VERSION, "relive-spatial-residual-search-v2")
+    def test_proposal_v3_independent_validator_is_canonical_and_fail_closed(self):
+        proposed = ('{"status":"PROPOSED","bbox_normalized_0_1000":[100,100,400,400],'
+                    '"reason":"VISIBLE_EVIDENCE_REGION"}')
+        unresolved = ('{"status":"UNRESOLVED","bbox_normalized_0_1000":null,'
+                      '"reason":"NO_CONCRETE_LOCAL_REGION"}')
+        self.assertEqual(parse_token_constrained_proposal(proposed)["status"], "PROPOSED")
+        self.assertEqual(parse_token_constrained_proposal(unresolved)["status"], "UNRESOLVED")
+        for invalid in (
+            "```json\n" + proposed + "\n```",
+            proposed.replace("bbox_normalized_0_1000", "bbox_normalized_0_0_1000"),
+            proposed.replace("VISIBLE_EVIDENCE_REGION", "free form"),
+            proposed.replace(":\"PROPOSED\"", ": \"PROPOSED\""),
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(parse_token_constrained_proposal(invalid)["status"], "PARSE_FAILURE")
+
+    def test_proposal_v3_prompt_and_parse_failures_are_technical(self):
+        self.assertEqual(PROPOSAL_PROMPT_VERSION, "relive-spatial-sufficiency-proposal-v3-token-json")
+        self.assertEqual(REFINEMENT_PROMPT_VERSION, "relive-spatial-sufficiency-repair-v3-token-json")
+        self.assertEqual(RESIDUAL_PROMPT_VERSION, "relive-spatial-residual-search-v3-token-json")
         self.assertIn("localization task, not a semantic support judgment", PROPOSAL_PROMPT)
         self.assertIn("never return SUPPORTED", PROPOSAL_PROMPT)
         self.assertIn("bbox_2d", PROPOSAL_PROMPT)
+        self.assertIn("Markdown fences", PROPOSAL_PROMPT)
+        self.assertIn("VISIBLE_EVIDENCE_REGION", PROPOSAL_PROMPT)
         self.assertIn("another concrete local visual region outside the masked area", RESIDUAL_PROMPT)
         self.assertIn("must be PROPOSED or UNRESOLVED", RESIDUAL_PROMPT)
         failed = run_state_machine(sample_id="s", initial_proposal_raw='{"status":"SUPPORTED"}',
@@ -261,6 +281,11 @@ class SpatialReliabilityTests(unittest.TestCase):
         config = load_config(config_path)
         self.assertEqual(config["backend"]["generation"]["max_new_tokens"], 256)
         self.assertEqual(config["spatial"]["intervention"]["operator"], "opaque_gray")
+        proposal_config = load_config(
+            Path(__file__).parents[1] / "configs/qwen35_9b_relive_spatial_proposal_v3.yaml"
+        )
+        self.assertEqual(proposal_config["backend"]["generation"]["do_sample"], False)
+        self.assertEqual(proposal_config["backend"]["generation"]["max_new_tokens"], 256)
 
     def test_exact_cache_replay(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -299,8 +324,8 @@ class SpatialReliabilityTests(unittest.TestCase):
             config = root / "config.json"
             config.write_text(json.dumps({
                 "backend": {"kind": "mock", "rules": [
-                    {"match": {"stage": "relive_spatial_proposal"}, "response": {"status": "PROPOSED", "bbox_normalized_0_1000": [100,100,400,400], "reason": "fixture"}},
-                    {"match": {"stage": "relive_spatial_residual"}, "response": {"status": "PROPOSED", "bbox_normalized_0_1000": [600,600,900,900], "reason": "fixture"}},
+                    {"match": {"stage": "relive_spatial_proposal"}, "response": "{\"status\":\"PROPOSED\",\"bbox_normalized_0_1000\":[100,100,400,400],\"reason\":\"VISIBLE_EVIDENCE_REGION\"}"},
+                    {"match": {"stage": "relive_spatial_residual"}, "response": "{\"status\":\"PROPOSED\",\"bbox_normalized_0_1000\":[600,600,900,900],\"reason\":\"VISIBLE_EVIDENCE_REGION\"}"},
                     {"match": {"stage": "relive_spatial_verify"}, "response": {"status": "SUPPORTED", "observation": "fixture", "frame_index": 0}}
                 ]},
                 "spatial": {"intervention": {"operator": "opaque_gray", "operator_version": "relive-opaque-gray-hard-mask-v1", "parameters": {"fill_rgb": [127,127,127]}}}

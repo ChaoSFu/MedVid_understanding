@@ -51,12 +51,13 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
                       residual: Callable[[list[float]], str] | None = None,
                       verify_residual: Callable[[list[float], list[float]], str] | None = None,
                       verify_union: Callable[[list[list[float]]], dict[str, str]] | None = None,
-                      mode: str = "relive_spatial") -> dict[str, Any]:
+                      mode: str = "relive_spatial",
+                      proposal_parser: Callable[[str | None], dict[str, Any]] = parse_proposal) -> dict[str, Any]:
     """Pure bounded controller. Callbacks own inference/cache and intervention I/O."""
     if mode not in {"one_shot", "verify_only", "generic_retry", "relive_spatial"}:
         raise ValueError("UNKNOWN_SPATIAL_BASELINE_MODE")
     state = SpatialState(sample_id)
-    proposal = parse_proposal(initial_proposal_raw)
+    proposal = proposal_parser(initial_proposal_raw)
     state.trace.append({"stage": "R0_PROPOSAL", "result": proposal})
     if proposal["status"] == "PARSE_FAILURE":
         state.status = ScientificStatus.TECHNICAL_FAILURE.value
@@ -86,7 +87,7 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
         if refine is None:
             state.status = ScientificStatus.SPATIAL_SUFFICIENCY_UNRESOLVED.value
             return state.__dict__
-        repaired = parse_proposal(refine(current))
+        repaired = proposal_parser(refine(current))
         state.trace.append({"stage": "R1_PROPOSAL", "result": repaired, "reason_specific": action == "SUFFICIENCY_REPAIR"})
         if repaired["status"] == "PARSE_FAILURE":
             state.status = ScientificStatus.TECHNICAL_FAILURE.value
@@ -116,7 +117,7 @@ def run_state_machine(*, sample_id: str, initial_proposal_raw: str,
         if residual is None:
             state.status = ScientificStatus.DEPENDENCY_UNRESOLVED.value
             return state.__dict__
-        result = parse_proposal(residual(current))
+        result = proposal_parser(residual(current))
         state.trace.append({"stage": "R2_RESIDUAL_PROPOSAL", "result": result})
         if result["status"] == "PARSE_FAILURE":
             state.status = ScientificStatus.TECHNICAL_FAILURE.value

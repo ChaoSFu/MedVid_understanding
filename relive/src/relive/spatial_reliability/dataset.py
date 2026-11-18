@@ -131,6 +131,48 @@ def parse_proposal(raw: str | None) -> dict[str, Any]:
     return value
 
 
+def parse_token_constrained_proposal(raw: str | None) -> dict[str, Any]:
+    """Independently validate the proposal-v3 canonical decoder surface.
+
+    This validator does not trust the logits processor.  It rejects aliases,
+    fences, duplicate keys, whitespace variants, and noncanonical reason text.
+    The legacy parser above remains available for historical artifact readers.
+    """
+    def reject_constant(_: str) -> None:
+        raise ValueError("nonfinite constant")
+
+    def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate key")
+            value[key] = item
+        return value
+
+    if not isinstance(raw, str) or not raw or raw != raw.strip():
+        return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None,
+                "reason": "NONCANONICAL_TOKEN_CONTRACT"}
+    try:
+        value = json.loads(raw, parse_constant=reject_constant, object_pairs_hook=reject_duplicates)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None,
+                "reason": "INVALID_JSON"}
+    if json.dumps(value, separators=(",", ":"), ensure_ascii=True) != raw:
+        return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None,
+                "reason": "NONCANONICAL_TOKEN_CONTRACT"}
+    parsed = parse_proposal(raw)
+    expected_reason = {
+        "PROPOSED": "VISIBLE_EVIDENCE_REGION",
+        "UNRESOLVED": "NO_CONCRETE_LOCAL_REGION",
+    }.get(parsed.get("status"))
+    if expected_reason is None:
+        return parsed
+    if parsed.get("reason") != expected_reason:
+        return {"status": "PARSE_FAILURE", "bbox_normalized_0_1000": None,
+                "reason": "REASON_CODE_CONTRACT_VIOLATION"}
+    return parsed
+
+
 def _map_frame(source: str, source_prefix: str | None, frame_root: str | None) -> str:
     if source_prefix is None and frame_root is None:
         return source

@@ -10,7 +10,7 @@ from PIL import Image
 from relive.interventions import apply_spatial_intervention, generate_control_regions
 
 from .common import SpatialReliabilityError, runtime_gt_audit, sha256_path, stable_hash, write_once
-from .dataset import parse_proposal
+from .dataset import parse_token_constrained_proposal
 from .engine import run_state_machine
 from .inference import ModelSession
 from .operators import apply_union_intervention, keep_residual, save_intervention
@@ -39,6 +39,21 @@ def _proposal_prompt(claim: str, extra: str = "") -> str:
     return f"Claim: {claim}\n{extra}\n{PROPOSAL_PROMPT}"
 
 
+def _proposal_call_audit(call: dict[str, Any], stage: str) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "execution_status": call["execution_status"],
+        "cache_hit": call["cache_hit"],
+        "cache_key": call["cache_key"],
+        "raw_response_ref": call["raw_response_ref"],
+        "failure_reason": call["failure_reason"],
+        "constraint_enforcement": call.get("constraint_enforcement"),
+        "constraint_failure": call.get("constraint_failure"),
+        "generation_metadata": call.get("generation_metadata"),
+        "constraint_metadata": call.get("constraint_metadata"),
+    }
+
+
 def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_dir: str | Path,
                 output_dir: str | Path, mode: str = "relive_spatial", split: str = "development",
                 max_samples: int | None = None, execution_mode: str = "run") -> dict[str, Any]:
@@ -59,12 +74,17 @@ def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_
         frame_path = row["frame_path"]
         if not Path(frame_path).is_file():
             raise SpatialReliabilityError(f"RUNTIME_FRAME_MISSING:{row['sample_id']}")
-        context: dict[str, Any] = {"formal": []}
+        context: dict[str, Any] = {"formal": [], "proposal_generation_calls": []}
         drop_paths: dict[tuple[float, ...], str] = {}
-        proposal_call = session.raw(stage="relive_spatial_proposal", prompt=_proposal_prompt(row["claim_text"]),
-                                    prompt_version=PROPOSAL_PROMPT_VERSION, image_path=frame_path,
-                                    frame_id=f"{row['sample_id']}:ORIGINAL")
-        proposal_raw = proposal_call["raw_text"] if proposal_call["execution_status"] == "OK" else None
+        proposal_call = session.propose(
+            stage="relive_spatial_proposal", prompt=_proposal_prompt(row["claim_text"]),
+            prompt_version=PROPOSAL_PROMPT_VERSION, image_path=frame_path,
+            frame_id=f"{row['sample_id']}:ORIGINAL",
+        )
+        context["proposal_generation_calls"].append(_proposal_call_audit(proposal_call, "R0_PROPOSAL"))
+        proposal_raw = (proposal_call["raw_text"]
+                        if proposal_call["execution_status"] == "OK" and not proposal_call.get("constraint_failure")
+                        else None)
 
         def verify_region(region: list[float]) -> dict[str, Any]:
             tag = "region-" + stable_hash(region)[:12]
@@ -101,19 +121,27 @@ def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_
         def refine(region: list[float]) -> str:
             generic = "Try again and propose another evidence region." if mode == "generic_retry" else REFINEMENT_PROMPT
             prompt = _proposal_prompt(row["claim_text"], f"Previous bbox normalized 0-1: {region}. Failure: KEEP_INSUFFICIENT. {generic}")
-            call = session.raw(stage="relive_spatial_refine", prompt=prompt,
-                               prompt_version=("relive-spatial-generic-retry-v1" if mode == "generic_retry" else REFINEMENT_PROMPT_VERSION),
-                               image_path=frame_path, frame_id=f"{row['sample_id']}:R1")
-            return call["raw_text"] if call["execution_status"] == "OK" else ""
+            call = session.propose(
+                stage="relive_spatial_refine", prompt=prompt,
+                prompt_version=("relive-spatial-generic-retry-v1" if mode == "generic_retry" else REFINEMENT_PROMPT_VERSION),
+                image_path=frame_path, frame_id=f"{row['sample_id']}:R1",
+            )
+            context["proposal_generation_calls"].append(_proposal_call_audit(call, "R1_PROPOSAL"))
+            return (call["raw_text"]
+                    if call["execution_status"] == "OK" and not call.get("constraint_failure") else "")
 
         def residual(primary: list[float]) -> str:
             drop_path = drop_paths.get(tuple(primary))
             if not drop_path:
                 return ""
             prompt = f"Claim: {row['claim_text']}\n{RESIDUAL_PROMPT}"
-            call = session.raw(stage="relive_spatial_residual", prompt=prompt, prompt_version=RESIDUAL_PROMPT_VERSION,
-                               image_path=drop_path, frame_id=f"{row['sample_id']}:DROP_PRIMARY")
-            return call["raw_text"] if call["execution_status"] == "OK" else ""
+            call = session.propose(
+                stage="relive_spatial_residual", prompt=prompt, prompt_version=RESIDUAL_PROMPT_VERSION,
+                image_path=drop_path, frame_id=f"{row['sample_id']}:DROP_PRIMARY",
+            )
+            context["proposal_generation_calls"].append(_proposal_call_audit(call, "R2_RESIDUAL_PROPOSAL"))
+            return (call["raw_text"]
+                    if call["execution_status"] == "OK" and not call.get("constraint_failure") else "")
 
         def verify_residual(primary: list[float], residual_region: list[float]) -> str | None:
             drop_path = drop_paths.get(tuple(primary))
@@ -147,17 +175,30 @@ def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_
 
         result = run_state_machine(sample_id=row["sample_id"], initial_proposal_raw=proposal_raw or "",
                                    verify_region=verify_region, refine=refine, residual=residual,
-                                   verify_residual=verify_residual, verify_union=verify_union, mode=mode)
+                                   verify_residual=verify_residual, verify_union=verify_union, mode=mode,
+                                   proposal_parser=parse_token_constrained_proposal)
         sample_results.append({"format": RUNTIME_FORMAT, **result, "claim_id": row["claim_id"],
-                               "proposal_call": {key: proposal_call[key] for key in ("execution_status", "cache_hit", "cache_key", "raw_response_ref", "failure_reason")},
+                               "proposal_call": _proposal_call_audit(proposal_call, "R0_PROPOSAL"),
                                "details": context, "source_frame_sha256": row.get("frame_sha256"),
                                "gt_used": False, "certificate_created": False, "new_verified_count": 0})
     counts = Counter(row["status"] for row in sample_results)
+    proposal_calls = [call for row in sample_results
+                      for call in row["details"]["proposal_generation_calls"]]
+    proposal_failures = Counter(
+        call.get("constraint_failure") or call.get("failure_reason")
+        for call in proposal_calls
+        if call.get("constraint_failure") or call.get("failure_reason")
+    )
     usage = session.snapshot()
     summary = {"format": RUNTIME_FORMAT, "protocol_version": PROTOCOL_VERSION, "status": "PASS",
                "mode": mode, "execution_mode": execution_mode, "sample_count": len(sample_results),
                "scientific_status_counts": dict(sorted(counts.items())), "usage": usage,
                "new_model_calls": usage["new_calls"], "cache_hits": usage["cache_hits"],
+               "proposal_generation_call_count": len(proposal_calls),
+               "proposal_constraint_failure_count": sum(
+                   call.get("constraint_failure") is not None for call in proposal_calls
+               ),
+               "proposal_generation_failure_reason_counts": dict(sorted(proposal_failures.items())),
                "gt_used": False, "certificate_created": False, "new_verified_count": 0}
     adaptation = {"format": RUNTIME_FORMAT + "-adaptation", "initial_proposal_count": len(sample_results),
                   "initial_keep_failure_count": sum(any(x.get("stage") == "CONTROLLER" and x.get("action") == "SUFFICIENCY_REPAIR" for x in row["trace"]) for row in sample_results),
@@ -172,7 +213,9 @@ def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_
                                                if adaptation["sufficiency_repair_attempted"] else None)
     adaptation["evidence_set_recovery_rate"] = (adaptation["evidence_set_verified"] / adaptation["residual_search_attempted"]
                                                  if adaptation["residual_search_attempted"] else None)
-    failure = {"format": RUNTIME_FORMAT + "-failure-breakdown", "scientific_status_counts": dict(sorted(counts.items()))}
+    failure = {"format": RUNTIME_FORMAT + "-failure-breakdown",
+               "scientific_status_counts": dict(sorted(counts.items())),
+               "proposal_generation_failure_reason_counts": dict(sorted(proposal_failures.items()))}
     replay = {"format": RUNTIME_FORMAT + "-replay-audit", "execution_mode": execution_mode,
               "new_model_calls": usage["new_calls"], "cache_hits": usage["cache_hits"],
               "exact_replay_pass": execution_mode != "replay" or usage["new_calls"] == 0}

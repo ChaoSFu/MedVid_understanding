@@ -3,11 +3,13 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
+from .proposal_constraint import proposal_constraint_identity
+
 
 PROTOCOL_VERSION = "relive-spatial-evidence-reliability-v1"
-PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v2"
-REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v2"
-RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v2"
+PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v3-token-json"
+REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v3-token-json"
+RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v3-token-json"
 VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v3"
 MAX_REPAIR_ATTEMPTS = 1
 MAX_RESIDUAL_ATTEMPTS = 1
@@ -71,11 +73,13 @@ PROPOSAL_OUTPUT_CONTRACT = (
     "must be PROPOSED or UNRESOLVED; never return SUPPORTED, CONTRADICTED, or INSUFFICIENT. For "
     "PROPOSED, bbox_normalized_0_1000 must be four ordered integer coordinates [x1,y1,x2,y2] in "
     "0..1000. For UNRESOLVED, bbox_normalized_0_1000 must be JSON null. Do not return image_id, "
-    "bbox_2d, labels, or extra keys. A single complete ```json wrapper is allowed, but bare JSON is "
-    "preferred. PROPOSED example: {\"status\":\"PROPOSED\",\"bbox_normalized_0_1000\":[100,100,700,700],"
-    "\"reason\":\"The region contains the visible evidence needed to judge the claim.\"}. UNRESOLVED "
-    "example: {\"status\":\"UNRESOLVED\",\"bbox_normalized_0_1000\":null,\"reason\":\"No concrete local "
-    "region can be identified.\"}."
+    "bbox_2d, labels, aliases, Markdown fences, or extra keys. Field order and compact spelling are "
+    "fixed by the token grammar. For PROPOSED, reason must be VISIBLE_EVIDENCE_REGION. For "
+    "UNRESOLVED, reason must be NO_CONCRETE_LOCAL_REGION. PROPOSED example: "
+    "{\"status\":\"PROPOSED\",\"bbox_normalized_0_1000\":[100,100,700,700],"
+    "\"reason\":\"VISIBLE_EVIDENCE_REGION\"}. UNRESOLVED example: "
+    "{\"status\":\"UNRESOLVED\",\"bbox_normalized_0_1000\":null,"
+    "\"reason\":\"NO_CONCRETE_LOCAL_REGION\"}."
 )
 PROPOSAL_PROMPT = (
     "This is a localization task, not a semantic support judgment. Propose one compact visual region "
@@ -134,5 +138,6 @@ def protocol_manifest() -> dict[str, Any]:
             "residual": RESIDUAL_PROMPT_VERSION,
             "verifier": VERIFIER_PROMPT_VERSION,
         },
+        "proposal_generation_contract": proposal_constraint_identity(),
         "principle": "Sufficiency is not dependency.",
     }

@@ -37,6 +37,8 @@ class GroundingJsonGrammar:
     """
 
     def __init__(self, roles: Iterable[str]):
+        self.grammar_version = GRAMMAR_VERSION
+        self.implementation_version = IMPLEMENTATION_VERSION
         self.roles = tuple(roles)
         if not self.roles or len(self.roles) != len(set(self.roles)):
             raise TokenConstraintError("GRAMMAR_ROLE_CONTRACT_INVALID")
@@ -263,9 +265,9 @@ class TokenLevelGroundingConstraint:
 
     def metadata(self) -> dict[str, Any]:
         return {
-            "grammar_version": GRAMMAR_VERSION,
+            "grammar_version": self.grammar.grammar_version,
             "grammar_spec_sha256": self.grammar.spec_sha256,
-            "implementation_version": IMPLEMENTATION_VERSION,
+            "implementation_version": self.grammar.implementation_version,
             "tokenizer_vocab_size": sum(len(v) for v in self._pieces_by_initial.values()),
             "initialization_overhead_seconds": self._prepared_at,
             "callback_count": self._callback_count,

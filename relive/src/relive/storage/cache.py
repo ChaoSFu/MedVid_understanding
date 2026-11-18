@@ -86,6 +86,10 @@ def _safe_failure(exc: Exception) -> str:
                    "LOCAL_HF_IMAGE_DECODE_FAILURE", "LOCAL_HF_IMAGE_ENCODING_FAILURE",
                    "LOCAL_HF_TEMPLATE_APPLY_FAILURE", "LOCAL_HF_PROCESSOR_FAILURE",
                    "LOCAL_HF_INPUT_PLACEMENT_FAILURE", "LOCAL_HF_GENERATION_FAILURE"}
+        allowed.update({"TOKEN_CONSTRAINT_REQUEST_INVALID", "TOKEN_CONSTRAINT_TOKENIZER_UNAVAILABLE",
+                        "TOKEN_CONSTRAINT_BATCH_UNSUPPORTED", "TOKEN_CONSTRAINT_EOS_UNAVAILABLE",
+                        "LOCAL_HF_TOKEN_CONSTRAINT_AUDIT_FAILURE",
+                        "LOCAL_HF_TOKEN_CONSTRAINED_GENERATION_FAILURE"})
         if code in allowed or re.fullmatch(r"HTTP_[1-5][0-9]{2}", code):
             return code
         return "BACKEND_ERROR"
@@ -230,3 +234,80 @@ class CachedInference:
                          "retryable": record["retryable"], "cache_hit": index < previous_count,
                          "latency_seconds": record["latency_seconds"]}
                         for index, (attempt_ref, record) in enumerate(attempts)]}
+
+    def call_with_token_constraint(self, request: dict[str, Any], budget: Budget,
+                                   constraint_factory: Any) -> dict[str, Any]:
+        """Content-address a real token-constrained generation call.
+
+        The versioned constraint identity must already be part of ``request``;
+        the callable creates fresh mutable constraint state for each technical
+        attempt.  Replays read the immutable raw record and never invoke the
+        backend or reconstruct generated text.
+        """
+        if not callable(constraint_factory):
+            raise ValueError("constraint_factory must be callable")
+        if not isinstance(request.get("token_constraint_identity"), dict):
+            raise ValueError("token_constraint_identity is required")
+        infer = getattr(self.backend, "infer_with_token_constraint", None)
+        if not callable(infer):
+            raise ValueError("Backend does not implement token-constrained generation")
+        identity = self.request_identity(request)
+        key = stable_hash(identity)
+        maximum_attempts = self.backend.config.get("max_retries", 0) + 1
+        if type(maximum_attempts) is not int or not 1 <= maximum_attempts <= 4:
+            raise ValueError("At most three technical retries are supported")
+        with self._lock(key):
+            attempts = self._load_attempts(key, identity)
+            if len(attempts) > maximum_attempts:
+                raise ArtifactError("RAW_ATTEMPTS_EXCEED_FROZEN_RETRY_LIMIT")
+            previous_count = len(attempts)
+            budget._admit(key, list(range(previous_count)), cached=True)
+            latency = 0.0
+            while not attempts or (attempts[-1][1]["retryable"] and len(attempts) < maximum_attempts):
+                index = len(attempts)
+                budget._admit(key, [index], cached=False)
+                if index:
+                    time.sleep(self.backend.config.get("retry_backoff_seconds", 0))
+                started = time.monotonic()
+                status, raw, failure, retryable = ExecutionStatus.OK.value, None, None, False
+                generation_metadata = constraint_metadata = None
+                try:
+                    generated = infer(deepcopy(identity["request"]), constraint_factory())
+                    if (not isinstance(generated, dict)
+                            or not isinstance(generated.get("raw_response"), str)
+                            or not isinstance(generated.get("generation_metadata"), dict)
+                            or not isinstance(generated.get("constraint_metadata"), dict)):
+                        raise BackendError("INVALID_COMPLETION_ENVELOPE")
+                    raw = generated["raw_response"]
+                    generation_metadata = deepcopy(generated["generation_metadata"])
+                    constraint_metadata = deepcopy(generated["constraint_metadata"])
+                    _plain(generation_metadata, "generation metadata")
+                    _plain(constraint_metadata, "constraint metadata")
+                except Exception as exc:
+                    status, raw = ExecutionStatus.INFERENCE_ERROR.value, None
+                    failure = _safe_failure(exc)
+                    retryable = isinstance(exc, BackendError) and exc.retryable is True
+                elapsed = time.monotonic() - started
+                latency += elapsed
+                budget.latency_seconds += elapsed
+                record = {"cache_version": CACHE_VERSION, "cache_key": key, "identity": identity,
+                          "attempt_index": index, "execution_status": status, "raw_text": raw,
+                          "failure_reason": failure, "retryable": retryable,
+                          "latency_seconds": elapsed, "synthetic": self.backend.synthetic,
+                          "generation_metadata": generation_metadata,
+                          "constraint_metadata": constraint_metadata}
+                ref = self.store.put_json(f"raw/{key}", stable_hash(record), record)
+                attempts.append((ref, record))
+            self._complete(key, attempts)
+            ref, last = attempts[-1]
+            return {"execution_status": last["execution_status"], "raw_response_ref": ref,
+                    "raw_text": last["raw_text"], "cache_hit": len(attempts) == previous_count,
+                    "latency_seconds": latency, "failure_reason": last["failure_reason"],
+                    "generation_metadata": last.get("generation_metadata"),
+                    "constraint_metadata": last.get("constraint_metadata"),
+                    "cache_key": key, "attempts": [
+                        {"raw_response_ref": attempt_ref, "attempt_index": record["attempt_index"],
+                         "execution_status": record["execution_status"], "failure_reason": record["failure_reason"],
+                         "retryable": record["retryable"], "cache_hit": attempt_index < previous_count,
+                         "latency_seconds": record["latency_seconds"]}
+                        for attempt_index, (attempt_ref, record) in enumerate(attempts)]}

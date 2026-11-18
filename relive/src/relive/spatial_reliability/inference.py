@@ -10,6 +10,7 @@ from relive.storage.artifacts import ArtifactStore
 from relive.storage.cache import Budget, CachedInference
 from relive.verification import parse_single_frame_verification
 
+from .proposal_constraint import TokenLevelProposalConstraint, proposal_constraint_identity
 from .protocol import VERIFIER_PROMPT_VERSION, verifier_prompt
 
 
@@ -30,6 +31,41 @@ class ModelSession:
         if identity_fields:
             request["spatial_protocol_identity"] = deepcopy(identity_fields)
         return self.inference.call(request, self.budget)
+
+    def propose(self, *, stage: str, prompt: str, prompt_version: str,
+                image_path: str, frame_id: str,
+                identity_fields: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Generate one localization proposal under the versioned token grammar.
+
+        Synthetic fixtures retain their normal deterministic backend path and
+        are marked as parser-only.  Every non-synthetic backend must implement
+        the real logits-mask interface; there is no silent unconstrained
+        production fallback.
+        """
+        contract = proposal_constraint_identity()
+        request = {
+            "stage": stage, "prompt": prompt, "prompt_version": prompt_version,
+            "image_paths": [image_path], "frame_ids": [frame_id],
+            "token_constraint_identity": contract,
+        }
+        if identity_fields:
+            request["spatial_protocol_identity"] = deepcopy(identity_fields)
+        if self.backend.synthetic:
+            result = self.inference.call(request, self.budget)
+            result["constraint_enforcement"] = "SYNTHETIC_FIXTURE_STRICT_PARSE_ONLY"
+            result["generation_metadata"] = None
+            result["constraint_metadata"] = None
+            result["constraint_failure"] = None
+            return result
+        if not callable(getattr(self.backend, "infer_with_token_constraint", None)):
+            raise RuntimeError("TOKEN_CONSTRAINT_INTERFACE_UNAVAILABLE")
+        result = self.inference.call_with_token_constraint(
+            request, self.budget, TokenLevelProposalConstraint,
+        )
+        execution = (result.get("constraint_metadata") or {}).get("execution") or {}
+        result["constraint_enforcement"] = contract["enforcement"]
+        result["constraint_failure"] = execution.get("constraint_failure")
+        return result
 
     def verify(self, *, claim: str, variant: str, image_path: str, frame_id: str,
                identity_fields: dict[str, Any] | None = None) -> dict[str, Any]:
