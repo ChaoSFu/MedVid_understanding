@@ -6,8 +6,8 @@ from typing import Any
 
 PROTOCOL_VERSION = "relive-spatial-evidence-reliability-v1"
 PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v2"
-REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v1"
-RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v1"
+REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v2"
+RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v2"
 VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v3"
 MAX_REPAIR_ATTEMPTS = 1
 MAX_RESIDUAL_ATTEMPTS = 1
@@ -66,10 +66,7 @@ def controller_action(status: ScientificStatus, *, repair_attempts: int = 0,
     return "STOP"
 
 
-PROPOSAL_PROMPT = (
-    "This is a localization task, not a semantic support judgment. Propose one compact visual region "
-    "that contains all visible information needed to determine whether the claim is supported. The "
-    "region should be sufficient for judging the claim, not merely the smallest object box. Return "
+PROPOSAL_OUTPUT_CONTRACT = (
     "exactly one JSON object containing exactly status, bbox_normalized_0_1000, and reason. status "
     "must be PROPOSED or UNRESOLVED; never return SUPPORTED, CONTRADICTED, or INSUFFICIENT. For "
     "PROPOSED, bbox_normalized_0_1000 must be four ordered integer coordinates [x1,y1,x2,y2] in "
@@ -80,6 +77,12 @@ PROPOSAL_PROMPT = (
     "example: {\"status\":\"UNRESOLVED\",\"bbox_normalized_0_1000\":null,\"reason\":\"No concrete local "
     "region can be identified.\"}."
 )
+PROPOSAL_PROMPT = (
+    "This is a localization task, not a semantic support judgment. Propose one compact visual region "
+    "that contains all visible information needed to determine whether the claim is supported. The "
+    "region should be sufficient for judging the claim, not merely the smallest object box. Return "
+    + PROPOSAL_OUTPUT_CONTRACT
+)
 REFINEMENT_PROMPT = (
     "Revise the previous region so that it contains all visible information necessary to judge the "
     "claim. The region may shift or expand. Preserve compactness, but prioritize sufficiency over "
@@ -89,7 +92,8 @@ RESIDUAL_PROMPT = (
     "Inspect only the supplied image where the current evidence region has already been masked. "
     "Determine whether there is another concrete local visual region outside the masked area that "
     "independently contains enough visible information to support the claim. If no such local region "
-    "can be identified, return UNRESOLVED."
+    "can be identified, return UNRESOLVED. This remains a localization task, not a semantic support "
+    "judgment. Return " + PROPOSAL_OUTPUT_CONTRACT
 )
 VERIFIER_MASK_NOTICE = (
     "Gray masked pixels represent unavailable visual information. They must not be interpreted as "

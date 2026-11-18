@@ -18,6 +18,9 @@ from relive.spatial_reliability.oracle import run_oracle_feasibility
 from relive.spatial_reliability.protocol import (
     PROPOSAL_PROMPT,
     PROPOSAL_PROMPT_VERSION,
+    REFINEMENT_PROMPT_VERSION,
+    RESIDUAL_PROMPT,
+    RESIDUAL_PROMPT_VERSION,
     VERIFIER_PROMPT_VERSION,
     ScientificStatus,
     classify_formal_result,
@@ -105,9 +108,13 @@ class SpatialReliabilityTests(unittest.TestCase):
 
     def test_proposal_v2_prompt_and_parse_failures_are_technical(self):
         self.assertEqual(PROPOSAL_PROMPT_VERSION, "relive-spatial-sufficiency-proposal-v2")
+        self.assertEqual(REFINEMENT_PROMPT_VERSION, "relive-spatial-sufficiency-repair-v2")
+        self.assertEqual(RESIDUAL_PROMPT_VERSION, "relive-spatial-residual-search-v2")
         self.assertIn("localization task, not a semantic support judgment", PROPOSAL_PROMPT)
         self.assertIn("never return SUPPORTED", PROPOSAL_PROMPT)
         self.assertIn("bbox_2d", PROPOSAL_PROMPT)
+        self.assertIn("another concrete local visual region outside the masked area", RESIDUAL_PROMPT)
+        self.assertIn("must be PROPOSED or UNRESOLVED", RESIDUAL_PROMPT)
         failed = run_state_machine(sample_id="s", initial_proposal_raw='{"status":"SUPPORTED"}',
                                    verify_region=lambda _: formal())
         self.assertEqual(failed["status"], "TECHNICAL_FAILURE")
@@ -117,6 +124,11 @@ class SpatialReliabilityTests(unittest.TestCase):
             verify_region=lambda _: formal(),
         )
         self.assertEqual(unresolved["status"], "PROPOSAL_UNRESOLVED")
+        residual_failure = run_state_machine(
+            sample_id="s", initial_proposal_raw=proposal(),
+            verify_region=lambda _: formal(drop="SUPPORTED"), residual=lambda _: "UNRESOLVED",
+        )
+        self.assertEqual(residual_failure["status"], "TECHNICAL_FAILURE")
 
     def test_keep_operator(self):
         image = Image.new("RGB", (20, 20), "red")

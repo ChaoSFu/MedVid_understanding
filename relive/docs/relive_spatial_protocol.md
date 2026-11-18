@@ -83,6 +83,10 @@ localization task, not a semantic verdict: only `PROPOSED` with an ordered integ
 tolerated, but legacy `image_id`/`bbox_2d`, semantic statuses such as `SUPPORTED`, partial fences,
 extra fields, and non-null unresolved boxes fail closed as technical failures. The prompt-version
 change creates a new cache identity and does not reinterpret earlier runtime artifacts.
+The same closed schema is frozen into sufficiency-repair v2 and residual-search v2. Residual search
+may return a second `PROPOSED` region outside the masked primary region, or the complete structured
+`UNRESOLVED` object; bare `UNRESOLVED` text and native `image_id`/`bbox_2d` output are technical
+failures rather than scientific outcomes.
 
 Formal runtime and exact replay:
 

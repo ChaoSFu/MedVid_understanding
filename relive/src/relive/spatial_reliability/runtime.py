@@ -110,7 +110,7 @@ def run_runtime(*, runtime_manifest: str | Path, config_path: str | Path, cache_
             drop_path = drop_paths.get(tuple(primary))
             if not drop_path:
                 return ""
-            prompt = f"Claim: {row['claim_text']}\n{RESIDUAL_PROMPT}\nReturn strict proposal JSON only."
+            prompt = f"Claim: {row['claim_text']}\n{RESIDUAL_PROMPT}"
             call = session.raw(stage="relive_spatial_residual", prompt=prompt, prompt_version=RESIDUAL_PROMPT_VERSION,
                                image_path=drop_path, frame_id=f"{row['sample_id']}:DROP_PRIMARY")
             return call["raw_text"] if call["execution_status"] == "OK" else ""
