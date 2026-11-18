@@ -8,7 +8,7 @@ PROTOCOL_VERSION = "relive-spatial-evidence-reliability-v1"
 PROPOSAL_PROMPT_VERSION = "relive-spatial-sufficiency-proposal-v1"
 REFINEMENT_PROMPT_VERSION = "relive-spatial-sufficiency-repair-v1"
 RESIDUAL_PROMPT_VERSION = "relive-spatial-residual-search-v1"
-VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v2"
+VERIFIER_PROMPT_VERSION = "relive-spatial-semantic-verifier-v3"
 MAX_REPAIR_ATTEMPTS = 1
 MAX_RESIDUAL_ATTEMPTS = 1
 MAX_EVIDENCE_REGIONS = 2
@@ -95,7 +95,8 @@ def verifier_prompt(*, claim: str, variant: str) -> str:
     return (
         "Judge whether the supplied image supports this claim: " + claim + "\n" +
         VERIFIER_MASK_NOTICE + "\n"
-        "Return exactly one JSON object and no Markdown fence, commentary, or additional text. "
+        "Return exactly one JSON object with no commentary or additional text. "
+        "A single complete ```json Markdown wrapper is allowed, but a bare JSON object is preferred. "
         "The object must contain exactly these three fields: status, observation, frame_index. "
         "status must be SUPPORTED, CONTRADICTED, or INSUFFICIENT. "
         "observation must be one short sentence of at most 40 words. "

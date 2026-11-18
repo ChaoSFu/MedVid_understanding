@@ -58,7 +58,7 @@ PYTHONPATH=src python -m relive.spatial_reliability.prepare_rc_dataset \
 Oracle feasibility (GT is opened only by this command):
 
 ```bash
-CONFIG=configs/qwen35_9b_relive_spatial_verifier_v2.yaml
+CONFIG=configs/qwen35_9b_relive_spatial_verifier_v3.yaml
 CACHE=/path/to/immutable_relive_spatial_cache
 ORACLE_OUT=/path/to/artifacts/relive_spatial/oracle_feasibility
 
@@ -69,11 +69,12 @@ PYTHONPATH=src python -m relive.spatial_reliability.run_oracle_feasibility \
   --output-dir "$ORACLE_OUT"
 ```
 
-The spatial semantic verifier v2 is a single-image closed JSON contract. It requires exactly
-`status`, a short `observation`, and integer `frame_index: 0`; Markdown fences and the legacy
-`frame_references` field are rejected. The reviewed Qwen3.5-9B config freezes deterministic
+The spatial semantic verifier v3 is a single-image closed JSON contract. It requires exactly
+`status`, a short `observation`, and integer `frame_index: 0`; a single complete JSON Markdown fence
+is tolerated, while partial fences, surrounding text, and the legacy `frame_references` field are
+rejected. The reviewed Qwen3.5-9B config freezes deterministic
 generation at 256 new tokens. Its prompt version and generation settings are part of cache identity,
-so verifier-v1 responses are neither reused nor repaired. Oracle CLI status is nonzero when any
+so verifier-v1/v2 responses are neither reused nor repaired. Oracle CLI status is nonzero when any
 verdict has a technical or parse failure, and scientific rates remain unavailable in that case.
 
 Formal runtime and exact replay:

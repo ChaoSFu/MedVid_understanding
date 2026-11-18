@@ -185,7 +185,7 @@ class SpatialReliabilityTests(unittest.TestCase):
         self.assertEqual(oracle_classification("SUPPORTED", "SUPPORTED", "INSUFFICIENT"), "ORACLE_SINGLE_REGION_FEASIBLE")
         self.assertEqual(oracle_classification(None, "SUPPORTED", "INSUFFICIENT"), "ORACLE_TECHNICAL_FAILURE")
 
-    def test_spatial_verifier_v2_closed_single_frame_contract(self):
+    def test_spatial_verifier_v3_closed_single_frame_contract(self):
         inputs = {"frame_ids": ["opaque-frame-id"], "image_paths": ["frame.png"], "variant": "ORIGINAL"}
         valid = parse_single_frame_verification(
             '{"status":"SUPPORTED","observation":"Visible evidence supports the claim.","frame_index":0}',
@@ -195,9 +195,17 @@ class SpatialReliabilityTests(unittest.TestCase):
         self.assertEqual(valid.semantic_status, SemanticStatus.SUPPORTED)
         self.assertEqual(valid.frame_references, ("opaque-frame-id",))
 
+        fenced = parse_single_frame_verification(
+            '```json\n{"status":"INSUFFICIENT","observation":"Evidence is not visible.","frame_index":0}\n```',
+            input_references=inputs,
+        )
+        self.assertEqual(fenced.execution_status, ExecutionStatus.OK)
+        self.assertEqual(fenced.semantic_status, SemanticStatus.INSUFFICIENT)
+
         invalid = {
             "legacy_numeric_references": '{"status":"SUPPORTED","observation":"evidence","frame_references":[0]}',
-            "markdown_fence": '```json\n{"status":"SUPPORTED","observation":"evidence","frame_index":0}\n```',
+            "partial_markdown_fence": '```json\n{"status":"SUPPORTED","observation":"evidence","frame_index":0}',
+            "text_after_fence": '```json\n{"status":"SUPPORTED","observation":"evidence","frame_index":0}\n```\nextra',
             "truncated": '{"status":"SUPPORTED","observation":"unfinished',
             "wrong_index": '{"status":"SUPPORTED","observation":"evidence","frame_index":1}',
             "missing_observation": '{"status":"SUPPORTED","frame_index":0}',
@@ -209,13 +217,13 @@ class SpatialReliabilityTests(unittest.TestCase):
                     ExecutionStatus.PARSE_ERROR,
                 )
 
-    def test_spatial_verifier_v2_prompt_and_config_are_versioned(self):
+    def test_spatial_verifier_v3_prompt_and_config_are_versioned(self):
         prompt = verifier_prompt(claim="A needle is visible.", variant="ORIGINAL")
-        self.assertEqual(VERIFIER_PROMPT_VERSION, "relive-spatial-semantic-verifier-v2")
+        self.assertEqual(VERIFIER_PROMPT_VERSION, "relive-spatial-semantic-verifier-v3")
         self.assertIn("frame_index must be the integer 0", prompt)
         self.assertIn("Do not return frame_references", prompt)
-        self.assertIn("no Markdown fence", prompt)
-        config_path = Path(__file__).parents[1] / "configs/qwen35_9b_relive_spatial_verifier_v2.yaml"
+        self.assertIn("single complete ```json Markdown wrapper is allowed", prompt)
+        config_path = Path(__file__).parents[1] / "configs/qwen35_9b_relive_spatial_verifier_v3.yaml"
         config = load_config(config_path)
         self.assertEqual(config["backend"]["generation"]["max_new_tokens"], 256)
         self.assertEqual(config["spatial"]["intervention"]["operator"], "opaque_gray")

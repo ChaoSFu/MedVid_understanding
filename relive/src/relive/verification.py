@@ -73,24 +73,23 @@ def parse_verification(
 def parse_single_frame_verification(
     raw: str,
     raw_response_ref: str | None = None,
-    prompt_version: str = "relive-spatial-semantic-verifier-v2",
+    prompt_version: str = "relive-spatial-semantic-verifier-v3",
     input_references: dict[str, Any] | None = None,
 ) -> VerificationResult:
-    """Parse the closed v2 contract used by one-image spatial verification.
+    """Parse the closed v3 contract used by one-image spatial verification.
 
     The model is given exactly one image, so an integer ``frame_index`` is both
     sufficient and less error-prone than asking it to reproduce an opaque frame
-    identifier.  This parser deliberately rejects Markdown fences, legacy
-    ``frame_references`` arrays, missing fields, and any attempt to append text.
-    Historical v1 responses are never repaired or reinterpreted through this
-    path.
+    identifier.  The shared strict JSON parser permits either a bare object or
+    one complete JSON Markdown fence with no surrounding text.  This parser
+    still rejects partial fences, legacy ``frame_references`` arrays, missing
+    fields, and appended text. Historical responses are never repaired through
+    this path.
     """
     references = dict(input_references or {})
     try:
         if not isinstance(raw, str):
             raise ValueError("RESPONSE_MUST_BE_TEXT")
-        if raw.strip().startswith("```"):
-            raise ValueError("MARKDOWN_FENCE_FORBIDDEN")
         parsed = strict_json(raw)
         required = {"status", "observation", "frame_index"}
         if not isinstance(parsed, dict) or set(parsed) != required:
