@@ -69,6 +69,21 @@ PYTHONPATH=src python -m relive.spatial_reliability.run_oracle_feasibility \
   --output-dir "$ORACLE_OUT"
 ```
 
+Frozen Oracle results can be prepared for human claim/box review without another model call:
+
+```bash
+PYTHONPATH=src python -m relive.spatial_reliability.review_oracle_feasibility \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --oracle-manifest "$DATA_OUT/oracle_manifest.jsonl" \
+  --oracle-results "$ORACLE_OUT/sample_results.jsonl" \
+  --output-dir "$ORACLE_OUT/human_review_v1"
+```
+
+The review command produces a green-box overlay for every source frame, a contact sheet containing
+the claim and frozen ORIGINAL/KEEP/DROP verdicts, and a blank human-review JSONL. It is read-only:
+model calls, cache opens/writes, certificates, and new VERIFIED records remain zero. Human review
+does not rewrite or reinterpret the frozen Oracle scientific result.
+
 The spatial semantic verifier v3 is a single-image closed JSON contract. It requires exactly
 `status`, a short `observation`, and integer `frame_index: 0`; a single complete JSON Markdown fence
 is tolerated, while partial fences, surrounding text, and the legacy `frame_references` field are
