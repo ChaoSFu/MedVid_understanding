@@ -122,6 +122,23 @@ PYTHONPATH=src python -m relive.spatial_reliability.evaluate \
   --output-dir /path/to/artifacts/relive_spatial/evaluation
 ```
 
+The original evaluator above remains an immutable v1 compatibility path. For status-stratified,
+read-only reporting and deterministic overlays, use evaluation v2 in a new output directory:
+
+```bash
+PYTHONPATH=src python -m relive.spatial_reliability.evaluate_v2 \
+  --runtime-results "$RUN_OUT/sample_results.jsonl" \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --oracle-manifest "$DATA_OUT/oracle_manifest.jsonl" \
+  --output-dir /path/to/artifacts/relive_spatial/posthoc_evaluation_v2
+```
+
+Evaluation v2 reports strict dependency, supported-without-control, unresolved, base-unsupported,
+intervention-unstable, and refinement-no-op groups separately. Its dependency-admitted aggregate is
+explicitly descriptive and is never labelled certificate-conditioned. It creates no model calls,
+cache writes, certificates, or VERIFIED records. GT overlays and the contact sheet remain confined
+to the post-hoc evaluation directory and are never runtime inputs.
+
 ## Limits
 
 The normalizer and scope router are deliberately conservative and may exclude many valid captions.
