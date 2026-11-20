@@ -341,6 +341,7 @@ def generate_atomic_claim_candidates(*, runtime_manifest: str | Path,
             "generation_reason": parsed["reason"],
             "static_checks": checks,
             "allowed_decisions": ALLOWED_REVIEW_DECISIONS,
+            "allowed_checklist_values": ["YES", "NO", "NOT_APPLICABLE"],
             "review_checklist": {
                 "one_directly_visible_local_fact": "",
                 "single_frame_judgable": "",
@@ -411,7 +412,11 @@ def generate_atomic_claim_candidates(*, runtime_manifest: str | Path,
         "spatial GT/oracle artifacts, create certificates, or admit any candidate.\n\n"
         "Read `atomic_claim_human_review_list.md`, then fill the authoritative "
         "`atomic_claim_human_review_list.jsonl`. Every row requires a human decision and "
-        "the four checklist fields. Do not start a replacement experiment until a "
+        "the four checklist fields. For ACCEPT_CANDIDATE all four checks must be YES and "
+        "approved_claim must equal generated_atomic_claim. For CONFIRM_EXCLUDED the four "
+        "checks are NOT_APPLICABLE and approved_claim remains empty. REJECT_CANDIDATE "
+        "keeps approved_claim empty; AUTHOR_EDIT_REQUIRED records the reviewed replacement "
+        "in approved_claim. Do not start a replacement experiment until a "
         "separate validation/apply stage has frozen the completed review.\n"
     )
     _write_text_once(output / "README.md", readme)

@@ -123,6 +123,7 @@ class SpatialAtomicClaimTests(unittest.TestCase):
             review = json.loads((root / "run/atomic_claim_human_review_list.jsonl").read_text())
             self.assertEqual(review["generated_atomic_claim"], "A knife is visible.")
             self.assertEqual(review["human_review"]["decision"], "")
+            self.assertEqual(review["allowed_checklist_values"], ["YES", "NO", "NOT_APPLICABLE"])
             self.assertNotIn("gt_bbox", json.dumps(review))
             markdown = (root / "run/atomic_claim_human_review_list.md").read_text()
             self.assertIn("RC Caption: The knife advances along the tissue margin.", markdown)
