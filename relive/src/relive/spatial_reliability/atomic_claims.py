@@ -206,6 +206,38 @@ def _write_text_once(path: Path, text: str) -> None:
         os.unlink(temporary)
 
 
+def _review_markdown(rows: list[dict[str, Any]]) -> str:
+    lines = [
+        "# Atomic claim human review list",
+        "",
+        "Every row is review-only. `PASS` below means only that deterministic lexical checks did not flag the text; it is not human approval and does not admit the claim to runtime.",
+        "",
+    ]
+    for index, row in enumerate(rows, start=1):
+        checks = row["static_checks"]
+        hits = sorted({
+            *checks["temporal_or_procedural_term_hits"],
+            *checks["purpose_or_causal_term_hits"],
+            *checks["global_scene_term_hits"],
+        })
+        lines.extend([
+            f"## {index:02d}. `{row['sample_id']}`",
+            "",
+            f"- Split: `{row['split']}`",
+            f"- Dataset / video: `{row['dataset_name']}` / `{row['video_id']}`",
+            f"- Source record index: `{row['source_record_index']}`",
+            f"- RC Caption: {row['source_region_caption']}",
+            f"- Previous claim: {row['current_claim_text']}",
+            f"- Generated status: `{row['generated_status']}`",
+            f"- Generated atomic claim: {row['generated_atomic_claim'] or 'EXCLUDED / unavailable'}",
+            f"- Static check: `{checks['status']}`",
+            f"- Flagged terms: `{', '.join(hits) if hits else 'none'}`",
+            "- Human decision: **PENDING**",
+            "",
+        ])
+    return "\n".join(lines)
+
+
 def generate_atomic_claim_candidates(*, runtime_manifest: str | Path,
                                      source_json: str | Path,
                                      config_path: str | Path,
@@ -371,13 +403,15 @@ def generate_atomic_claim_candidates(*, runtime_manifest: str | Path,
     write_once(output / "atomic_claim_human_review_list.jsonl", reviews, jsonl=True)
     write_once(output / "atomic_claim_generation_summary.json", summary)
     write_once(output / "atomic_claim_generation_audit.json", audit)
+    _write_text_once(output / "atomic_claim_human_review_list.md", _review_markdown(reviews))
     readme = (
         "# Atomic claim candidate review\n\n"
         "This directory contains model-generated review candidates derived only from the "
         "bound source RC captions. It does not modify the existing runtime manifest, open "
         "spatial GT/oracle artifacts, create certificates, or admit any candidate.\n\n"
-        "Review `atomic_claim_human_review_list.jsonl`. Every row requires a human decision "
-        "and the four checklist fields. Do not start a replacement experiment until a "
+        "Read `atomic_claim_human_review_list.md`, then fill the authoritative "
+        "`atomic_claim_human_review_list.jsonl`. Every row requires a human decision and "
+        "the four checklist fields. Do not start a replacement experiment until a "
         "separate validation/apply stage has frozen the completed review.\n"
     )
     _write_text_once(output / "README.md", readme)

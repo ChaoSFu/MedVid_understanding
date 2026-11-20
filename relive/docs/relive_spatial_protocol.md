@@ -170,7 +170,8 @@ are not prompt inputs.
 
 The output contract is deliberately smaller than JSON: exactly one plain-text
 single-frame claim ending in a period, or exactly `EXCLUDED`. Generated rows
-are never written into a runtime manifest. Every candidate is emitted to
+are never written into a runtime manifest. Every candidate is shown in
+`atomic_claim_human_review_list.md` and emitted to the authoritative, fillable
 `atomic_claim_human_review_list.jsonl`, where a reviewer must check that it is
 one directly visible local fact, is single-frame judgeable, adds no unsupported
 object/attribute/location/medical fact, and contains no temporal action,

@@ -114,6 +114,7 @@ class SpatialAtomicClaimTests(unittest.TestCase):
                 for name in (
                     "atomic_claim_candidates.jsonl",
                     "atomic_claim_human_review_list.jsonl",
+                    "atomic_claim_human_review_list.md",
                     "atomic_claim_generation_summary.json",
                     "atomic_claim_generation_audit.json",
                     "README.md",
@@ -123,6 +124,10 @@ class SpatialAtomicClaimTests(unittest.TestCase):
             self.assertEqual(review["generated_atomic_claim"], "A knife is visible.")
             self.assertEqual(review["human_review"]["decision"], "")
             self.assertNotIn("gt_bbox", json.dumps(review))
+            markdown = (root / "run/atomic_claim_human_review_list.md").read_text()
+            self.assertIn("RC Caption: The knife advances along the tissue margin.", markdown)
+            self.assertIn("Generated atomic claim: A knife is visible.", markdown)
+            self.assertIn("Human decision: **PENDING**", markdown)
 
     def test_source_tamper_and_count_mismatch_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
