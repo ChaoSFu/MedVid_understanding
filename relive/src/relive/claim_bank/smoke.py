@@ -20,6 +20,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output-dir", required=True)
     p.add_argument("--config", default="configs/claim_bank_mock_v1.yaml")
+    p.add_argument("--protocol-version", choices=("v1", "v1.1"), default="v1")
     a = p.parse_args()
     root = Path(a.output_dir).resolve()
     if root.exists():
@@ -43,7 +44,8 @@ def main() -> int:
     write_once(root / "synthetic_source.json", records)
     audit_dataset(str(root / "synthetic_source.json"), str(root / "data"), expected_count=22, prepare=True)
     shared = {"runtime_manifest": str(root / "data/runtime_manifest.jsonl"), "config_path": a.config,
-              "cache_dir": str(root / "synthetic_cache"), "per_qa_type": 2}
+              "cache_dir": str(root / "synthetic_cache"), "per_qa_type": 2,
+              "protocol_version": a.protocol_version}
     first = generate(**shared, stage=1, output_dir=str(root / "stage1"))
     second = generate(**shared, stage=2, stage1_dir=str(root / "stage1"), output_dir=str(root / "stage2"))
     replay = generate(**shared, stage=2, stage1_dir=str(root / "stage1"), output_dir=str(root / "replay"),

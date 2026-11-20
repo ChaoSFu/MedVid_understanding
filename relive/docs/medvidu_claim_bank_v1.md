@@ -1,5 +1,11 @@
 # MedVidU Question-Conditioned Claim Bank v1
 
+Historical v1 contract. New CLI generation defaults to v1.1; see
+[the Stage-1 contract correction and new smoke commands](medvidu_claim_bank_v11.md).
+Existing v1 outputs remain immutable and can be validated by frozen protocol
+hash. Historical v1 resume/replay needs the original executor commit recorded
+in the v1.1 migration notes.
+
 Scientific product: **question-conditioned, observation-informed, unverified
 candidate hypotheses**. This module does not verify claims, localize boxes,
 perform spatial interventions, emit assessments or final QA answers, or create

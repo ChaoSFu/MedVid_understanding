@@ -13,6 +13,8 @@ from .pipeline import generate, validate_bank
 def main() -> int:
     parser = argparse.ArgumentParser(description="GT-isolated question-conditioned MedVidU Claim Bank; no verification or QA answers.")
     parser.add_argument("--mode", required=True, choices=("audit", "prepare", "stage1", "stage2", "validate"))
+    parser.add_argument("--protocol-version", choices=("v1", "v1.1"), default="v1.1",
+                        help="Generation defaults to v1.1. Validation detects a bank's frozen version.")
     parser.add_argument("--dataset-json")
     parser.add_argument("--expected-count", type=int, default=6270)
     parser.add_argument("--runtime-manifest")
@@ -56,7 +58,8 @@ def main() -> int:
                               path_map=path_map, max_frames=args.max_frames, qa_type=args.qa_type,
                               start_index=args.start_index, end_index=args.end_index, limit=args.limit,
                               per_qa_type=args.per_qa_type, resume=args.resume, replay_only=args.replay_only,
-                              replay_from=args.replay_from, dry_run=args.dry_run, model=args.model)
+                              replay_from=args.replay_from, dry_run=args.dry_run, model=args.model,
+                              protocol_version=args.protocol_version)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     except (ValueError, OSError, KeyError, TypeError) as exc:

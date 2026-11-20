@@ -1,0 +1,35 @@
+{
+  "format": "relive-claimgen-v1.1-implementation-acceptance-v1",
+  "status": "PASS_STATIC_AND_SYNTHETIC_ONLY",
+  "targeted_tests_passed": 55,
+  "full_tests_passed": 426,
+  "full_tests_seconds": 79.824,
+  "git_diff_check": "PASS",
+  "v1_contract_sha256_unchanged": "f0dbde883dbd5811ab44aabb05986e3c5dd98332e703bdfa8cc15dc3279e4e79",
+  "legacy_v1_banks_read_only_validation": "PASS",
+  "synthetic_smoke": {
+    "samples": 22,
+    "qa_types": 11,
+    "planning_status_counts": {"PLANNED": 22},
+    "requirement_count": 22,
+    "replay_cache_hits": 22,
+    "replay_new_calls": 0,
+    "byte_identical_results": true
+  },
+  "real_data_preflight": {
+    "status": "DRY_RUN",
+    "samples": 22,
+    "same_source_indexes_as_v1": true,
+    "source_record_indexes": [0, 1, 1700, 1701, 2480, 2481, 2650, 2651, 2790, 2791, 3540, 3541, 4270, 4271, 4940, 4941, 5250, 5251, 5520, 5521, 6120, 6121],
+    "planning_status_counts": {"NOT_EXECUTED": 22},
+    "model_calls": 0
+  },
+  "local_artifacts": {
+    "outputs/claim_bank_v11_acceptance/synthetic_smoke/synthetic_smoke_report.json": "c618f2f5739c08486666348612c8288949ba7ffb7c17c6863c35345bb77ecb27",
+    "outputs/claim_bank_v11_acceptance/public_preflight22/bank_manifest.json": "aa749aa22f5aea125fa2c7600bcae50a9f202506c900c898797204f3cc557802"
+  },
+  "real_model_calls": 0,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "real_gpu_smoke": "NOT_EXECUTED_SERVER_RUN_REQUIRED"
+}
