@@ -67,6 +67,9 @@ class SpatialAtomicClaimFreezeTests(unittest.TestCase):
             "expected_candidate_count": 32,
             "position_index_base": 1,
             "default_action": "ACCEPT_GENERATED",
+            "exclusions": [
+                {"position": 31, "rationale": "No non-invented atomic claim is available."},
+            ],
             "human_feedback_source": "DIRECT_AUTHOR_VISUAL_REVIEW_2026-11-20",
             "reviewer_id": "AUTHOR_CONFIRMED_IN_CHAT",
             "replacements": [
@@ -79,7 +82,7 @@ class SpatialAtomicClaimFreezeTests(unittest.TestCase):
         paths["feedback"] = feedback
         return paths
 
-    def test_freezes_28_accepts_and_four_author_replacements(self):
+    def test_freezes_27_accepts_four_replacements_and_one_exclusion(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             paths = self._inputs(root)
@@ -93,11 +96,15 @@ class SpatialAtomicClaimFreezeTests(unittest.TestCase):
             )
             self.assertEqual(result["status"], "FROZEN")
             self.assertEqual(result["decision_counts"], {
-                "ACCEPT_GENERATED": 28, "AUTHOR_REPLACEMENT": 4,
+                "ACCEPT_GENERATED": 27,
+                "AUTHOR_REPLACEMENT": 4,
+                "EXCLUDED_NO_VALID_ATOMIC_CLAIM": 1,
             })
             self.assertEqual(result["final_split_counts"], {
-                "curated_evaluation": 12, "development": 20,
+                "curated_evaluation": 11, "development": 20,
             })
+            self.assertEqual(result["source_candidate_count"], 32)
+            self.assertEqual(result["final_runtime_count"], 31)
             self.assertFalse(result["former_frozen_evaluation_is_blind"])
             frozen = [json.loads(line) for line in
                       (root / "frozen/reviewed_atomic_claim_runtime_manifest.jsonl").read_text().splitlines()]
@@ -107,6 +114,8 @@ class SpatialAtomicClaimFreezeTests(unittest.TestCase):
             self.assertEqual(frozen[27]["claim_text"], "Forceps is visible.")
             self.assertEqual(frozen[0]["claim_text"], "Instrument 1 is visible.")
             self.assertEqual(frozen[20]["split"], "curated_evaluation")
+            self.assertEqual(len(frozen), 31)
+            self.assertNotIn("sample-31", {row["sample_id"] for row in frozen})
             audit = json.loads((root / "frozen/reviewed_atomic_claim_audit.json").read_text())
             self.assertEqual(audit["model_calls_made"], 0)
             self.assertEqual(audit["cache_writes"], 0)

@@ -1,4 +1,4 @@
-"""Apply explicit author feedback and freeze a replacement 32-claim cohort."""
+"""Apply explicit author feedback and freeze a reviewed atomic-claim cohort."""
 from __future__ import annotations
 
 from collections import Counter
@@ -42,11 +42,12 @@ def _strict_jsonl(path: str | Path, code: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _feedback(path: str | Path, expected_count: int) -> tuple[dict[int, dict[str, Any]], dict[str, Any]]:
+def _feedback(path: str | Path, expected_count: int) -> tuple[
+        dict[int, dict[str, Any]], dict[int, dict[str, Any]], dict[str, Any]]:
     value = strict_json_load(path)
     required = {
         "format", "expected_candidate_count", "position_index_base", "default_action",
-        "reviewer_id", "human_feedback_source", "replacements",
+        "reviewer_id", "human_feedback_source", "replacements", "exclusions",
     }
     if (not isinstance(value, dict) or set(value) != required
             or value.get("format") != FEEDBACK_FORMAT
@@ -55,7 +56,8 @@ def _feedback(path: str | Path, expected_count: int) -> tuple[dict[int, dict[str
             or value.get("default_action") != "ACCEPT_GENERATED"
             or not isinstance(value.get("reviewer_id"), str) or not value["reviewer_id"]
             or not isinstance(value.get("human_feedback_source"), str)
-            or not isinstance(value.get("replacements"), list)):
+            or not isinstance(value.get("replacements"), list)
+            or not isinstance(value.get("exclusions"), list)):
         raise SpatialReliabilityError("ATOMIC_CLAIM_FEEDBACK_INVALID")
     replacements: dict[int, dict[str, Any]] = {}
     for item in value["replacements"]:
@@ -70,7 +72,18 @@ def _feedback(path: str | Path, expected_count: int) -> tuple[dict[int, dict[str
         replacements[item["position"]] = item
     if not replacements:
         raise SpatialReliabilityError("ATOMIC_CLAIM_FEEDBACK_INVALID")
-    return replacements, value
+    exclusions: dict[int, dict[str, Any]] = {}
+    for item in value["exclusions"]:
+        if (not isinstance(item, dict) or set(item) != {"position", "rationale"}
+                or type(item.get("position")) is not int
+                or not 1 <= item["position"] <= expected_count
+                or item["position"] in exclusions or item["position"] in replacements
+                or not isinstance(item.get("rationale"), str) or not item["rationale"].strip()):
+            raise SpatialReliabilityError("ATOMIC_CLAIM_FEEDBACK_INVALID")
+        exclusions[item["position"]] = item
+    if not exclusions:
+        raise SpatialReliabilityError("ATOMIC_CLAIM_FEEDBACK_INVALID")
+    return replacements, exclusions, value
 
 
 def _markdown(decisions: list[dict[str, Any]]) -> str:
@@ -87,7 +100,7 @@ def _markdown(decisions: list[dict[str, Any]]) -> str:
             f"- Split: `{row['final_split']}` (source: `{row['source_split']}`)",
             f"- RC Caption: {row['source_region_caption']}",
             f"- Generated claim: {row['generated_atomic_claim']}",
-            f"- Final claim: **{row['final_claim']}**",
+            f"- Final claim: **{row['final_claim'] or 'EXCLUDED'}**",
             f"- Decision: `{row['decision']}`",
             f"- Rationale: {row['rationale']}",
             "",
@@ -110,7 +123,7 @@ def freeze_reviewed_atomic_claims(*, runtime_manifest: str | Path,
         raise SpatialReliabilityError("ATOMIC_CLAIM_FREEZE_RUNTIME_GT_INVALID")
     if not (len(runtime) == len(candidates) == len(reviews) == expected_count):
         raise SpatialReliabilityError("ATOMIC_CLAIM_FREEZE_COUNT_MISMATCH")
-    replacements, feedback = _feedback(feedback_json, expected_count)
+    replacements, exclusions, feedback = _feedback(feedback_json, expected_count)
     final_runtime: list[dict[str, Any]] = []
     decisions: list[dict[str, Any]] = []
     seen_samples: set[str] = set()
@@ -129,12 +142,37 @@ def freeze_reviewed_atomic_claims(*, runtime_manifest: str | Path,
                 or candidate.get("source_record_sha256") != public.get("source_record_sha256")
                 or candidate.get("current_claim_id") != public.get("claim_id")
                 or candidate.get("current_claim_text") != public.get("claim_text")
-                or not isinstance(parsed, dict) or parsed.get("status") != "PROPOSED"
-                or review.get("generated_status") != "PROPOSED"
+                or not isinstance(parsed, dict)
+                or review.get("generated_status") != parsed.get("status")
                 or review.get("generated_atomic_claim") != parsed.get("claim_text")
                 or review.get("source_region_caption") != candidate.get("source_region_caption")):
             raise SpatialReliabilityError(f"ATOMIC_CLAIM_FREEZE_BINDING_INVALID:{position}")
-        generated = parsed["claim_text"]
+        generated = parsed.get("claim_text")
+        exclusion = exclusions.get(position)
+        if exclusion:
+            decisions.append({
+                "format": FREEZE_FORMAT + "-decision",
+                "position": position,
+                "candidate_id": candidate_id,
+                "sample_id": sample_id,
+                "source_record_index": public["source_record_index"],
+                "source_record_sha256": public["source_record_sha256"],
+                "source_split": public.get("split"),
+                "final_split": None,
+                "source_region_caption": candidate["source_region_caption"],
+                "generated_atomic_claim": generated,
+                "final_claim": None,
+                "decision": "EXCLUDED_NO_VALID_ATOMIC_CLAIM",
+                "rationale": exclusion["rationale"],
+                "reviewer_id": feedback["reviewer_id"],
+                "human_feedback_source": feedback["human_feedback_source"],
+                "final_claim_static_checks": None,
+            })
+            seen_samples.add(sample_id)
+            seen_candidates.add(candidate_id)
+            continue
+        if parsed.get("status") != "PROPOSED" or not isinstance(generated, str):
+            raise SpatialReliabilityError(f"ATOMIC_CLAIM_UNREVIEWED_NONPROPOSAL:{position}")
         replacement = replacements.get(position)
         final_claim = replacement["final_claim"] if replacement else generated
         if parse_atomic_claim(final_claim)["status"] != "PROPOSED":
@@ -182,21 +220,25 @@ def freeze_reviewed_atomic_claims(*, runtime_manifest: str | Path,
         seen_candidates.add(candidate_id)
     if set(replacements) != {row["position"] for row in decisions if row["decision"] == "AUTHOR_REPLACEMENT"}:
         raise SpatialReliabilityError("ATOMIC_CLAIM_REPLACEMENT_APPLICATION_INVALID")
+    if set(exclusions) != {row["position"] for row in decisions if row["decision"] == "EXCLUDED_NO_VALID_ATOMIC_CLAIM"}:
+        raise SpatialReliabilityError("ATOMIC_CLAIM_EXCLUSION_APPLICATION_INVALID")
     isolation = runtime_gt_audit(final_runtime)
     if isolation["status"] != "PASS":
         raise SpatialReliabilityError("ATOMIC_CLAIM_FINAL_RUNTIME_GT_INVALID")
     decision_counts = Counter(row["decision"] for row in decisions)
-    split_counts = Counter(row["final_split"] for row in decisions)
+    split_counts = Counter(row["split"] for row in final_runtime)
     payloads = {
         "reviewed_atomic_claim_runtime_manifest.jsonl": final_runtime,
         "reviewed_atomic_claim_decisions.jsonl": decisions,
         "reviewed_atomic_claim_audit.json": {
             "format": FREEZE_FORMAT + "-audit",
             "status": "PASS",
-            "candidate_count": len(decisions),
+            "source_candidate_count": len(decisions),
+            "final_runtime_count": len(final_runtime),
             "decision_counts": dict(sorted(decision_counts.items())),
             "final_split_counts": dict(sorted(split_counts.items())),
             "replacement_positions": sorted(replacements),
+            "excluded_positions": sorted(exclusions),
             "former_frozen_evaluation_is_blind": False,
             "former_frozen_evaluation_use": "CURATED_DIAGNOSTIC_ONLY",
             "runtime_gt_isolation": isolation,
@@ -221,9 +263,12 @@ def freeze_reviewed_atomic_claims(*, runtime_manifest: str | Path,
         "review_jsonl_sha256": sha256_path(review_jsonl),
         "feedback_json_sha256": sha256_path(feedback_json),
         "artifact_sha256": artifact_hashes,
-        "candidate_count": len(decisions),
+        "source_candidate_count": len(decisions),
+        "final_runtime_count": len(final_runtime),
         "decision_counts": dict(sorted(decision_counts.items())),
         "final_split_counts": dict(sorted(split_counts.items())),
+        "replacement_positions": sorted(replacements),
+        "excluded_positions": sorted(exclusions),
         "former_frozen_evaluation_is_blind": False,
         "model_calls_made": 0,
         "cache_writes": 0,

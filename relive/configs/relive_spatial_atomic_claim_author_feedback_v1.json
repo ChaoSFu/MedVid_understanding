@@ -1,6 +1,12 @@
 {
   "default_action": "ACCEPT_GENERATED",
   "expected_candidate_count": 32,
+  "exclusions": [
+    {
+      "position": 31,
+      "rationale": "Author confirmed that no minimal single-frame local visual claim can be produced for this case without inventing information."
+    }
+  ],
   "format": "relive-spatial-atomic-claim-author-feedback-v1",
   "human_feedback_source": "DIRECT_AUTHOR_VISUAL_REVIEW_2026-11-20",
   "position_index_base": 1,

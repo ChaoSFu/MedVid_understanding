@@ -216,6 +216,9 @@ PYTHONPATH=src python -m relive.spatial_reliability.freeze_atomic_claims \
   --expected-count 32
 ```
 
-Because the author inspected all 32 cases, the 12 former
-`frozen_evaluation` rows are renamed `curated_evaluation`. They may be used for
-diagnostic evaluation, but not reported as an untouched blind test set.
+The author explicitly excluded one case for which no non-invented atomic claim
+could be constructed. The frozen runtime therefore contains 31 cases: 20
+`development` and 11 `curated_evaluation`. Because the author inspected all
+source cases, this evaluation split may be used diagnostically but not reported
+as an untouched blind test set. No development case is moved across the split
+to preserve a desired count.
