@@ -9,6 +9,9 @@ The framework separates acquisition from admission: chronological or uniform acq
 Question-conditioned MedVidU Claim Bank generation is a separate, GT-isolated
 two-stage pipeline for native QA tasks. See
 [Claim Bank v1.1 contracts and server commands](docs/medvidu_claim_bank_v11.md).
+Stage 2 now defaults to the separately versioned
+[v1.2 observation contract](docs/medvidu_claim_bank_stage2_v12.md), which consumes
+frozen Stage-1 v1.1 requirements without rerunning planning.
 It emits unverified hypotheses only and does not change the legacy runner's
 task compatibility table below.
 

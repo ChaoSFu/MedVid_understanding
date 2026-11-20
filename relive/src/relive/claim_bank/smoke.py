@@ -20,7 +20,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--output-dir", required=True)
     p.add_argument("--config", default="configs/claim_bank_mock_v1.yaml")
-    p.add_argument("--protocol-version", choices=("v1", "v1.1"), default="v1")
+    p.add_argument("--protocol-version", choices=("v1", "v1.1", "v1.2"), default="v1")
     a = p.parse_args()
     root = Path(a.output_dir).resolve()
     if root.exists():
@@ -46,7 +46,8 @@ def main() -> int:
     shared = {"runtime_manifest": str(root / "data/runtime_manifest.jsonl"), "config_path": a.config,
               "cache_dir": str(root / "synthetic_cache"), "per_qa_type": 2,
               "protocol_version": a.protocol_version}
-    first = generate(**shared, stage=1, output_dir=str(root / "stage1"))
+    stage1_args = {**shared, "protocol_version": "v1.1"} if a.protocol_version == "v1.2" else shared
+    first = generate(**stage1_args, stage=1, output_dir=str(root / "stage1"))
     second = generate(**shared, stage=2, stage1_dir=str(root / "stage1"), output_dir=str(root / "stage2"))
     replay = generate(**shared, stage=2, stage1_dir=str(root / "stage1"), output_dir=str(root / "replay"),
                       replay_only=True, replay_from=str(root / "stage2"))

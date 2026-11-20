@@ -1,0 +1,42 @@
+{
+  "format": "relive-claimgen-stage2-v1.2-implementation-acceptance-v1",
+  "status": "PASS_STATIC_AND_SYNTHETIC_ONLY",
+  "protocol_sha256": "b7570f36b95dc8c519912ede28a08605bf63a4d73669809be1ce1153583e74a5",
+  "accepted_stage1_protocol_sha256": "139d890cf6586d848467926984a4ce84ff8d91908965eab76aca80b64815f2d5",
+  "targeted_tests_passed": 84,
+  "full_tests_passed": 455,
+  "full_tests_seconds": 79.572,
+  "git_diff_check": "PASS",
+  "runtime_import_audit": "PASS",
+  "synthetic_smoke": {
+    "samples": 22,
+    "qa_types": 11,
+    "generation_status_counts": {"GENERATED": 18, "UNRESOLVED_TARGET_REFERENCE": 4},
+    "replay_new_calls": 0,
+    "replay_cache_hits": 22,
+    "sample_and_flattened_exports_byte_identical": true
+  },
+  "historical_stage1_v11_reuse": {
+    "source": "outputs/claim_bank_v11_acceptance/synthetic_smoke/stage1",
+    "samples": 22,
+    "stage1_model_calls_in_reuse": 0,
+    "immutable_stage1_snapshot_test": "PASS",
+    "downstream_validation": "PASS"
+  },
+  "local_artifacts": {
+    "outputs/claim_bank_v12_final_acceptance/synthetic_smoke/synthetic_smoke_report.json": "ca53bd489cd80402aaa1f1e4979d9a032d34b6ad6e564d5ca54190fc0614ac50",
+    "outputs/claim_bank_v12_final_acceptance/synthetic_smoke/stage2/bank_manifest.json": "60c37dff65d857747478057bafec7c057763e41259295dc3064ff4a9869fdd63",
+    "outputs/claim_bank_v12_final_acceptance/historical_stage1_reuse/bank_manifest.json": "9aaebd9b49c735c9339821ba2e3a2d4e41b7450a3be017119c47a274289fe6ed"
+  },
+  "real_model_calls": 0,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "old_stage2_failures_reclassified": false,
+  "real_gpu_smoke": "NOT_EXECUTED_SERVER_RUN_REQUIRED",
+  "limitations": [
+    "Semantic and future-language checks are conservative lexical checks, not proof.",
+    "Image citation binding proves provenance, not visual correctness.",
+    "Region-caption query targets and unverified time mappings remain unresolved.",
+    "Stage-1 semantic assumptions are not corrected or regenerated in this revision."
+  ]
+}

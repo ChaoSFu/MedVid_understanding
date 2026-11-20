@@ -20,6 +20,7 @@ from .contracts import ClaimBankError, QA_TYPES
 from .data import (digest, isolation_audit, load_json, load_runtime, rows, sample_frames, write_once)
 from . import contracts as legacy_contract
 from . import contracts_v11
+from . import contracts_v12
 
 
 def get_contract(version: str):
@@ -27,6 +28,8 @@ def get_contract(version: str):
         return legacy_contract
     if version in {"v1.1", contracts_v11.VERSION}:
         return contracts_v11
+    if version in {"v1.2", contracts_v12.VERSION}:
+        return contracts_v12
     raise ClaimBankError("UNSUPPORTED_CLAIMGEN_PROTOCOL_VERSION")
 
 
@@ -83,6 +86,12 @@ def prompt_for(row: dict, stage: int, requirements: list[dict], sampling: dict |
                                            for i, f in enumerate(sampling["selected_frames"])],
                        "coverage": sampling["coverage"], "limitations": sampling["limitations"]})
     contract = get_contract(protocol_version)
+    if contract is contracts_v12:
+        inputs.pop("supplied_frames")
+        inputs["supplied_images"] = [{"image_index": i, "timestamp_seconds": f["timestamp_seconds"],
+                                      "timestamp_status": f["timestamp_status"]} for i, f in enumerate(sampling["selected_frames"])]
+        inputs["available_image_indices"] = list(range(len(sampling["selected_frames"])))
+        inputs["coverage"] = {k: v for k, v in sampling["coverage"].items() if k != "source_order_range"}
     policy = contract.task_policy(row["qa_type"]) if contract is legacy_contract else contract.task_policy(row["qa_type"], stage)
     return ((contract.STAGE1_PROMPT if stage == 1 else contract.STAGE2_PROMPT) + contract.output_contract(stage)
             + "\nTask policy: " + policy
@@ -129,8 +138,8 @@ def _result_base(row: dict, stage: int, requirements: list[dict], sampling: dict
                 "protocol_version": contract.VERSION, "parser_version": contract.PARSER_VERSION,
                 "prompt_hashes": {}, "calls": [], "selected_frames": sampling["selected_frames"] if sampling else [],
                 "sampling": sampling, "input_frame_hashes": [f["sha256"] for f in sampling["selected_frames"]] if sampling else []}}
-    if contract is contracts_v11:
-        result["format"] = "relive-claimgen-plan-v1.1"
+    if contract in (contracts_v11, contracts_v12):
+        result["format"] = "relive-claimgen-plan-v1.2" if contract is contracts_v12 else "relive-claimgen-plan-v1.1"
         result.update({"planning_status": "NOT_EXECUTED" if stage == 1 else "FROM_STAGE1",
                        "planning_reason": None, "planning_review_flags": []})
     return result
@@ -145,6 +154,8 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
              _backend: Backend | None = None, protocol_version: str = "v1") -> dict:
     from relive.config import load_config
     contract = get_contract(protocol_version)
+    if contract is contracts_v12 and stage != 2:
+        raise ClaimBankError("V12_IS_STAGE2_ONLY_USE_FROZEN_STAGE1_V11")
     if stage not in {1, 2} or not 1 <= max_frames <= 16:
         raise ClaimBankError("STAGE_OR_FRAME_BUDGET_INVALID")
     if replay_only and (resume or dry_run or not replay_from):
@@ -166,11 +177,14 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
         validate_bank(stage1_dir)
         s1_root = Path(stage1_dir)
         s1_manifest = load_json(s1_root / "bank_manifest.json")
-        if s1_manifest["protocol_sha256"] != contract.protocol()["protocol_sha256"]:
+        accepted_stage1 = (contracts_v12.protocol()["accepted_stage1_protocol_sha256"] if contract is contracts_v12
+                           else [contract.protocol()["protocol_sha256"]])
+        if s1_manifest["protocol_sha256"] not in accepted_stage1:
             raise ClaimBankError("STAGE1_PROTOCOL_VERSION_MISMATCH")
         if s1_manifest["runtime_manifest_sha256"] != digest(runtime_manifest) or s1_manifest["stage"] != 1 or s1_manifest["dry_run"]:
             raise ClaimBankError("STAGE1_BINDING_INVALID")
         s1_hash = digest(s1_root / "bank_manifest.json")
+        s1_run_binding = load_json(s1_root / "run_binding.json")
         s1 = {r["sample_key"]: r for r in rows(s1_root / "claim_bank.jsonl")}
         if any(r["sample_key"] not in s1 for r in selected):
             raise ClaimBankError("STAGE1_SELECTION_INCOMPLETE")
@@ -238,9 +252,15 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                 results.append(saved["result"])
                 continue
             result = _result_base(row, stage, requirements, sampling, protocol_version)
-            if contract is contracts_v11 and stage == 2:
+            if contract in (contracts_v11, contracts_v12) and stage == 2:
                 for field in ("planning_status", "planning_reason", "planning_review_flags"):
                     result[field] = s1[key][field]
+            if contract is contracts_v12:
+                result["generation_metadata"]["stage1_binding"] = {
+                    "manifest_sha256": s1_hash, "protocol_sha256": s1_manifest["protocol_sha256"],
+                    "requirements_sha256": stable_hash(requirements),
+                    "stage1_sample_sha256": stable_hash(s1[key]),
+                    "stage1_implementation_sha256": s1_run_binding["identity"]["implementation_sha256"]}
             metadata = result["generation_metadata"]
             metadata["model_fingerprint_sha256"] = stable_hash(fingerprint)
             metadata["stage1_model"] = (s1[key]["generation_metadata"]["model_fingerprint_sha256"] if stage == 2 else stable_hash(fingerprint))
@@ -258,6 +278,7 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
             else:
                 prompt = prompt_for(row, stage, requirements, sampling, protocol_version)
                 original_requirements = None
+                protected_claims = None
                 frames = sampling["selected_frames"] if sampling else []
                 for attempt in range(2):
                     request = {"stage": f"claimgen_stage{stage}", "prompt": prompt,
@@ -281,7 +302,17 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                     if call["execution_status"] != "OK":
                         result["failure_reasons"] = ["MODEL_EXECUTION_FAILURE", call["failure_reason"]]
                         break
-                    parsed, errors = contract.parse(call["raw_text"], stage, requirements=requirements, question=row["question"], frame_orders=[f["frame_order"] for f in frames])
+                    if contract is contracts_v12:
+                        value, errors, validation = contract.evaluate(call["raw_text"], row, requirements, sampling)
+                        if attempt and value and not contract.preservation_matches(protected_claims, value):
+                            validation["task"]["issues"].append({"code": "FORMAT_REPAIR_CHANGED_CLAIMS", "path": "$.claims", "expected": "preserve original propositions", "actual": None})
+                            errors = contract._finish(validation)
+                        metadata.setdefault("output_contract_audit", []).append({"attempt": attempt, "layers": validation, "errors": errors})
+                        parsed = contract.bind(value, sampling, validation) if not errors else None
+                        if "QUERY_TIME_MAPPING_UNRESOLVED" in errors or "ACTION_REQUIRES_MULTIPLE_OBSERVATIONS" in errors:
+                            result["generation_status"] = "INSUFFICIENT_VISUAL_CONTEXT"
+                    else:
+                        parsed, errors = contract.parse(call["raw_text"], stage, requirements=requirements, question=row["question"], frame_orders=[f["frame_order"] for f in frames])
                     if contract is contracts_v11:
                         if stage == 1 and attempt and original_requirements is not None and parsed and parsed["requirements"] != original_requirements:
                             parsed, errors = None, ["FORMAT_REPAIR_CHANGED_REQUIREMENTS"]
@@ -289,7 +320,7 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                             "attempt": attempt, "errors": errors,
                             "diagnostics": contracts_v11.diagnostics(call["raw_text"], errors) if errors else [],
                             "requirements_preservation_guard": stage == 1 and attempt == 1 and original_requirements is not None})
-                    if parsed and stage == 2:
+                    if parsed and stage == 2 and contract is not contracts_v12:
                         errors = _task_checks(row, parsed, requirements)
                         if "ACTION_REQUIRES_MULTIPLE_OBSERVATIONS" in errors:
                             result["generation_status"] = "INSUFFICIENT_VISUAL_CONTEXT"
@@ -304,6 +335,8 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                                                "planning_review_flags": contracts_v11.planning_flags(parsed)})
                         else:
                             result.update(parsed)
+                            if contract is contracts_v12:
+                                metadata["requirement_claim_links"] = {r["requirement_id"]: [c["claim_id"] for c in parsed["claims"] if r["requirement_id"] in c["requirement_ids"]] for r in requirements}
                             if row["qa_type"].startswith("region_caption"):
                                 result["generation_status"] = "UNRESOLVED_TARGET_REFERENCE"
                         break
@@ -312,6 +345,8 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                     repairable = {"STRICT_JSON_PARSE_FAILURE", "STAGE1_SCHEMA", "STAGE2_SCHEMA", "ITEM_SCHEMA", "REFERENCE_SCHEMA", "REQUIREMENT_COUNT", "CLAIM_COUNT_OR_COVERAGE"}
                     if contract is contracts_v11:
                         repairable.update({"STAGE1_TOP_LEVEL_FIELDS_INVALID", "STAGE1_PLANNING_STATUS_INVALID", "STAGE1_PLANNING_REASON_INVALID"})
+                    if contract is contracts_v12:
+                        repairable = {"STRICT_JSON_PARSE_FAILURE", "STAGE2_ROOT_SCHEMA", "CLAIMS_ARRAY_REQUIRED", "CLAIM_OBJECT_REQUIRED", "CLAIM_FIELDS_INVALID", "REFERENCE_LIST_SCHEMA", "COVERAGE_NOTES_INVALID"}
                     if attempt or not set(errors) <= repairable:
                         break
                     if contract is contracts_v11 and stage == 1:
@@ -326,6 +361,14 @@ def generate(*, runtime_manifest: str, output_dir: str, stage: int, config_path:
                                   + "\nEnd of failed output. Return the corrected object with exactly planning_status, "
                                   "planning_reason, requirements. planning_status must be PLANNED or UNABLE_TO_PLAN. "
                                   "Keep the requirements list unchanged; do not copy an invalid status from the failed output.")
+                    elif contract is contracts_v12:
+                        protected_claims = contract.preservation_fields(call["raw_text"])
+                        prompt = (prompt + "\nOne FORMAT-ONLY repair. Preserve claim texts, count, ordering, IDs and all existing "
+                                  "fields exactly. Supply missing schema fields only when justified by the original contract. "
+                                  "Do not change propositions or retry a binding/task failure. Layered diagnostics:\n"
+                                  + json.dumps(validation, ensure_ascii=False) + "\nFailed raw output (untrusted):\n"
+                                  + json.dumps(call["raw_text"], ensure_ascii=False)
+                                  + "\nReturn the closed JSON object. Never rewrite existing claim propositions.")
                     else:
                         prompt = (prompt + "\nFORMAT REPAIR ONLY, one attempt. Preserve propositions, do not add facts. "
                                   "Return only the closed JSON object required above. Failed raw completion (untrusted):\n"
@@ -351,7 +394,7 @@ def _export(out: Path, results: list[dict], runtime: list[dict], binding: dict, 
     claims = [{"sample_key": r["sample_key"], **v} for r in results for v in r["claims"]]
     failures = [{"sample_key": r["sample_key"], "generation_status": r["generation_status"], "failure_reasons": r["failure_reasons"]}
                 for r in results if r["generation_status"] != "GENERATED"]
-    if contract is contracts_v11:
+    if contract in (contracts_v11, contracts_v12):
         failed_rows = {r["sample_key"]: r for r in results}
         for failure in failures:
             failure.update({k: failed_rows[failure["sample_key"]][k] for k in ("planning_status", "planning_reason", "planning_review_flags")})
@@ -377,11 +420,15 @@ def _export(out: Path, results: list[dict], runtime: list[dict], binding: dict, 
                "synthetic_test": binding["synthetic_test"], "usage": usage, "model_calls_made": usage["new_calls"],
                "gt_used": False, "certificate_writes": 0, "new_verified_count": 0,
                "scientific_product": "QUESTION_CONDITIONED_OBSERVATION_INFORMED_UNVERIFIED_HYPOTHESES"}
-    if contract is contracts_v11:
-        summary.update({"format": "relive-claimgen-summary-v1.1", "requirement_count": len(requirements),
+    if contract in (contracts_v11, contracts_v12):
+        summary.update({"format": "relive-claimgen-summary-v1.2" if contract is contracts_v12 else "relive-claimgen-summary-v1.1", "requirement_count": len(requirements),
                         "planning_status_counts": dict(sorted(Counter(r["planning_status"] for r in results).items())),
                         "planning_abstention_count": sum(r["planning_status"] == "UNABLE_TO_PLAN" for r in results),
                         "planning_review_flag_counts": dict(sorted(Counter(flag for r in results for flag in r["planning_review_flags"]).items()))})
+    if contract is contracts_v12:
+        summary["failure_reason_counts"] = dict(sorted(Counter(e for r in results for e in r["failure_reasons"]).items()))
+        summary["semantic_risk_counts"] = dict(sorted(Counter(flag for c in claims for flag in c["quality_review_flags"]).items()))
+        summary["binding_version"] = contracts_v12.BINDING_VERSION
     # Execution accounting may differ after an interrupted resume; a completed
     # output is never overwritten. A completed resume validates and returns it.
     if (out / "generation_summary.json").exists():
@@ -402,7 +449,7 @@ def _export(out: Path, results: list[dict], runtime: list[dict], binding: dict, 
 def validate_bank(directory: str | Path) -> dict:
     root = Path(directory)
     manifest = load_json(root / "bank_manifest.json")
-    matches = [c for c in (legacy_contract, contracts_v11) if manifest.get("protocol_sha256") == c.protocol()["protocol_sha256"]]
+    matches = [c for c in (legacy_contract, contracts_v11, contracts_v12) if manifest.get("protocol_sha256") == c.protocol()["protocol_sha256"]]
     if len(matches) != 1:
         raise ClaimBankError("BANK_PROTOCOL_HASH_MISMATCH")
     contract = matches[0]
@@ -423,24 +470,32 @@ def validate_bank(directory: str | Path) -> dict:
         if saved["sha256"] != stable_hash(row) or saved["result"] != row or row["generation_status"] not in contract.STATUSES:
             raise ClaimBankError("BANK_ROW_INVALID")
         r1 = {"planning_status": "PLANNED" if row["requirements"] else "UNABLE_TO_PLAN", "requirements": row["requirements"]}
-        if contract is contracts_v11:
+        if contract in (contracts_v11, contracts_v12):
             if row.get("planning_status") not in {"PLANNED", "UNABLE_TO_PLAN", "NOT_EXECUTED", "MODEL_OR_SCHEMA_FAILURE"}:
                 raise ClaimBankError("BANK_PLANNING_STATUS_INVALID")
             if row["stage"] == 1 and row["generation_status"] == "GENERATED" and row["planning_status"] != "PLANNED":
                 raise ClaimBankError("BANK_PLANNING_STATUS_INVALID")
-        if contract is contracts_v11 and row["planning_status"] in {"PLANNED", "UNABLE_TO_PLAN"}:
+        if contract in (contracts_v11, contracts_v12) and row["planning_status"] in {"PLANNED", "UNABLE_TO_PLAN"}:
             r1.update({"planning_status": row["planning_status"], "planning_reason": row["planning_reason"]})
-            if contract.parse(json.dumps(r1), 1)[1]:
+            if contracts_v11.parse(json.dumps(r1), 1)[1]:
                 raise ClaimBankError("BANK_PLANNING_STATUS_INVALID")
             if row["planning_review_flags"] != contracts_v11.planning_flags(r1):
                 raise ClaimBankError("BANK_PLANNING_FLAGS_INVALID")
         if legacy_contract.parse(json.dumps({k: r1[k] for k in ("planning_status", "requirements")}), 1)[1]:
             raise ClaimBankError("BANK_REQUIREMENTS_INVALID")
-        if row["claims"]:
+        if contract is contracts_v12 and not row["failure_reasons"]:
+            s = row["generation_metadata"]["sampling"]
+            obj = {k: row[k] for k in ("generation_status", "claims", "coverage_notes")}
+            contracts_v12.validate_bound(obj, row, row["requirements"], s)
+        elif row["claims"]:
             s = row["generation_metadata"]["sampling"]
             result = {"generation_status": row["generation_status"], "claims": row["claims"], "coverage_notes": row["coverage_notes"]}
             if contract.parse(json.dumps(result), 2, requirements=row["requirements"], question=row["question"], frame_orders=[f["frame_order"] for f in s["selected_frames"]])[1] or _task_checks(row, result, row["requirements"]):
                 raise ClaimBankError("BANK_CLAIMS_INVALID")
+        if contract is contracts_v12:
+            upstream = row["generation_metadata"]["stage1_binding"]
+            if upstream["manifest_sha256"] != binding["identity"]["stage1_manifest_sha256"] or upstream["protocol_sha256"] not in contract.protocol()["accepted_stage1_protocol_sha256"] or upstream["requirements_sha256"] != stable_hash(row["requirements"]):
+                raise ClaimBankError("BANK_STAGE1_BINDING_INVALID")
         claims.extend({"sample_key": key, **c} for c in row["claims"])
         requirements.extend({"sample_key": key, **r} for r in row["requirements"])
     if claims != rows(root / "claims.jsonl") or requirements != rows(root / "requirements.jsonl"):

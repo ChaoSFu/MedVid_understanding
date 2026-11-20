@@ -1,5 +1,10 @@
 # Claim Bank v1.1: separate planning from observation
 
+Stage 1 remains v1.1. New observation runs should use
+[Stage 2 v1.2](medvidu_claim_bank_stage2_v12.md); the v1.1 Stage-2 commands below
+are historical. Do not update a checkout running full Stage 1; use an independent
+checkout for the new Stage-2 executor.
+
 This revision addresses the first real Stage-1 smoke's output-contract issues.
 It changes prompts, task instructions, parser diagnostics and reporting, not the
 model, input whitelist, frame sampler, claim truth status, or scientific task.
