@@ -202,3 +202,20 @@ PYTHONPATH=src python -m relive.spatial_reliability.generate_atomic_claim_candid
 Replay fails before backend execution if any cache entry is missing. A later,
 separate reviewed-manifest builder is required before any replacement
 experiment; this stage cannot admit a claim automatically.
+
+After explicit author review, freeze the accepted/replaced claims without any
+model or cache activity:
+
+```bash
+PYTHONPATH=src python -m relive.spatial_reliability.freeze_atomic_claims \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --candidates-jsonl "$ATOMIC_ROOT/run/atomic_claim_candidates.jsonl" \
+  --review-jsonl "$ATOMIC_ROOT/run/atomic_claim_human_review_list.jsonl" \
+  --feedback-json configs/relive_spatial_atomic_claim_author_feedback_v1.json \
+  --output-dir "$ATOMIC_ROOT/frozen" \
+  --expected-count 32
+```
+
+Because the author inspected all 32 cases, the 12 former
+`frozen_evaluation` rows are renamed `curated_evaluation`. They may be used for
+diagnostic evaluation, but not reported as an untouched blind test set.

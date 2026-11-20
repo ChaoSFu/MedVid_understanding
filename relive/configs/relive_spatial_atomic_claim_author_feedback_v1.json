@@ -1,0 +1,30 @@
+{
+  "default_action": "ACCEPT_GENERATED",
+  "expected_candidate_count": 32,
+  "format": "relive-spatial-atomic-claim-author-feedback-v1",
+  "human_feedback_source": "DIRECT_AUTHOR_VISUAL_REVIEW_2026-11-20",
+  "position_index_base": 1,
+  "reviewer_id": "AUTHOR_CONFIRMED_IN_CHAT",
+  "replacements": [
+    {
+      "final_claim": "Forceps is visible.",
+      "position": 5,
+      "rationale": "The frame does not establish that the forceps jaws are open; only forceps visibility is confirmed."
+    },
+    {
+      "final_claim": "The electric cautery is held by the right hand.",
+      "position": 9,
+      "rationale": "No forceps are visible; the confirmed local fact is that the right hand holds the electric cautery."
+    },
+    {
+      "final_claim": "Forceps is visible.",
+      "position": 16,
+      "rationale": "The frame does not establish that the forceps jaws are open; only forceps visibility is confirmed."
+    },
+    {
+      "final_claim": "Forceps is visible.",
+      "position": 28,
+      "rationale": "The frame does not establish that the forceps jaws are open; only forceps visibility is confirmed."
+    }
+  ]
+}
