@@ -1,0 +1,23 @@
+# Synthetic plumbing fixture; never a scientific Claim Bank.
+framework_version: ReliVE-v1
+backend:
+  kind: mock
+  model: claim-bank-synthetic-fixture
+  revision: v1
+  max_retries: 0
+  rules:
+    - match: {stage: claimgen_stage1}
+      response:
+        planning_status: PLANNED
+        requirements:
+          - {requirement_id: R1, description: Inspect the synthetic object., type: OBJECT, evidence_type: SPATIAL, importance: REQUIRED}
+    - match: {stage: claimgen_stage2, qa_type: region_caption_gpt}
+      response: {generation_status: UNRESOLVED_TARGET_REFERENCE, claims: [], coverage_notes: The query box is unavailable.}
+    - match: {stage: claimgen_stage2, qa_type: region_caption_gemini}
+      response: {generation_status: UNRESOLVED_TARGET_REFERENCE, claims: [], coverage_notes: The query box is unavailable.}
+    - match: {stage: claimgen_stage2}
+      response:
+        generation_status: GENERATED
+        coverage_notes: Synthetic fixture only; no clinical interpretation.
+        claims:
+          - {claim_id: H1, text: A synthetic marker is visible., type: OBJECT, evidence_type: SPATIAL, requirement_ids: [R1], depends_on: [], status: UNVERIFIED, generation_basis: VISUAL_HYPOTHESIS, question_quote: null, frame_orders: [0], target_alignment: QUESTION_ALIGNED}

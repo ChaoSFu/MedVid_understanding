@@ -6,6 +6,12 @@ The framework separates acquisition from admission: chronological or uniform acq
 
 ## Install
 
+Question-conditioned MedVidU Claim Bank generation is a separate, GT-isolated
+two-stage pipeline for native QA tasks. See
+[Claim Bank v1 contracts and server commands](docs/medvidu_claim_bank_v1.md).
+It emits unverified hypotheses only and does not change the legacy runner's
+task compatibility table below.
+
 Use Python 3.10 or later. From this directory:
 
 ```bash

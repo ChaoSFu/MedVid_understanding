@@ -1,0 +1,55 @@
+{
+  "format": "relive-claimgen-implementation-acceptance-v1",
+  "status": "PASS_LOCAL_STATIC_AND_SYNTHETIC_ONLY",
+  "requested_source_filename": "medvidu_eccv2026_trainval(2).json",
+  "requested_source_available_locally": false,
+  "audited_source": "data_json/init_datas/medvidu_eccv2026_trainval.json",
+  "audited_dataset_sha256": "cee45807f26d8ceeb5d4b3969cd0327dbe4e97e41bff7ed4ed8b5e6be0ba706f",
+  "source_record_count": 6270,
+  "qa_type_count": 11,
+  "duplicate_original_id_groups": 637,
+  "unique_image_paths": 188441,
+  "existing_image_paths_on_local_host": 0,
+  "targeted_tests_passed": 38,
+  "full_tests_passed": 409,
+  "full_tests_seconds": 77.555,
+  "git_diff_check": "PASS",
+  "synthetic_smoke": {
+    "status": "SYNTHETIC_SMOKE_PASS",
+    "samples": 22,
+    "samples_per_qa_type": 2,
+    "mock_stage1_calls": 22,
+    "mock_stage2_calls": 22,
+    "generated_samples": 18,
+    "unresolved_region_reference_samples": 4,
+    "replay_cache_hits": 22,
+    "replay_new_model_calls": 0,
+    "sample_and_flattened_exports_byte_identical": true,
+    "scientific_claim_bank_created": false
+  },
+  "real_data_preflight": {
+    "status": "DRY_RUN",
+    "samples": 22,
+    "samples_per_qa_type": 2,
+    "generated_claims": 0,
+    "model_calls": 0,
+    "cache_created": false
+  },
+  "real_model_calls": 0,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "local_artifacts": {
+    "outputs/claim_bank_acceptance_v1/data/dataset_audit.json": "5900ce4aec61f6b38ef87f33e1fef1a84f0873efb0072737e968650842835f35",
+    "outputs/claim_bank_acceptance_v1/data/runtime_manifest.jsonl": "33ab4e1955be721522b52215e82fb16ccec95cbcbd077983ccb9f3cb90d85878",
+    "outputs/claim_bank_acceptance_v1/synthetic_smoke/synthetic_smoke_report.json": "0c1219b1de3baa7a010f39965e07e43b3daee0967571490f43558b0310dad0b1",
+    "outputs/claim_bank_acceptance_v1/public_preflight22/bank_manifest.json": "36822bb55c3d0577f1fc995134da116bc8d536f78b1e43c9bf9484314c323bda"
+  },
+  "limitations": [
+    "No real GPU smoke or full GPU generation was executed locally.",
+    "The requested (2) source file must be independently hashed and audited on the server.",
+    "Semantic quality checks are conservative lexical checks, not clinical or atomicity proof.",
+    "Public per-frame seconds remain unresolved; sampling is source-order based.",
+    "Supplemental observation is reserved but disabled in v1.",
+    "Stage-2 synthetic output tests plumbing only; it is not MedVidU claim evidence."
+  ]
+}
