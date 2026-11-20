@@ -159,3 +159,45 @@ to the post-hoc evaluation directory and are never runtime inputs.
 The normalizer and scope router are deliberately conservative and may exclude many valid captions.
 Region Caption boxes may be sufficient but non-necessary. Matched control geometry does not prove
 that a control contains no evidence. These are reported outcomes, not silently tuned away.
+
+## RC-caption atomic-claim review stage
+
+`relive-spatial-rc-to-atomic-claim-v1` is a versioned, review-only data
+preparation stage. It binds each existing public runtime row to the canonical
+source record and gives Qwen only the original region caption. Spatial GT,
+oracle boxes, prior runtime outcomes, certificates, and human review decisions
+are not prompt inputs.
+
+The output contract is deliberately smaller than JSON: exactly one plain-text
+single-frame claim ending in a period, or exactly `EXCLUDED`. Generated rows
+are never written into a runtime manifest. Every candidate is emitted to
+`atomic_claim_human_review_list.jsonl`, where a reviewer must check that it is
+one directly visible local fact, is single-frame judgeable, adds no unsupported
+object/attribute/location/medical fact, and contains no temporal action,
+purpose, cause, phase, or global-scene assertion.
+
+Run and exact replay:
+
+```bash
+PYTHONPATH=src python -m relive.spatial_reliability.generate_atomic_claim_candidates \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --source-json "$SOURCE_JSON" \
+  --config configs/qwen35_9b_relive_atomic_claim_v1.yaml \
+  --cache-dir "$ATOMIC_ROOT/cache" \
+  --output-dir "$ATOMIC_ROOT/run" \
+  --expected-count 32 \
+  --execution-mode run
+
+PYTHONPATH=src python -m relive.spatial_reliability.generate_atomic_claim_candidates \
+  --runtime-manifest "$DATA_OUT/runtime_manifest.jsonl" \
+  --source-json "$SOURCE_JSON" \
+  --config configs/qwen35_9b_relive_atomic_claim_v1.yaml \
+  --cache-dir "$ATOMIC_ROOT/cache" \
+  --output-dir "$ATOMIC_ROOT/replay" \
+  --expected-count 32 \
+  --execution-mode replay
+```
+
+Replay fails before backend execution if any cache entry is missing. A later,
+separate reviewed-manifest builder is required before any replacement
+experiment; this stage cannot admit a claim automatically.

@@ -128,6 +128,30 @@ class CachedInference:
     def cache_key(self, request: dict[str, Any]) -> str:
         return stable_hash(self.request_identity(request))
 
+    def has_terminal_result(self, request: dict[str, Any]) -> bool:
+        """Return whether a request can be replayed without backend execution.
+
+        This is a read-only, fail-closed replay preflight.  It validates the
+        immutable raw attempt chain rather than trusting the presence of a
+        cache directory or index file.  Callers that promise replay-only
+        behavior can therefore reject a miss before invoking ``call``.
+        """
+        identity = self.request_identity(request)
+        key = stable_hash(identity)
+        maximum_attempts = self.backend.config.get("max_retries", 0) + 1
+        if type(maximum_attempts) is not int or not 1 <= maximum_attempts <= 4:
+            raise ValueError("At most three technical retries are supported")
+        with self._lock(key):
+            attempts = self._load_attempts(key, identity)
+            if not attempts or len(attempts) > maximum_attempts:
+                return False
+            terminal = attempts[-1][1]
+            return (
+                terminal["execution_status"] == ExecutionStatus.OK.value
+                or terminal["retryable"] is False
+                or len(attempts) == maximum_attempts
+            )
+
     @contextlib.contextmanager
     def _lock(self, key: str):
         directory = self.store.root / "cache_locks"
