@@ -27,6 +27,11 @@ independent text-only planner, V2.2 offline diagnostic, immutable replay and a
 deterministic, human-review-gated contract compiler. Its separate CLI is
 `python -m relive.hypothesis_graph`. It does not acquire evidence or issue certificates.
 
+The opt-in [V3.1 instance-contract revision](docs/hypothesis_graph_stage2_v3_1.md)
+uses `python -m relive.hypothesis_graph_v31`, fixes schema/instance confusion and
+specific validator false positives, and shares conservative predicate parsing
+with its compiler. V3 code, outputs and cache are preserved.
+
 Use Python 3.10 or later. From this directory:
 
 ```bash

@@ -1,0 +1,59 @@
+{
+  "format": "relive-stage2-v3.1-engineering-acceptance-v1",
+  "status": "PASS_REAL_GPU_SMOKE_NOT_RUN",
+  "branch": "codex/relive-stage2-v31",
+  "base_commit": "a71d70bce4164c7894604e3c405e298d8f286ec6",
+  "protocol_sha256": "9c69ac267787cc14b5f79ff7e8cb03ae2682474d594359619f864a3bc200004a",
+  "implementation_sha256": "c47497e3142aee48a6d1dd0c82446c6887b3e070ed0e6b742a2c424bcc07dced",
+  "compiler_policy_sha256": "1793783c48a07da1abf6245d2abe8ae1989f7b5c58f807f8bda4eaa33ee361a0",
+  "diagnostic": {
+    "cache_writes": 0,
+    "certificate_writes": 0,
+    "image_reads": 0,
+    "new_model_calls": 0,
+    "new_verified_count": 0,
+    "root_shape_counts": {
+      "DUPLICATE_JSON_KEYS": 1,
+      "RESULT_INSTANCE": 5,
+      "SCHEMA_DEFINITION": 5,
+      "WRAPPED_INSTANCE": 11
+    },
+    "sample_count": 22,
+    "scope": "OFFLINE_SHAPE_DIAGNOSTIC_NOT_REVALIDATION_OR_RECOVERY",
+    "source_sha256": "1ef9aba5972113c0c58aa5ca0c45a74047811ba4598315e4f61ef990a833dffc"
+  },
+  "mock_replay": {
+    "cache_hits": 22,
+    "exact_replay": "PASS",
+    "new_model_calls": 0,
+    "resumed_checkpoint_count": 0,
+    "status": "PASS",
+    "usage_scope": "this invocation only"
+  },
+  "mock_retained": 18,
+  "compiler_formal_contract_count": 0,
+  "source_diagnosis_unchanged": "1ef9aba5972113c0c58aa5ca0c45a74047811ba4598315e4f61ef990a833dffc",
+  "tests": {
+    "targeted": 40,
+    "full_suite": 635,
+    "failures": 0,
+    "errors": 0,
+    "diff_check": "PASS"
+  },
+  "safety": {
+    "real_model_calls": 0,
+    "image_reads": 0,
+    "gt_used": false,
+    "certificate_writes": 0,
+    "new_verified_count": 0,
+    "historical_code_modified": false,
+    "historical_cache_writes": 0
+  },
+  "artifacts": "outputs/stage2_v31_acceptance",
+  "limitations": [
+    "Only synthetic fresh/replay was executed locally; no real V3.1 improvement is claimed.",
+    "Unknown predicates, negation, unresolved entities and complex clauses stay UNCOMPILABLE.",
+    "Root/schema failures from V3 are never unwrapped or imported as new claims.",
+    "Question relevance, atomicity and medical/logical correctness still require human review."
+  ]
+}

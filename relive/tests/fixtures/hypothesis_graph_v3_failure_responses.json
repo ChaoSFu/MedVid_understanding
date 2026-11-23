@@ -1,0 +1,337 @@
+{
+  "format": "relive-v3-failure-regression-fixtures-v1",
+  "scope": "TEST_ONLY_GT_FREE_RAW_RESPONSES_NEVER_GENERATION_INPUT",
+  "source_diagnosis_sha256": "1ef9aba5972113c0c58aa5ca0c45a74047811ba4598315e4f61ef990a833dffc",
+  "samples": [
+    {
+      "source_record_index": 0,
+      "qa_type": "tal",
+      "question": "<video>\nYou are an expert in healthcare workflow understanding. The footage captures a segment of a nursing procedure in a realistic clinical setting. The video shows part of the Change a Two-Piece Pouching System procedure. Possible actions include: Apply leak prevention ointment, Apply skin protection film, Cleanse skin, Handwashing, Remove ostomy bag, Remove the base plate, Secure ostomy bag, Secure the base, Spray stoma care powder, Trim ostomy bag baseplate. When does Secure the base happen?",
+      "requirements": [
+        {
+          "description": "Identify the visual sequence of actions to determine if the 'Remove the base plate' action has been completed.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "ACTION"
+        },
+        {
+          "description": "Observe the stoma area to confirm the presence of the new base plate being positioned or adhered to the skin.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "ACTION"
+        },
+        {
+          "description": "Verify the visual state of the ostomy bag to confirm it is being attached to the newly secured base plate.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "ACTION"
+        },
+        {
+          "description": "Determine the temporal boundary where the action of securing the base plate concludes and the subsequent action (e.g., securing the bag) begins.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R4",
+          "type": "ACTION"
+        },
+        {
+          "description": "Confirm the absence of prior 'Secure the base' actions in the preceding video segment to ensure this is the first occurrence.",
+          "evidence_type": "TEMPORAL",
+          "importance": "OPTIONAL",
+          "requirement_id": "R5",
+          "type": "ACTION"
+        }
+      ],
+      "raw_response": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"relive-claimgen-stage2-v3\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"plan_status\": {\n      \"enum\": [\n        \"PLANNED\"\n      ],\n      \"type\": \"string\"\n    },\n    \"claims\": {\n      \"items\": {\n        \"properties\": {\n          \"alternative_to\": {\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"maxItems\": 6,\n            \"minItems\": 0,\n            \"type\": \"array\"\n          },\n          \"claim_id\": {\n            \"pattern\": \"^H[1-6]$\",\n            \"type\": \"string\"\n          },\n          \"requires\": {\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"maxItems\": 6,\n            \"minItems\": 0,\n            \"type\": \"array\"\n          },\n          \"requirement_ids\": {\n            \"items\": {\n              \"type\": \"string\"\n            },\n            \"maxItems\": 6,\n            \"minItems\": 0,\n            \"type\": \"array\"\n          },\n          \"role\": {\n            \"enum\": [\n              \"TARGET\",\n              \"PREREQUISITE\",\n              \"DISAMBIGUATOR\",\n              \"INTERPRETATION\"\n            ],\n            \"type\": \"string\"\n          },\n          \"text\": {\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\",\n            \"type\": \"string\"\n          },\n          \"type\": {\n            \"enum\": [\n              \"OBJECT\",\n              \"ATTRIBUTE\",\n              \"STATIC_RELATION\",\n              \"TEMPORAL_EVENT\",\n              \"HIGH_LEVEL\"\n            ],\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"claim_id\",\n          \"text\",\n          \"type\",\n          \"role\",\n          \"requirement_ids\",\n          \"requires\",\n          \"alternative_to\"\n        ],\n        \"type\": \"object\"\n      },\n      \"maxItems\": 6,\n      \"minItems\": 0,\n      \"type\": \"array\"\n    },\n    \"requirement_issues\": {\n      \"items\": {\n        \"properties\": {\n          \"issue\": {\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\",\n            \"type\": \"string\"\n          },\n          \"requirement_id\": {\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\",\n            \"type\": \"string\"\n          }\n        },\n        \"required\": [\n          \"requirement_id\",\n          \"issue\"\n        ],\n        \"type\": \"object\"\n      },\n      \"maxItems\": 12,\n      \"minItems\": 0,\n      \"type\": \"array\"\n    },\n    \"uncovered_requirements\": {\n      \"items\": {\n        \"minLength\": 1,\n        \"pattern\": \"\\\\S\",\n        \"type\": \"string\"\n      },\n      \"maxItems\": 6,\n      \"minItems\": 0,\n      \"type\": \"array\"\n    },\n    \"unresolved_references\": {\n      \"items\": {\n        \"minLength\": 1,\n        \"pattern\": \"\\\\S\",\n        \"type\": \"string\"\n      },\n      \"maxItems\": 12,\n      \"minItems\": 0,\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\n    \"plan_status\",\n    \"claims\",\n    \"unresolved_references\",\n    \"requirement_issues\",\n    \"uncovered_requirements\"\n  ],\n  \"additionalProperties\": false\n}",
+      "root_errors": [
+        "$:FIELDS"
+      ],
+      "plan_status": "MODEL_OR_SCHEMA_FAILURE",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 889,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 1,
+      "qa_type": "tal",
+      "question": "<video>\nYou are an expert surgical video reviewer. This endoscopic footage captures the steps of a submucosal dissection, a minimally invasive procedure for precise tissue removal. The video may contain the following actions: adjust camera, position flap with forceps and knife, dissect flap tissue with knife, position flap with forceps only, retract flap edge with forceps only, retract flap edge with forceps and knife, lift flap with forceps, and stabilize flap with forceps. Find the segment(s) where adjust camera happens.",
+      "requirements": [
+        {
+          "description": "Identify segments where the camera view shifts, zooms, or pans without corresponding surgical instrument manipulation of the tissue.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "ACTION"
+        },
+        {
+          "description": "Verify that no forceps or knife are actively engaging the tissue flap during the identified camera movement segments.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "RELATION"
+        },
+        {
+          "description": "Confirm the absence of tissue retraction, lifting, or dissection actions occurring simultaneously with the camera adjustments.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "ACTION"
+        }
+      ],
+      "raw_response": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"relive-claimgen-stage2-v3\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"plan_status\": {\n      \"enum\": [\n        \"PLANNED\"\n      ],\n      \"type\": \"string\"\n    },\n    \"claims\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"claim_id\": {\n            \"type\": \"string\",\n            \"pattern\": \"^H[1-6]$\"\n          },\n          \"text\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\"\n          },\n          \"type\": {\n            \"enum\": [\n              \"OBJECT\",\n              \"ATTRIBUTE\",\n              \"STATIC_RELATION\",\n              \"TEMPORAL_EVENT\",\n              \"HIGH_LEVEL\"\n            ],\n            \"type\": \"string\"\n          },\n          \"role\": {\n            \"enum\": [\n              \"TARGET\",\n              \"PREREQUISITE\",\n              \"DISAMBIGUATOR\",\n              \"INTERPRETATION\"\n            ],\n            \"type\": \"string\"\n          },\n          \"requirement_ids\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"pattern\": \"\\\\S\"\n            },\n            \"minItems\": 0,\n            \"maxItems\": 6,\n            \"type\": \"array\"\n          },\n          \"requires\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"pattern\": \"\\\\S\"\n            },\n            \"minItems\": 0,\n            \"maxItems\": 6,\n            \"type\": \"array\"\n          },\n          \"alternative_to\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"string\",\n              \"minLength\": 1,\n              \"pattern\": \"\\\\S\"\n            },\n            \"minItems\": 0,\n            \"maxItems\": 6,\n            \"type\": \"array\"\n          }\n        },\n        \"required\": [\n          \"claim_id\",\n          \"text\",\n          \"type\",\n          \"role\",\n          \"requirement_ids\",\n          \"requires\",\n          \"alternative_to\"\n        ],\n        \"additionalProperties\": false,\n        \"type\": \"object\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 6,\n      \"type\": \"array\"\n    },\n    \"unresolved_references\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\",\n        \"minLength\": 1,\n        \"pattern\": \"\\\\S\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 12,\n      \"type\": \"array\"\n    },\n    \"requirement_issues\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"requirement_id\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\"\n          },\n          \"issue\": {\n            \"type\": \"string\",\n            \"minLength\": 1,\n            \"pattern\": \"\\\\S\"\n          }\n        },\n        \"required\": [\n          \"requirement_id\",\n          \"issue\"\n        ],\n        \"additionalProperties\": false,\n        \"type\": \"object\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 12,\n      \"type\": \"array\"\n    },\n    \"uncovered_requirements\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\",\n        \"minLength\": 1,\n        \"pattern\": \"\\\\S\"\n      },\n      \"minItems\": 0,\n      \"maxItems\": 6,\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\n    \"plan_status\",\n    \"claims\",\n    \"unresolved_references\",\n    \"requirement_issues\",\n    \"uncovered_requirements\"\n  ],\n  \"additionalProperties\": false\n}",
+      "root_errors": [
+        "STRICT_JSON_PARSE_FAILURE"
+      ],
+      "plan_status": "MODEL_OR_SCHEMA_FAILURE",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 1028,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 1700,
+      "qa_type": "stg",
+      "question": "<video>\nYou are an expert in surgical video interpretation. The following clip depicts an endoscopic submucosal dissection (ESD), a precise technique for lesion removal captured via an endoscopic camera. What are the bounding boxes of the forceps sampled every 8 seconds from 66 to 78 seconds?",
+      "requirements": [
+        {
+          "description": "Identify the presence and spatial location of surgical forceps within the endoscopic field of view at the specified time points (66s, 74s, 78s).",
+          "evidence_type": "SPATIAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "OBJECT"
+        },
+        {
+          "description": "Determine the precise pixel coordinates defining the bounding box of the identified forceps at each queried timestamp.",
+          "evidence_type": "SPATIAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "OBJECT"
+        },
+        {
+          "description": "Verify the temporal alignment of the forceps' appearance with the specific seconds (66, 74, 78) to ensure accurate sampling.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "ACTION"
+        },
+        {
+          "description": "Confirm that the identified instrument is indeed the forceps used for the procedure and not a similar-looking tool (e.g., scissors, grasper) to ensure correct object classification.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R4",
+          "type": "OBJECT"
+        }
+      ],
+      "raw_response": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"relive-claimgen-stage2-v3\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"plan_status\": \"PLANNED\",\n    \"claims\": [\n      {\n        \"claim_id\": \"H1\",\n        \"text\": \"Surgical forceps are present in the endoscopic field of view at the specified time points.\",\n        \"type\": \"OBJECT\",\n        \"role\": \"TARGET\",\n        \"requirement_ids\": [\"R1\", \"R3\"],\n        \"requires\": [],\n        \"alternative_to\": []\n      },\n      {\n        \"claim_id\": \"H2\",\n        \"text\": \"The instrument identified as forceps is distinct from other surgical tools such as scissors or graspers.\",\n        \"type\": \"OBJECT\",\n        \"role\": \"DISAMBIGUATOR\",\n        \"requirement_ids\": [\"R4\"],\n        \"requires\": [\"H1\"],\n        \"alternative_to\": []\n      },\n      {\n        \"claim_id\": \"H3\",\n        \"text\": \"The spatial coordinates of the forceps define a valid bounding box within the video frame at the queried timestamps.\",\n        \"type\": \"OBJECT\",\n        \"role\": \"TARGET\",\n        \"requirement_ids\": [\"R2\"],\n        \"requires\": [\"H1\", \"H2\"],\n        \"alternative_to\": []\n      }\n    ],\n    \"unresolved_references\": [],\n    \"requirement_issues\": [],\n    \"uncovered_requirements\": []\n  },\n  \"additionalProperties\": false\n}",
+      "root_errors": [
+        "$:FIELDS"
+      ],
+      "plan_status": "MODEL_OR_SCHEMA_FAILURE",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 377,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 2481,
+      "qa_type": "region_caption_gemini",
+      "question": "<video>\nYou are an expert in surgical video interpretation. This is an egocentric recording of an open surgery procedure captured from a head-mounted camera. From 84.0 seconds to 284.0 seconds, what is the object doing in the region given by the bounding box at 84.0 seconds?",
+      "requirements": [
+        {
+          "description": "Identify the specific object or tissue structure present within the bounding box at the 84.0-second timestamp.",
+          "evidence_type": "SPATIAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "OBJECT"
+        },
+        {
+          "description": "Determine the primary motion vector, deformation, or state change of the identified object between 84.0 seconds and 284.0 seconds.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "ACTION"
+        },
+        {
+          "description": "Verify if the object remains within the defined region of interest throughout the entire interval from 84.0 to 284.0 seconds.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "RELATION"
+        },
+        {
+          "description": "Assess the context of the object's movement to distinguish between passive displacement (e.g., camera drift, tissue shift) and active manipulation (e.g., surgical tool interaction).",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R4",
+          "type": "HIGH_LEVEL"
+        }
+      ],
+      "raw_response": "{\n  \"plan_status\": \"UNRESOLVED_TARGET_REFERENCE\",\n  \"claims\": [\n    {\n      \"claim_id\": \"H1\",\n      \"text\": \"There exists a specific object or tissue structure located within the region defined by the bounding box at t=84.0.\",\n      \"type\": \"OBJECT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\n        \"R1\"\n      ],\n      \"requires\": [],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H2\",\n      \"text\": \"The object identified in H1 undergoes a primary motion vector, deformation, or state change between t=84.0 and t=284.0.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\n        \"R2\"\n      ],\n      \"requires\": [\n        \"H1\"\n      ],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H3\",\n      \"text\": \"The object identified in H1 remains spatially contained within the defined region of interest for the entire duration from t=84.0 to t=284.0.\",\n      \"type\": \"STATIC_RELATION\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\n        \"R3\"\n      ],\n      \"requires\": [\n        \"H1\"\n      ],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H4\",\n      \"text\": \"The movement of the object identified in H1 is caused by active manipulation (e.g., surgical tool interaction) rather than passive displacement (e.g., camera drift, tissue shift).\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"INTERPRETATION\",\n      \"requirement_ids\": [\n        \"R4\"\n      ],\n      \"requires\": [\n        \"H2\"\n      ],\n      \"alternative_to\": []\n    }\n  ],\n  \"unresolved_references\": [\n    \"UNRESOLVED_TARGET_REFERENCE: The specific object or tissue structure within the bounding box at t=84.0 is not identified in the input.\"\n  ],\n  \"requirement_issues\": [],\n  \"uncovered_requirements\": []\n}",
+      "root_errors": [],
+      "plan_status": "UNRESOLVED_TARGET_REFERENCE",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 530,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 2651,
+      "qa_type": "region_caption_gpt",
+      "question": "<video>\nYou are an expert in understanding surgical workflows. The video shows an open surgery from the surgeon’s first-person perspective. Describe what the object does between 310.0 and 312.0 seconds, starting from the given box at 310.0 seconds.",
+      "requirements": [
+        {
+          "description": "Identify the specific object or instrument located within the queried bounding box at the start time (310.0s).",
+          "evidence_type": "SPATIAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "OBJECT"
+        },
+        {
+          "description": "Determine the spatial position and orientation of the identified object at 310.0s.",
+          "evidence_type": "SPATIAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "ATTRIBUTE"
+        },
+        {
+          "description": "Observe the motion trajectory, velocity, and direction of the object between 310.0s and 312.0s.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "ACTION"
+        },
+        {
+          "description": "Identify any other objects or anatomical structures in the immediate vicinity of the queried box during the interval.",
+          "evidence_type": "SPATIAL_MULTI_REGION",
+          "importance": "OPTIONAL",
+          "requirement_id": "R4",
+          "type": "OBJECT"
+        },
+        {
+          "description": "Determine the spatial relationship between the moving object and the surrounding structures at the end of the interval (312.0s).",
+          "evidence_type": "SPATIAL_MULTI_REGION",
+          "importance": "OPTIONAL",
+          "requirement_id": "R5",
+          "type": "RELATION"
+        }
+      ],
+      "raw_response": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"relive-claimgen-stage2-v3\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"plan_status\": {\n      \"enum\": [\n        \"UNRESOLVED_TARGET_REFERENCE\"\n      ],\n      \"value\": \"UNRESOLVED_TARGET_REFERENCE\"\n    },\n    \"claims\": [],\n    \"unresolved_references\": [\n      \"UNRESOLVED_TARGET_REFERENCE\"\n    ],\n    \"requirement_issues\": [\n      {\n        \"requirement_id\": \"R1\",\n        \"issue\": \"Requirement asks to identify a specific object within a queried bounding box, but the public query box/target identifier is absent. Cannot generate specific object hypotheses without the target reference.\"\n      },\n      {\n        \"requirement_id\": \"R2\",\n        \"issue\": \"Requirement asks for spatial position/orientation of an unidentified object. Cannot formulate specific attribute hypotheses without resolving the target.\"\n      },\n      {\n        \"requirement_id\": \"R3\",\n        \"issue\": \"Requirement asks for motion trajectory of an unidentified object. Cannot formulate specific temporal event hypotheses without resolving the target.\"\n      },\n      {\n        \"requirement_id\": \"R4\",\n        \"issue\": \"Requirement asks for surrounding objects relative to an unidentified target. Cannot formulate specific object hypotheses without resolving the target.\"\n      },\n      {\n        \"requirement_id\": \"R5\",\n        \"issue\": \"Requirement asks for spatial relationship of an unidentified target. Cannot formulate specific relation hypotheses without resolving the target.\"\n      }\n    ],\n    \"uncovered_requirements\": []\n  },\n  \"required\": [\n    \"plan_status\",\n    \"claims\",\n    \"unresolved_references\",\n    \"requirement_issues\",\n    \"uncovered_requirements\"\n  ],\n  \"additionalProperties\": false\n}",
+      "root_errors": [
+        "$:FIELDS"
+      ],
+      "plan_status": "MODEL_OR_SCHEMA_FAILURE",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 432,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 4271,
+      "qa_type": "next_action",
+      "question": "<video>\nYou are an expert in understanding surgical workflows. The video shows an open surgery from the surgeon’s first-person perspective. The procedure includes the following phases: ['anesthesia', 'closure', 'design', 'disinfection', 'dissection', 'dressing', 'hemostasis', 'incision', 'irrigation']. What comes next after the current video?",
+      "requirements": [
+        {
+          "description": "Identify the current surgical phase by observing the specific instruments, tissue manipulation, and procedural context visible in the video.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "HIGH_LEVEL"
+        },
+        {
+          "description": "Determine the temporal sequence of the identified current phase to establish if it is complete or ongoing.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "ACTION"
+        },
+        {
+          "description": "Verify the spatial relationship between the surgical field and the instruments to confirm the transition point between the current phase and the next listed phase.",
+          "evidence_type": "SPATIAL_MULTI_REGION",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "RELATION"
+        }
+      ],
+      "raw_response": "{\n  \"plan_status\": \"PLANNED\",\n  \"claims\": [\n    {\n      \"claim_id\": \"H1\",\n      \"text\": \"The current surgical phase is one of the listed phases: anesthesia, closure, design, disinfection, dissection, dressing, hemostasis, incision, or irrigation.\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R1\"],\n      \"requires\": [],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H2\",\n      \"text\": \"The identified current phase is either complete or ongoing.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"PREREQUISITE\",\n      \"requirement_ids\": [\"R2\"],\n      \"requires\": [\"H1\"],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H3\",\n      \"text\": \"The spatial relationship between the surgical field and the instruments indicates a transition point to the next phase.\",\n      \"type\": \"STATIC_RELATION\",\n      \"role\": \"PREREQUISITE\",\n      \"requirement_ids\": [\"R3\"],\n      \"requires\": [\"H1\", \"H2\"],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H4\",\n      \"text\": \"The next phase following the current phase is 'closure'.\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"INTERPRETATION\",\n      \"requirement_ids\": [],\n      \"requires\": [\"H1\", \"H2\", \"H3\"],\n      \"alternative_to\": [\"H5\", \"H6\"]\n    },\n    {\n      \"claim_id\": \"H5\",\n      \"text\": \"The next phase following the current phase is 'dressing'.\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"INTERPRETATION\",\n      \"requirement_ids\": [],\n      \"requires\": [\"H1\", \"H2\", \"H3\"],\n      \"alternative_to\": [\"H4\", \"H6\"]\n    },\n    {\n      \"claim_id\": \"H6\",\n      \"text\": \"The next phase following the current phase is 'hemostasis'.\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"INTERPRETATION\",\n      \"requirement_ids\": [],\n      \"requires\": [\"H1\", \"H2\", \"H3\"],\n      \"alternative_to\": [\"H4\", \"H5\"]\n    }\n  ],\n  \"unresolved_references\": [],\n  \"requirement_issues\": [],\n  \"uncovered_requirements\": []\n}",
+      "root_errors": [],
+      "plan_status": "PLANNED",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 604,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    },
+    {
+      "source_record_index": 6121,
+      "qa_type": "skill_assessment",
+      "question": "<video>\nYou are an expert in evaluating surgical skill from video footage of robotic suturing, knot-tying, or needle-passing. Evaluate the surgical technique in this video. Rate each aspect from 1,2,3,4,5: Respect for tissue, Suture/needle handling, Time and motion, Flow of operation, Overall performance, Quality of final product.",
+      "requirements": [
+        {
+          "description": "Identify visible interactions between surgical instruments and biological tissue to assess gentleness, avoidance of crushing, and preservation of tissue integrity.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R1",
+          "type": "ACTION"
+        },
+        {
+          "description": "Observe the manipulation of suture material and needle to evaluate grip stability, tension control, and avoidance of slippage or deformation.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R2",
+          "type": "ACTION"
+        },
+        {
+          "description": "Analyze the sequence of movements and instrument trajectories to determine efficiency, unnecessary motions, and smoothness of execution.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R3",
+          "type": "ACTION"
+        },
+        {
+          "description": "Assess the continuity and logical progression of the surgical steps to evaluate the flow of the operation.",
+          "evidence_type": "TEMPORAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R4",
+          "type": "ACTION"
+        },
+        {
+          "description": "Examine the final configuration of the sutured tissue or knot to judge the structural quality and completeness of the result.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R5",
+          "type": "HIGH_LEVEL"
+        },
+        {
+          "description": "Synthesize observations from all aspects to form a holistic judgment of the overall surgical performance.",
+          "evidence_type": "COMPOSITIONAL",
+          "importance": "REQUIRED",
+          "requirement_id": "R6",
+          "type": "HIGH_LEVEL"
+        }
+      ],
+      "raw_response": "{\n  \"plan_status\": \"PLANNED\",\n  \"claims\": [\n    {\n      \"claim_id\": \"H1\",\n      \"text\": \"Surgical instruments are in direct contact with biological tissue.\",\n      \"type\": \"OBJECT\",\n      \"role\": \"PREREQUISITE\",\n      \"requirement_ids\": [\"R1\", \"R2\"],\n      \"requires\": [],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H2\",\n      \"text\": \"The interaction between instruments and tissue exhibits characteristics of gentleness without crushing or deformation.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R1\"],\n      \"requires\": [\"H1\"],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H3\",\n      \"text\": \"The manipulation of suture material and needle demonstrates stable grip and controlled tension.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R2\"],\n      \"requires\": [\"H1\"],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H4\",\n      \"text\": \"The sequence of instrument movements follows an efficient trajectory with minimal unnecessary motion.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R3\"],\n      \"requires\": [],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H5\",\n      \"text\": \"The surgical steps proceed with logical continuity and smooth progression.\",\n      \"type\": \"TEMPORAL_EVENT\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R4\"],\n      \"requires\": [\"H4\"],\n      \"alternative_to\": []\n    },\n    {\n      \"claim_id\": \"H6\",\n      \"text\": \"The final sutured configuration or knot exhibits structural integrity and completeness.\",\n      \"type\": \"HIGH_LEVEL\",\n      \"role\": \"TARGET\",\n      \"requirement_ids\": [\"R5\"],\n      \"requires\": [\"H2\", \"H3\"],\n      \"alternative_to\": []\n    }\n  ],\n  \"unresolved_references\": [],\n  \"requirement_issues\": [],\n  \"uncovered_requirements\": []\n}",
+      "root_errors": [],
+      "plan_status": "PLANNED",
+      "generation_metadata": {
+        "finish_reason": "EOS_TOKEN",
+        "generated_token_count": 539,
+        "max_new_tokens": 3072,
+        "reached_max_new_tokens": false
+      }
+    }
+  ]
+}
