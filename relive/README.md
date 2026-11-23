@@ -12,6 +12,10 @@ two-stage pipeline for native QA tasks. See
 Stage 2 now defaults to the separately versioned
 [v1.2 observation contract](docs/medvidu_claim_bank_stage2_v12.md), which consumes
 frozen Stage-1 v1.1 requirements without rerunning planning.
+An independent, opt-in [Stage 2 V2 hypothesis planner](docs/claim_planner_stage2_v2.md)
+uses only the question, task type and frozen requirements, with no image input.
+Its CLI is `python -m relive.claim_planner`; the legacy Claim Bank CLI and
+Stage 1 behavior are preserved. Synthetic comparisons are not real V2 results.
 It emits unverified hypotheses only and does not change the legacy runner's
 task compatibility table below.
 
