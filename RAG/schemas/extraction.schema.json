@@ -1,0 +1,571 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "knowledge_type": {
+            "enum": [
+              "instrument",
+              "anatomy",
+              "action",
+              "interaction",
+              "procedure",
+              "evidence_criteria"
+            ]
+          },
+          "entity_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "procedure_scope": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "text_supporting_fact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "visual_features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "supporting_fact_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "motion_features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "supporting_fact_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "spatial_relations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "supporting_fact_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "discriminative_features": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "supporting_fact_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "confusable_with": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "text",
+                "supporting_fact_ids"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "evidence_guidance": {
+            "type": "object",
+            "properties": {
+              "search_targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "spatial_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "temporal_cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "supporting_observations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "insufficient_observations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "uncertainty_conditions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "supporting_fact_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "derived_guidance_ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "text",
+                    "supporting_fact_ids",
+                    "derived_guidance_ids"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "search_targets",
+              "spatial_cues",
+              "temporal_cues",
+              "supporting_observations",
+              "insufficient_observations",
+              "uncertainty_conditions"
+            ],
+            "additionalProperties": false
+          },
+          "source_facts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fact_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "page": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "block_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "quote": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "extraction_method": {
+                  "enum": [
+                    "text_llm",
+                    "vision_llm"
+                  ]
+                },
+                "basis": {
+                  "enum": [
+                    "body_text",
+                    "figure_interpretation"
+                  ]
+                },
+                "figure_label": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "fact_id",
+                "text",
+                "source_id",
+                "page",
+                "block_id",
+                "quote",
+                "extraction_method",
+                "basis",
+                "figure_label"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "derived_guidance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "guidance_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "supporting_fact_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "derivation_rationale": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "guidance_id",
+                "text",
+                "supporting_fact_ids",
+                "derivation_rationale"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "source_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "page_start": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "page_end": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "section": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "source_id",
+                "page_start",
+                "page_end",
+                "section"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uncertainty_notes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "knowledge_basis": {
+            "enum": [
+              "general_medical_knowledge",
+              "standard_procedure_prior"
+            ]
+          }
+        },
+        "required": [
+          "knowledge_type",
+          "entity_name",
+          "aliases",
+          "procedure_scope",
+          "text",
+          "text_supporting_fact_ids",
+          "visual_features",
+          "motion_features",
+          "spatial_relations",
+          "discriminative_features",
+          "confusable_with",
+          "evidence_guidance",
+          "source_facts",
+          "derived_guidance",
+          "source_refs",
+          "scope",
+          "uncertainty_notes",
+          "knowledge_basis"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "omitted_content_reasons": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "required": [
+    "cards",
+    "omitted_content_reasons"
+  ],
+  "additionalProperties": false
+}

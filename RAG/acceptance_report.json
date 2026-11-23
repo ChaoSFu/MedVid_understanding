@@ -1,0 +1,77 @@
+{
+  "format": "relive-surgical-visual-knowledge-local-acceptance-v0.1",
+  "status": "LOCAL_DEVELOPMENT_AND_OFFLINE_VALIDATION_PASS_REMOTE_EXTRACTION_NOT_RUN",
+  "pdf_count": 46,
+  "subdirectory_counts": {
+    ".": 17,
+    "OpenSurgery_pdfs": 29
+  },
+  "parsed_documents": 46,
+  "pdf_pages": 2136,
+  "page_parse_status_counts": {
+    "IMAGE_OR_SPARSE_TEXT_PENDING": 130,
+    "TEXT_PARSED": 2006
+  },
+  "failed_files": 0,
+  "page_failures": 0,
+  "duplicate_document_groups": 1,
+  "benchmark_risk_sources": [
+    "Laparoscopic instruments – OpenSurgicalVision.pdf"
+  ],
+  "formal_output": "RAG/output/relive_surgical_visual_knowledge_v0.1.json",
+  "formal_build_status": "INSPECT_ONLY",
+  "formal_knowledge_counts": {
+    "action": 0,
+    "anatomy": 0,
+    "evidence_criteria": 0,
+    "instrument": 0,
+    "interaction": 0,
+    "procedure": 0
+  },
+  "mock_output": "RAG/output/mock_smoke/knowledge.mock.json",
+  "mock_fixture_cards": 8,
+  "mock_card_use": "TEST_ONLY_NOT_FORMAL_MEDICAL_KNOWLEDGE",
+  "mock_source_categories": [
+    "instrument education",
+    "ESD teaching",
+    "Open Surgery teaching"
+  ],
+  "offline_validation": {
+    "library_schema": "PASS",
+    "source_files_and_hashes": "PASS",
+    "pdf_pages": "PASS",
+    "literal_quotes": "PASS",
+    "resume": "PASS_ZERO_NEW_API_CALLS"
+  },
+  "tests": {
+    "rag_tests": 39,
+    "relive_regression_tests": 595,
+    "failures": 0,
+    "git_diff_check": "PASS"
+  },
+  "api_calls": 0,
+  "vision_api_calls": 0,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "source_reviews": "PENDING",
+  "medical_reviews": "PENDING",
+  "source_materials_modified": false,
+  "relive_runtime_modified": false,
+  "code_sha256": "dbe580195ecf9d2d5222ac4fd9b17937b1452a7405fae989f0a2e8c4d5dc0e04",
+  "artifact_sha256": {
+    "RAG/output/relive_surgical_visual_knowledge_v0.1.json": "79986c35b5c6bcf7dffa3ca1d9452ee866e663d144eb29dee8de6caa5a755ac4",
+    "RAG/output/source_manifest.json": "aadd417f6ab692f452857d83992ae4c66c13489fe0c33aabd794592f7c13ceed",
+    "RAG/output/quality_report.json": "31c753330cf6b27b9835ce8971dab58d1d1272d9743ae5215fead47099245fcc",
+    "RAG/output/mock_smoke/knowledge.mock.json": "5d48316f19ab4c067dad0f00010b6b93f0bb09b654e674a0c7a735659ac5acf7",
+    "RAG/output/three_checked_source_excerpts.json": "f1b6f1cc4d599c5ee15fef26f431a28b9eff99a4b7d01fef8cf712b65057bf24"
+  },
+  "limitations": [
+    "No configured LLM API, so no real extraction smoke or full semantic build.",
+    "Formal cards are empty; six-type support is tested, not six-type source coverage.",
+    "130 image/sparse-text pages and figure-dependent knowledge still need labeled visual interpretation; no OCR was performed.",
+    "Source independence requires explicit review; OpenSurgicalVision is quarantined by default.",
+    "Literal quote checks and an LLM consistency check do not establish medical correctness.",
+    "Semantic synonym merging and conflict detection are conservative review queues, not solved clinical ontology inference.",
+    "Continuation after a finalized failed/budget-stopped run needs a new output directory and the same cache."
+  ]
+}

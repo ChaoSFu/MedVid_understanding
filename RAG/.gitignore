@@ -1,0 +1,9 @@
+cache/
+output/
+.env
+.env.*
+!.env.example
+__pycache__/
+.venv/
+references/
+interview_sop_public.json
