@@ -1,0 +1,1218 @@
+{
+  "schema_version": 1,
+  "library_id": "woundcare.public_sop_references",
+  "created_on": "2026-11-20",
+  "source_archive": "SOP参考和伤口护理官方资料.zip",
+  "concept_catalog_version": "0.1.0",
+  "notes": [
+    "片段为基于附件的中文改述，聚焦问诊信息采集和医护记录。定位中的 PDF 页以附件首张为第 1 页。",
+    "每条片段的适用范围同时写入正文。医护核对资料、字段和场景后，再填写审核人和 ISO 审核日期并批准。",
+    "来源索引保留原文件名。索引项可用于追溯来源。",
+    "新华医院提供资料的摘要用于补充现有问诊与复核内容，各条目标注原文小节或 PDF 页码及适用场景。"
+  ],
+  "source_index": [
+    {
+      "source_id": 1,
+      "archive_member": "SOP参考和伤口护理官方资料/伤口-2004-TIME.pdf",
+      "pdf_pages": 19,
+      "title": "EWMA · Wound Bed Preparation in Practice",
+      "source_version": "2004 立场文件",
+      "disposition": "selected_chunks",
+      "chunk_count": 3,
+      "source_url": "https://ewma.org/resources/wound-bed-preparation-in-practice/"
+    },
+    {
+      "source_id": 2,
+      "archive_member": "SOP参考和伤口护理官方资料/Wounds-UK-Holistic Wound assessment.pdf",
+      "pdf_pages": 34,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "disposition": "selected_chunks",
+      "chunk_count": 6,
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "note": "附件文件名含 Wounds-UK-Holistic Wound assessment，实际题名与机构按 PDF 封面和版权页登记。"
+    },
+    {
+      "source_id": 3,
+      "archive_member": "SOP参考和伤口护理官方资料/Implementing_TIMERS_the_race_against_hard_to_heal_wounds.pdf",
+      "pdf_pages": 52,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "disposition": "selected_chunks",
+      "chunk_count": 5,
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1"
+    },
+    {
+      "source_id": 4,
+      "archive_member": "SOP参考和伤口护理官方资料/伤口评估表格-wounds assessment form.pdf",
+      "pdf_pages": 7,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "disposition": "selected_chunks",
+      "chunk_count": 7,
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "note": "这是伤口评估表的开发研究；提取字段设计、患者报告和记录归属。"
+    },
+    {
+      "source_id": 5,
+      "archive_member": "SOP参考和伤口护理官方资料/慢性伤口管理-Chronic-wound-assessment-and-management.pdf",
+      "pdf_pages": 8,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "disposition": "selected_chunks",
+      "chunk_count": 6,
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf"
+    },
+    {
+      "source_id": 6,
+      "archive_member": "SOP参考和伤口护理官方资料/其他科室参考/儿科WHO IMCI.pdf",
+      "pdf_pages": 35,
+      "title": "WHO、阿富汗卫生部及 UNICEF · Integrated Management of Childhood Illness",
+      "source_version": "阿富汗适配版，附件未标明出版年份",
+      "disposition": "indexed_only",
+      "chunk_count": 0,
+      "note": "仅索引，附件为儿科问诊与分类参考，范围与本次伤口问诊字段不同。"
+    },
+    {
+      "source_id": 7,
+      "archive_member": "SOP参考和伤口护理官方资料/其他科室参考/精神科-MINI-Standard.pdf",
+      "pdf_pages": 41,
+      "title": "M.I.N.I. · Mini International Neuropsychiatric Interview",
+      "source_version": "英文 DSM-5 版 7.0.2，2016-08-08",
+      "disposition": "indexed_only",
+      "chunk_count": 0,
+      "source_url": "https://harmresearch.org/faq/",
+      "note": "仅索引。附件为精神科访谈工具，保有特定使用授权要求。链接指向权利方许可说明。"
+    },
+    {
+      "source_id": 8,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/DMRR3654.pdf",
+      "pdf_pages": 6,
+      "title": "IWGDF《糖尿病相关足病定义与术语》",
+      "source_version": "IWGDF 2023 更新版 · DOI 10.1002/dmrr.3654",
+      "disposition": "selected_chunks",
+      "chunk_count": 3,
+      "source_url": "https://iwgdfguidelines.org/definitions-criteria-2023/"
+    },
+    {
+      "source_id": 9,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "pdf_pages": 30,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "disposition": "selected_chunks",
+      "chunk_count": 5,
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf"
+    },
+    {
+      "source_id": 10,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/IWGDF-2023-04-Infection-Guideline.pdf",
+      "pdf_pages": 45,
+      "title": "IWGDF/IDSA《糖尿病患者足部感染诊断与治疗指南》",
+      "source_version": "IWGDF/IDSA 2023 版",
+      "disposition": "selected_chunks",
+      "chunk_count": 2,
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-04-Infection-Guideline.pdf"
+    },
+    {
+      "source_id": 11,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/IWGDF-2023-02-Prevention-Guideline.pdf",
+      "pdf_pages": 38,
+      "title": "IWGDF《糖尿病患者足溃疡预防指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "disposition": "selected_chunks",
+      "chunk_count": 3,
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-02-Prevention-Guideline.pdf"
+    },
+    {
+      "source_id": 12,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/IWGDF-2023-03-Classification-Guideline.pdf",
+      "pdf_pages": 31,
+      "title": "IWGDF《糖尿病患者足溃疡分类指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "disposition": "selected_chunks",
+      "chunk_count": 1,
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-03-Classification-Guideline.pdf"
+    },
+    {
+      "source_id": 13,
+      "archive_member": "SOP参考和伤口护理官方资料/糖尿病足伤口相关指南/IWGDF-2023-05-PAD-Guideline.pdf",
+      "pdf_pages": 52,
+      "title": "IWGDF/ESVS/SVS《糖尿病足溃疡患者外周动脉疾病指南》",
+      "source_version": "2023 跨学会指南 · IWGDF 预印本",
+      "disposition": "selected_chunks",
+      "chunk_count": 2,
+      "source_url": "https://iwgdfguidelines.org/pad-guideline-2023/",
+      "note": "附件为 IWGDF 发布的预印本，片段定位沿用附件页码。"
+    },
+    {
+      "source_id": 14,
+      "archive_member": "SOP参考和伤口护理官方资料/伤口护理信息标准/4086602022guidance.pdf",
+      "pdf_pages": 17,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准实施指南",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "disposition": "selected_chunks",
+      "chunk_count": 3,
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022guidance.pdf",
+      "note": "与要求规范、发布通知同属 DAPB4086。提取实施指南的字段示例、来源和时间归属。"
+    },
+    {
+      "source_id": 15,
+      "archive_member": "SOP参考和伤口护理官方资料/伤口护理信息标准/4086602022spec.pdf",
+      "pdf_pages": 17,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准要求规范",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "disposition": "selected_chunks",
+      "chunk_count": 2,
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022spec.pdf",
+      "note": "规范服务记录结构，适用压力性损伤、下肢伤口及手术伤口并发症；创伤和烧伤等伤口类型在该版规范范围之外。"
+    },
+    {
+      "source_id": 16,
+      "archive_member": "SOP参考和伤口护理官方资料/伤口护理信息标准/4086602022isn.pdf",
+      "pdf_pages": 2,
+      "title": "NHS England · DAPB4086 伤口护理信息标准发布通知",
+      "source_version": "Amd 60/2022 · 2023-11-10",
+      "disposition": "indexed_only",
+      "chunk_count": 0,
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022isn.pdf",
+      "note": "同一 DAPB4086 的发布通知，提供适用机构、版本及实施日期；字段规范见要求规范及实施指南。"
+    },
+    {
+      "source_id": 17,
+      "source_file": "260205伤口治疗师临床思维.docx",
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "origin": "hospital_supplied",
+      "disposition": "selected_chunks",
+      "chunk_count": 5,
+      "note": "选取主诉及信息采集维度，适用范围以原文压力性损伤评估场景为主。"
+    },
+    {
+      "source_id": 18,
+      "source_file": "260225伤口评估.docx",
+      "title": "新华医院提供 · 伤口评估",
+      "source_version": "院方讨论整理稿（文件标识 260225）",
+      "origin": "hospital_supplied",
+      "disposition": "selected_chunks",
+      "chunk_count": 2,
+      "note": "片段依据讨论问题和主题汇总，保留复诊对照和既往护理经过。"
+    },
+    {
+      "source_id": 19,
+      "source_file": "创面资料.pdf",
+      "pdf_pages": 22,
+      "title": "新华医院提供 · 创面资料",
+      "source_version": "院方提供稿，文件未标明版本",
+      "origin": "hospital_supplied",
+      "disposition": "selected_chunks",
+      "chunk_count": 3,
+      "note": "选取创周皮肤、纵向观察和生活影响维度，PDF 页码按文件首页为第 1 页计。"
+    },
+    {
+      "source_id": 20,
+      "source_file": "伤口评估的整理.docx",
+      "title": "新华医院提供 · 伤口评估的整理",
+      "source_version": "院方提供稿，文件未标明版本",
+      "origin": "hospital_supplied",
+      "disposition": "selected_chunks",
+      "chunk_count": 2,
+      "note": "选入自述症状的比较条件和家庭换药环境。"
+    }
+  ],
+  "chunks": [
+    {
+      "chunk_id": "ewma_time_2004.assessment_domains",
+      "source_id": 1,
+      "title": "EWMA · Wound Bed Preparation in Practice",
+      "source_version": "2004 立场文件",
+      "locator": "Wound bed preparation: science applied to practice · Components / Table 1，PDF 第 4 页",
+      "source_url": "https://ewma.org/resources/wound-bed-preparation-in-practice/",
+      "text": "适用范围为慢性伤口的医护评估框架。TIME 从伤口床组织、炎症或感染、湿度和创缘四方面整理专业观察。问诊可记录患者描述的近期变化和渗液，伤口床组织或创缘状态由医护评估。四方面可随复诊变化重复核对。",
+      "concept_ids": [
+        "wound.change",
+        "wound.exudate"
+      ],
+      "scope": "慢性伤口的医护评估框架",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "ewma_time_2004.reassessment",
+      "source_id": 1,
+      "title": "EWMA · Wound Bed Preparation in Practice",
+      "source_version": "2004 立场文件",
+      "locator": "Wound bed preparation: science applied to practice · Components / Figure 1，PDF 第 4–5 页",
+      "source_url": "https://ewma.org/resources/wound-bed-preparation-in-practice/",
+      "text": "适用范围为慢性伤口的医护评估框架。TIME 用于归纳不同复诊阶段的伤口变化。可将既往处理与当前观察分别记录，再标记本次新出现或持续存在的变化，供医护回顾。",
+      "concept_ids": [
+        "wound.change",
+        "care.current_treatment"
+      ],
+      "scope": "慢性伤口的医护评估框架",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "ewma_time_2004.venous_symptom_history",
+      "source_id": 1,
+      "title": "EWMA · Wound Bed Preparation in Practice",
+      "source_version": "2004 立场文件",
+      "locator": "Wound bed preparation for venous leg ulcers · Inflammation and infection control / Moisture balance，PDF 第 15–16 页",
+      "source_url": "https://ewma.org/resources/wound-bed-preparation-in-practice/",
+      "text": "适用范围为经医护评估的静脉性腿部溃疡复诊。已由医护确认属于静脉性腿部溃疡的复诊，可记录患者感到疼痛强度或性质有无变化，以及是否观察到渗液增多或敷料外渗，供医护结合查体复核。",
+      "concept_ids": [
+        "wound.pain",
+        "wound.exudate"
+      ],
+      "scope": "经医护评估的静脉性腿部溃疡复诊",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.whole_person",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Assessment of wound exudate · Holistic wound assessment / Table 6，PDF 第 12–13 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。在整体健康部分分别询问已知共病、目前用药和过敏或皮肤敏感经历。记录患者能确认的具体对象和信息来源，保留记不清的项目供复核。",
+      "concept_ids": [
+        "history.diabetes",
+        "history.allergies",
+        "medication.current"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.baseline_wound",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Assessment of wound exudate · Table 6 / Wound，PDF 第 13 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。建立伤口基线时记录伤口数量、所讨论的部位及存在时间。多处伤口要说明回答对应哪一处。面积、深度和伤口床组织归入医护检查记录。",
+      "concept_ids": [
+        "wound.location",
+        "wound.onset"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.dressing_history",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Assessment of wound exudate · Table 6 / Current wound management，PDF 第 13 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。核对正在使用的敷料或装置、实际更换频率和患者参与情况。分别记录当事人报告的既有安排、实际执行情况和医护在复诊时观察到的敷料状态。",
+      "concept_ids": [
+        "care.current_treatment",
+        "care.dressing_change"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.concerns_and_goals",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Assessment of wound exudate · Holistic wound assessment / Table 6，PDF 第 12–13 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。用开放式问法让患者或照护者先说最困扰的事情，再记录短期或长期期望和照护偏好。必要时请其说明渗漏、气味或疼痛怎样影响睡眠、工作和日常活动。",
+      "concept_ids": [
+        "patient.goal",
+        "visit.purpose"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.visible_changes",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Exudate assessment · Dressing/device evaluation / Box 6，PDF 第 14 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。问诊可收集患者能看到的液体颜色、稀稠、敷料湿透或渗到衣物床品的经历，并记录与换药的时间关系。敷料去除前后所见分别标记为患者自述或医护观察。",
+      "concept_ids": [
+        "wound.exudate",
+        "care.dressing_change"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "wuwhs_exudate_2019.odour",
+      "source_id": 2,
+      "title": "WUWHS · Wound Exudate: Effective Assessment and Management",
+      "source_version": "2019 共识",
+      "locator": "Exudate assessment · Odour / Table 10，PDF 第 17 页",
+      "source_url": "https://woundsinternational.com/world-union-resources/wuwhs-consensus-document-wound-exudate-effective-assessment-and-management/",
+      "text": "适用范围为伤口渗液及其对日常生活的影响。记录谁注意到气味、何时可闻到、与换药是否相关，以及气味对患者生活的影响。复诊尽量在可比较的观察条件下记录，保留描述者和时间。",
+      "concept_ids": [
+        "wound.odor"
+      ],
+      "scope": "伤口渗液及其对日常生活的影响",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "timers_2019.scope_of_assessment",
+      "source_id": 3,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "locator": "Section 5 · TIMERS，PDF 第 25–26 页，印刷页 S25–S26",
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1",
+      "text": "适用范围为难愈伤口的整体评估。TIMERS 在伤口局部观察之外同时关注修复和社会因素。问诊可收集患者报告的伤口进展和照护条件，医学查体及测量结果应使用各自的记录来源。",
+      "concept_ids": [
+        "wound.change",
+        "care.support"
+      ],
+      "scope": "难愈伤口的整体评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "timers_2019.exudate_access_to_care",
+      "source_id": 3,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "locator": "Section 5 · Moisture balance / Considerations for moisture balance，PDF 第 33 页，印刷页 S33",
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1",
+      "text": "适用范围为难愈伤口的整体评估。若患者提到渗漏或敷料频繁更换，可分别记录其所见变化、日常影响、当前更换频率，以及是否能够到诊或获得社区护理支持。",
+      "concept_ids": [
+        "wound.exudate",
+        "care.dressing_change",
+        "care.support"
+      ],
+      "scope": "难愈伤口的整体评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "timers_2019.language_and_understanding",
+      "source_id": 3,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "locator": "Section 6 · Psychosocial factors，PDF 第 38 页，印刷页 S38",
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1",
+      "text": "适用范围为难愈伤口的整体评估。用日常用语请患者复述伤口处理安排和自己能做的部分。可询问是否有人协助理解或执行，并分别记录患者听懂的内容和需要补充说明的内容。",
+      "concept_ids": [
+        "care.support",
+        "care.current_treatment"
+      ],
+      "scope": "难愈伤口的整体评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "timers_2019.practical_barriers",
+      "source_id": 3,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "locator": "Section 6 · Factors that affect adherence / Physical and comorbidity factors / Extrinsic factors，PDF 第 38–40 页，印刷页 S38–S40",
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1",
+      "text": "适用范围为难愈伤口的整体评估。了解照护安排是否可行时，可分别询问更换敷料的实际困难、活动或操作能力、到诊交通和家人支持。以当事人描述的具体障碍记录执行情况。",
+      "concept_ids": [
+        "care.support",
+        "care.dressing_change"
+      ],
+      "scope": "难愈伤口的整体评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "timers_2019.treatment_burden",
+      "source_id": 3,
+      "title": "Journal of Wound Care · Implementing TIMERS: The Race Against Hard-to-Heal Wounds",
+      "source_version": "2019 共识，28 卷增刊 3a",
+      "locator": "Section 6 · Factors that affect adherence，PDF 第 39 页，印刷页 S39",
+      "source_url": "https://doi.org/10.12968/jowc.2019.28.Sup3a.S1",
+      "text": "适用范围为难愈伤口的整体评估。讨论照护目标时可了解既往处理体验，例如不适是否影响睡眠或日常生活，以及患者希望优先改善什么。把患者目标与现有处理安排分开记录。",
+      "concept_ids": [
+        "patient.goal",
+        "wound.pain"
+      ],
+      "scope": "难愈伤口的整体评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.wound_identity",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "框 2 评估表描述项（PDF 第2页）、图 1 及同页正文（PDF 第4页）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。这份伤口评估表将部位和伤口编号关联。询问时先确认本次讨论的具体伤口和身体部位；有多处伤口时，分别归属每处的回答和历次评估记录。表单中的定位图是医护记录的辅助工具。",
+      "concept_ids": [
+        "wound.location"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.wound_duration",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "表单数据项与评估日期（PDF 第6页，印刷页98）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口评估表把伤口持续时间与本次评估日期分别记录。若患者只能提供大致发现时间，保留其时间描述，并将本次记录日期单独保存。",
+      "concept_ids": [
+        "wound.onset"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.wound_pain",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "框 3 症状描述（PDF 第3页）及图 3 疼痛频率（PDF 第6页）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口疼痛可记录患者描述的强度、性质和出现时机。患者可说明疼痛是否持续、间歇出现，或发生在换药中、换药后。保留患者自己的描述以及回答所指的时段。",
+      "concept_ids": [
+        "wound.pain",
+        "care.dressing_change"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.exudate_description",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "框 3 症状描述中的渗液（PDF 第3页，印刷页95）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口评估表开发研究列出了渗液量、近期变化、颜色和稠度等描述维度。访谈可收集患者实际看到的变化及其描述，并标出是患者自述、照护者代述还是医护观察。",
+      "concept_ids": [
+        "wound.exudate"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.patient_reported_odour",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "图 3 患者报告的伤口气味（PDF 第6页，印刷页98）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口评估表单独记录气味是否是患者感到困扰的问题。询问时可采集本人是否注意到气味以及对此的困扰；临床人员对气味和伤口状态的判断单独记录。",
+      "concept_ids": [
+        "wound.odor"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.reported_wound_change",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "图 3 伤口变化及随次评估（PDF 第6页，印刷页98）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口评估表用分次记录比较伤口的变化。可询问患者从上次评估至今观察到的变化，保留观察者、比较时点和原话。患者对变化的理解与医护确认的伤口结局分别归档。",
+      "concept_ids": [
+        "wound.change"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "fletcher2010.dressing_history",
+      "source_id": 4,
+      "title": "Jacqueline Fletcher · Development of a new wound assessment form",
+      "source_version": "2010 · Wounds UK 6(1)",
+      "locator": "框 2 处理与换药字段（PDF 第2页）、处理细节正文（PDF 第6页）",
+      "source_url": "https://wounds-uk.com/wp-content/uploads/2023/02/content_9344.pdf",
+      "text": "本段用于伤口评估表开发研究，供字段设计参考。伤口评估表记录既往使用的敷料、已经做过的伤口处理和换药频率。访谈可分别了解患者记得的处理方式、实际换药经历与已经约定的安排，保留来源以及时间。",
+      "concept_ids": [
+        "care.current_treatment",
+        "care.dressing_change"
+      ],
+      "scope": "伤口评估表开发研究，供字段设计参考",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.onset_and_course",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 3 · Focused history，PDF 第 2 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。先记录本次伤口位置和首次发现时间，再询问当时是否有可回忆的事件或自行出现。患者叙述的诱因作为自述线索，病因判断由医护另行记录。",
+      "concept_ids": [
+        "wound.location",
+        "wound.onset",
+        "wound.cause"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.changes_and_impact",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 3 · Focused history，PDF 第 2 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。了解从首次发现到本次评估的变化方向，并记录住民提到的疼痛、气味及对活动的影响。注明变化发生的大致时间、报告人及其是否确定。",
+      "concept_ids": [
+        "wound.change",
+        "wound.pain",
+        "wound.odor"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.previous_treatments",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 3 · Focused history，PDF 第 2 页；Practice point 6 · Wound documentation，PDF 第 5 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。核对本处伤口已经尝试的处理、目前仍在采用的措施及曾参与照护的团队。复诊记录处理发生了哪些改变、改变的时间及已有记录中的理由。",
+      "concept_ids": [
+        "care.current_treatment"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.health_context",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 3 · History of existing factors that influence wound development and healing，PDF 第 2 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。询问可确认的糖尿病史和目前用药。住民或照护者提供的自述、药历中的记录及医护核对结果应保留来源，信息不足时标明待核实。",
+      "concept_ids": [
+        "history.diabetes",
+        "medication.current"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.care_goals",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 5 · Interprofessional wound management plan，PDF 第 4 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。由住民或其指定的代决策人共同确认照护目标，并记录目标由谁提出、哪些事项还需确认。结合当地照护团队明确后续沟通和复核安排。",
+      "concept_ids": [
+        "patient.goal",
+        "care.support"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "qld_racf_chronic_2023.visit_record",
+      "source_id": 5,
+      "title": "Queensland Health · Chronic Wound Assessment and Management",
+      "source_version": "2.0.0，2023-06-19，CEQ-HIU-FRAIL-00030",
+      "locator": "Practice point 6 · Wound documentation，PDF 第 5 页",
+      "source_url": "https://www.health.qld.gov.au/__data/assets/pdf_file/0030/1243785/48.Chronic-wound-assessment-and-management.pdf",
+      "text": "适用范围为昆士兰住宿式老年照护机构的慢性伤口路径。每次复查分别记录伤口位置以及可观察到的渗液量、颜色、稠度和气味；如果信息来自患者或照护者，注明来源。伤口尺寸、深度、创缘和伤口床组织由医护检查后补入。",
+      "concept_ids": [
+        "wound.exudate",
+        "wound.odor",
+        "wound.location"
+      ],
+      "scope": "昆士兰住宿式老年照护机构的慢性伤口路径",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.defs.diabetes_history",
+      "source_id": 8,
+      "title": "IWGDF《糖尿病相关足病定义与术语》",
+      "source_version": "IWGDF 2023 更新版 · DOI 10.1002/dmrr.3654",
+      "locator": "§2 Foot disease related definitions · Diabetes-related foot disease（压缩包 PDF 第 2 页）",
+      "source_url": "https://iwgdfguidelines.org/definitions-criteria-2023/",
+      "text": "适用于糖尿病相关足病病史采集。记录患者或照护者能确认的糖尿病既往诊断，区分明确有、明确无和不清楚。糖尿病病史与足部伤口的病因或类型分开记录，足病归类由医护结合评估确认。",
+      "concept_ids": [
+        "history.diabetes"
+      ],
+      "scope": "糖尿病相关足病病史采集",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.defs.first_or_recurrent",
+      "source_id": 8,
+      "title": "IWGDF《糖尿病相关足病定义与术语》",
+      "source_version": "IWGDF 2023 更新版 · DOI 10.1002/dmrr.3654",
+      "locator": "§2 Foot disease related definitions · First-ever and recurrent foot ulcer（压缩包 PDF 第 2 页）",
+      "source_url": "https://iwgdfguidelines.org/definitions-criteria-2023/",
+      "text": "适用于糖尿病相关足溃疡首诊或复诊。分别记录本次伤口何时发现、位于哪里，以及以往是否有过足溃疡。询问既往足溃疡时保留原来的部位和时间；过去伤口与本次部位不同，既往足溃疡史仍应单独保留。",
+      "concept_ids": [
+        "wound.onset",
+        "wound.location"
+      ],
+      "scope": "糖尿病相关足溃疡首诊或复诊",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.defs.healed_site_description",
+      "source_id": 8,
+      "title": "IWGDF《糖尿病相关足病定义与术语》",
+      "source_version": "IWGDF 2023 更新版 · DOI 10.1002/dmrr.3654",
+      "locator": "§2 Foot disease related definitions（续）· Healed foot ulcer（压缩包 PDF 第 3 页）",
+      "source_url": "https://iwgdfguidelines.org/definitions-criteria-2023/",
+      "text": "适用于糖尿病相关足溃疡随访。随访记录原溃疡部位目前的皮肤状况和是否仍有渗液。患者或照护者可描述所见，完整皮肤及愈合状态由医护核实并另行记录。",
+      "concept_ids": [
+        "wound.change",
+        "wound.exudate"
+      ],
+      "scope": "糖尿病相关足溃疡随访",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.practical.foot_location",
+      "source_id": 9,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§4.1.1 Classification of the foot ulcer · Site（压缩包 PDF 第 12 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "text": "适用于糖尿病相关足部溃疡评估。可先请患者说清受影响的是哪只脚、哪一处，如脚底、脚背或脚趾之间。前足、中足、后足等专业位置描述由医护确认；患者只能指出大致位置时，保留其描述。",
+      "concept_ids": [
+        "wound.location"
+      ],
+      "scope": "糖尿病相关足部溃疡评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.practical.events_before_ulcer",
+      "source_id": 9,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§4.1.2 Determining the cause of the ulcer（压缩包 PDF 第 13 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "text": "适用于糖尿病相关足部溃疡初评。分开询问何时发现伤口、此前发生了什么。可记录患者报告的鞋具、更换鞋具、赤脚、活动或受伤经历，保留其时间关系和不确定性，供医护进一步评估可能成因。",
+      "concept_ids": [
+        "wound.cause",
+        "wound.onset"
+      ],
+      "scope": "糖尿病相关足部溃疡初评",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.practical.pain_numbness_history",
+      "source_id": 9,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§3.2 Regularly inspecting and examining the person with an at-risk foot · Detailed history（压缩包 PDF 第 7 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "text": "适用于医护已识别足部风险的糖尿病人群。问清足部疼痛或其他不适在行走时、静息时或哪种情境出现，并记录是否自述麻木。将这些主诉与医护检查获得的感觉功能结果分开保存。",
+      "concept_ids": [
+        "wound.pain"
+      ],
+      "scope": "医护已识别足部风险的糖尿病人群",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.practical.self_care_barriers",
+      "source_id": 9,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§3.2 Regularly inspecting and examining the person with an at-risk foot · Detailed history, physical limitations, foot care knowledge（压缩包 PDF 第 7 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "text": "适用于医护已识别足部风险的糖尿病人群。可询问患者是否曾接受足部护理教育，能否看清、够到或日常检查足部，有谁能帮忙，以及就医或物资获取是否有困难。保留个人自述的困难与已有照护支持。",
+      "concept_ids": [
+        "care.support"
+      ],
+      "scope": "医护已识别足部风险的糖尿病人群",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.practical.current_care_and_exudate",
+      "source_id": 9,
+      "title": "IWGDF《糖尿病相关足病预防与管理实践指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§4.2.3B Local ulcer care · Regular inspection and dressings（压缩包 PDF 第 16 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-01-Practical-Guidelines.pdf",
+      "text": "适用于糖尿病相关足溃疡的复诊或随访。了解患者目前实际采用的局部护理和敷料，以及自己观察到的渗液情况。换药或查看时所见与医护当次检查分开记录，便于后续评估已实施护理及伤口变化。",
+      "concept_ids": [
+        "care.current_treatment",
+        "wound.exudate"
+      ],
+      "scope": "糖尿病相关足溃疡的复诊或随访",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.infection.wound_timeline",
+      "source_id": 10,
+      "title": "IWGDF/IDSA《糖尿病患者足部感染诊断与治疗指南》",
+      "source_version": "IWGDF/IDSA 2023 版",
+      "locator": "Background · Wound history（压缩包 PDF 第 9 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-04-Infection-Guideline.pdf",
+      "text": "适用于糖尿病相关足部伤口由医护评估感染时。问诊可收集本次伤口何时出现、是否曾反复、是否有外伤经过，并区分患者回忆的时间与真实就诊记录。持续时间、反复或外伤经历属于供医护评估的病史。",
+      "concept_ids": [
+        "wound.onset",
+        "wound.cause"
+      ],
+      "scope": "糖尿病相关足部伤口由医护评估感染时",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.infection.reported_local_changes",
+      "source_id": 10,
+      "title": "IWGDF/IDSA《糖尿病患者足部感染诊断与治疗指南》",
+      "source_version": "IWGDF/IDSA 2023 版",
+      "locator": "Diagnosis · Recommendation 1；Table 1 local signs（压缩包 PDF 第 13–14 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-04-Infection-Guideline.pdf",
+      "text": "适用于糖尿病相关足部伤口的感染评估背景。请患者描述自己能观察到的局部变化，例如疼痛、红肿、发热感或分泌物，并记录出现或变化的时间。临床体征及感染结论由医护检查确认，学术分类留在医护评估环节。",
+      "concept_ids": [
+        "wound.change",
+        "wound.exudate",
+        "wound.pain"
+      ],
+      "scope": "糖尿病相关足部伤口的感染评估背景",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.prevention.prior_foot_history",
+      "source_id": 11,
+      "title": "IWGDF《糖尿病患者足溃疡预防指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§2 Regularly inspecting and examining the at-risk foot · Recommendation 2（压缩包 PDF 第 11 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-02-Prevention-Guideline.pdf",
+      "text": "适用于糖尿病足溃疡预防筛查的专科病史。详细病史可记录既往足溃疡或下肢截肢经历，并区分它们与本次足部问题。受访者记得时保留既往部位和大致时间；足部形态、胼胝和关节活动度留由医护检查记录。",
+      "concept_ids": [
+        "wound.location",
+        "wound.onset"
+      ],
+      "scope": "糖尿病足溃疡预防筛查的专科病史",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.prevention.care_access",
+      "source_id": 11,
+      "title": "IWGDF《糖尿病患者足溃疡预防指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§2 Regularly inspecting and examining the at-risk foot · Recommendation 2 rationale（压缩包 PDF 第 11 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-02-Prevention-Guideline.pdf",
+      "text": "适用于糖尿病足溃疡预防筛查。补问受访者能否获得家庭支持与足部护理服务，以及就医、交通或费用方面的困难。筛查记录可保留具体障碍，由临床团队结合情境判断如何使用。",
+      "concept_ids": [
+        "care.support"
+      ],
+      "scope": "糖尿病足溃疡预防筛查",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.prevention.self_monitoring",
+      "source_id": 11,
+      "title": "IWGDF《糖尿病患者足溃疡预防指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "§3A Education on foot self-care · Recommendation 5（压缩包 PDF 第 14–15 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-02-Prevention-Guideline.pdf",
+      "text": "适用于已进入糖尿病足预防护理的患者。时间允许时可询问患者平时怎样查看足部、是自己查看还是由照护者协助，以及发现新的皮肤变化时是否联系过护理人员。记录已发生的护理与观察行为，作为复诊时核对护理能力与支持的线索。",
+      "concept_ids": [
+        "care.current_treatment",
+        "care.support"
+      ],
+      "scope": "已进入糖尿病足预防护理的患者",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.classification.component_handover",
+      "source_id": 12,
+      "title": "IWGDF《糖尿病患者足溃疡分类指南》",
+      "source_version": "IWGDF 2023 更新版",
+      "locator": "For communication among healthcare professionals · Recommendation 1a；Table 2（压缩包 PDF 第 13–14 页）",
+      "source_url": "https://iwgdfguidelines.org/wp-content/uploads/2023/07/IWGDF-2023-03-Classification-Guideline.pdf",
+      "text": "适用于医护核对糖尿病足溃疡评估资料或交接时。患者问诊能补充其自述部位。医护之间的交接还保留临床评估的部位、灌注、感觉、感染、面积与深度等具体项目，分别注明来源，以便接诊人员理解各项特征。",
+      "concept_ids": [
+        "wound.location"
+      ],
+      "scope": "医护核对糖尿病足溃疡评估资料或交接时",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.pad.pain_history_and_exam",
+      "source_id": 13,
+      "title": "IWGDF/ESVS/SVS《糖尿病足溃疡患者外周动脉疾病指南》",
+      "source_version": "2023 跨学会指南 · IWGDF 预印本",
+      "locator": "Introduction · Classical symptoms；Diagnosis · Recommendation 3（压缩包 PDF 第 14、18 页）",
+      "source_url": "https://iwgdfguidelines.org/pad-guideline-2023/",
+      "text": "适用于糖尿病患者足溃疡的血管相关病史与检查。可以记录活动或静息时的足部或下肢不适、发生情境以及是否缓解。部分患者症状不典型，症状史与医护获得的足部脉搏及血流检查结论分别记录。",
+      "concept_ids": [
+        "wound.pain"
+      ],
+      "scope": "糖尿病患者足溃疡的血管相关病史与检查",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "iwgdf2023.pad.followup_wound_course",
+      "source_id": 13,
+      "title": "IWGDF/ESVS/SVS《糖尿病足溃疡患者外周动脉疾病指南》",
+      "source_version": "2023 跨学会指南 · IWGDF 预印本",
+      "locator": "Recommendation 15 · Wound course and vascular reassessment（压缩包 PDF 第 30 页）",
+      "source_url": "https://iwgdfguidelines.org/pad-guideline-2023/",
+      "text": "适用于糖尿病足溃疡随访及血管状态复核背景。随访时记录与上次相比伤口改善、无明显变化或变差，以及期间实际接受过哪些护理。主观变化与医护测量结果分开，既往处理和近况供专业人员复核血管状态。",
+      "concept_ids": [
+        "wound.change",
+        "care.current_treatment"
+      ],
+      "scope": "糖尿病足溃疡随访及血管状态复核背景",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "dapb4086_2023.allergy_record",
+      "source_id": 14,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准实施指南",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "locator": "第4.1节，图 1 过敏及不良反应示例（PDF 第12页）",
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022guidance.pdf",
+      "text": "本段用于英格兰 DAPB4086 记录设计参考，压力性损伤、下肢伤口、手术伤口并发症。DAPB4086 实施指南用过敏记录举例说明：可以逐条保留引起反应的对象，并在已知时记录实际反应及其描述。询问时分别保留具体过敏经历、明确的无已知过敏自述和无法确认的状态；前者与后两者对应不同记录。",
+      "concept_ids": [
+        "history.allergies"
+      ],
+      "scope": "英格兰 DAPB4086 记录设计参考：压力性损伤、下肢伤口、手术伤口并发症",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "dapb4086_2023.record_provenance",
+      "source_id": 14,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准实施指南",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "locator": "第4.1节记录类型（PDF 第10页）；第4.2、4.3节（PDF 第13页）",
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022guidance.pdf",
+      "text": "本段用于英格兰 DAPB4086 记录设计参考，压力性损伤、下肢伤口、手术伤口并发症。DAPB4086 区分发生或观察的时间和录入时间，也分别记录执行者或观察者与记录者。访谈整理伤口变化或既往处理时，保留谁提供信息、何时发生和何时录入，让后续审核可追溯。",
+      "concept_ids": [
+        "wound.change",
+        "care.current_treatment"
+      ],
+      "scope": "英格兰 DAPB4086 记录设计参考：压力性损伤、下肢伤口、手术伤口并发症",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "dapb4086_2023.shared_support_context",
+      "source_id": 14,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准实施指南",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "locator": "第2节实施清单，第4步共享记录背景（PDF 第6–7页）",
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022guidance.pdf",
+      "text": "本段用于英格兰 DAPB4086 记录设计参考，压力性损伤、下肢伤口、手术伤口并发症。在 DAPB4086 的伤口护理记录设计中，个人需求及既有照护支持计划可与本次伤口记录联用。问诊获取本人当前能获得的照护时，可与已有支持计划分开归属，再由医护核对两者是否一致。",
+      "concept_ids": [
+        "care.support"
+      ],
+      "scope": "英格兰 DAPB4086 记录设计参考：压力性损伤、下肢伤口、手术伤口并发症",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "dapb4086_2023.prescribed_medication_context",
+      "source_id": 15,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准要求规范",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "locator": "第2.2节 IT 系统要求，ITS23（PDF 第13页）",
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022spec.pdf",
+      "text": "本段用于英格兰 DAPB4086 记录设计参考，压力性损伤、下肢伤口、手术伤口并发症。DAPB4086 要求医护能查看处方用药，特别是与本次伤口护理相关的处方。记录时区分患者报告的实际使用情况、其他记录中的处方，以及本次已做的伤口处理；需核对的药名或用途保留待确认状态。",
+      "concept_ids": [
+        "medication.current",
+        "care.current_treatment"
+      ],
+      "scope": "英格兰 DAPB4086 记录设计参考：压力性损伤、下肢伤口、手术伤口并发症",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "dapb4086_2023.relevant_person_history",
+      "source_id": 15,
+      "title": "NHS England / PRSB · DAPB4086 伤口护理信息标准要求规范",
+      "source_version": "Amd 60/2022 · v1.0 · 2023-11-10",
+      "locator": "第2.2节 IT 系统要求，ITS22（PDF 第13页）",
+      "source_url": "https://digital.nhs.uk/binaries/content/assets/website-assets/isce/4086/4086602022spec.pdf",
+      "text": "本段用于英格兰 DAPB4086 记录设计参考，压力性损伤、下肢伤口、手术伤口并发症。英格兰 DAPB4086 记录设计要求医护可查看个人背景、照护圈及相关健康病史。问诊采集自述病史或照护支持时，注明它来自患者、照护者还是既有健康记录，以便医护把来源对应到本次伤口护理。",
+      "concept_ids": [
+        "history.diabetes",
+        "history.hypertension",
+        "care.support"
+      ],
+      "scope": "英格兰 DAPB4086 记录设计参考：压力性损伤、下肢伤口、手术伤口并发症",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.presenting_timeline",
+      "source_id": 17,
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "locator": "初步输入数据 · 一、病历基础信息 · （二）病历核心诊疗信息 · 主诉、现病史",
+      "text": "适用于压力性损伤相关伤口的初访。分别记录患者何时首次发现皮肤改变、何时出现后续破损或加重，以及这次就诊最希望解决的问题。患者只记得大致先后时，保留原来的时间描述。",
+      "concept_ids": [
+        "wound.onset",
+        "visit.purpose",
+        "patient.goal"
+      ],
+      "scope": "压力性损伤相关伤口的初访",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.reaction_to_wound_products",
+      "source_id": 17,
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "locator": "初步输入数据 · 一、病历基础信息 · （二）病历核心诊疗信息 · 过敏史",
+      "text": "适用于伤口问诊中核对患者已知的过敏经历。分别询问患者是否曾对药物、敷料材质或消毒剂出现过反应。已知时记录实际对象、当时的反应和信息来源，区分明确否认、未询问和记不清。",
+      "concept_ids": [
+        "history.allergies"
+      ],
+      "scope": "伤口问诊中核对患者已知的过敏经历",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.current_medication_context",
+      "source_id": 17,
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "locator": "初步输入数据 · 一、病历基础信息 · （二）病历核心诊疗信息 · 现服用药物",
+      "text": "适用于伤口问诊中核对正在使用的药物。分别记录患者为基础疾病和本处伤口实际使用的药物。记录能确认的药名和用途，记不清的项目留待医护核对原始用药记录。",
+      "concept_ids": [
+        "medication.current"
+      ],
+      "scope": "伤口问诊中核对正在使用的药物",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.positioning_support",
+      "source_id": 17,
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "locator": "初步输入数据 · 二、患者全身状况评估 · 活动能力、社会支持",
+      "text": "适用于压力性损伤相关的居家照护评估。把患者能否自行翻身或改变体位、实际由谁协助、哪些操作需要帮忙分开记录。若有安排但执行困难，询问困难发生在哪个环节，以及能否获得家属、护工或社区护理支持。",
+      "concept_ids": [
+        "care.support"
+      ],
+      "scope": "压力性损伤相关的居家照护评估",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.position_related_pain",
+      "source_id": 17,
+      "title": "新华医院提供 · 伤口治疗师临床思维",
+      "source_version": "院方提供稿（文件标识 260205）",
+      "locator": "初步输入数据 · 二、患者全身状况评估 · 疼痛评估；初步输出 · 二、创面特征提取结果 · 疼痛与症状关联特征",
+      "text": "适用于伤口疼痛与体位或护理操作的问诊。先记录平时疼不疼，再询问特定体位、改变体位或护理操作时是否有变化。分别保留患者表达的部位、程度、持续或间歇等规律，以及使疼痛加重或减轻的情境。",
+      "concept_ids": [
+        "wound.pain"
+      ],
+      "scope": "伤口疼痛与体位或护理操作的问诊",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.post_care_followup_comparison",
+      "source_id": 18,
+      "title": "新华医院提供 · 伤口评估",
+      "source_version": "院方讨论整理稿（文件标识 260225）",
+      "locator": "讨论围绕的问题 · 第③问；六位伤口治疗师关注点汇总 · 三、伤口评估核心元素 · 愈合趋势与疗效监测；伤口处理与愈合相关 · 愈合相关",
+      "text": "适用于同一处伤口的院内复诊。以最近一次已记录的处理和时间为比较起点，询问之后哪些变化已经发生、哪些仍待确认。将前次医护记录的预期、本次患者或照护者描述的变化、医护本次所见分别保存，便于对照。",
+      "concept_ids": [
+        "wound.change",
+        "care.current_treatment"
+      ],
+      "scope": "同一处伤口的院内复诊",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.prior_treatment_and_dressing",
+      "source_id": 18,
+      "title": "新华医院提供 · 伤口评估",
+      "source_version": "院方讨论整理稿（文件标识 260225）",
+      "locator": "六位伤口治疗师关注点汇总 · 二、患者相关信息 · 治疗史；伤口护理与愈合情况及治疗史与患者反馈",
+      "text": "适用于转诊或复诊时核对本处伤口的护理经过。按时间梳理不同场所已经做过的处理、实际使用的敷料及换药经过。询问患者所说的变化或操作困难发生在哪一次处理之后，并分别保留已发生的事项与现有安排。",
+      "concept_ids": [
+        "care.current_treatment",
+        "care.dressing_change"
+      ],
+      "scope": "转诊或复诊时核对本处伤口的护理经过",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.periwound_observation",
+      "source_id": 19,
+      "title": "新华医院提供 · 创面资料",
+      "source_version": "院方提供稿，文件未标明版本",
+      "locator": "§1.1.5 创周皮肤，PDF 第 4–5 页",
+      "text": "适用于慢性伤口复诊中的创周皮肤记录。请患者或照护者描述亲眼看到的创周变化及其大致范围。记录时区分创周皮肤、创缘和伤口床，标明哪些是自述，哪些是医护本次检查所见。",
+      "concept_ids": [
+        "wound.change"
+      ],
+      "scope": "慢性伤口复诊中的创周皮肤记录",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.serial_comparison_domains",
+      "source_id": 19,
+      "title": "新华医院提供 · 创面资料",
+      "source_version": "院方提供稿，文件未标明版本",
+      "locator": "§1.2 通用创面记录模块及纵向比较维度，PDF 第 5–6 页",
+      "text": "适用于同一处慢性伤口的纵向比较。以同一伤口及相同观察项目对照历次记录。把客观面积、创床组织、创缘或创周所见，与患者报告的疼痛、渗液等变化分项保存，并保留时间和来源，供医护综合判断。",
+      "concept_ids": [
+        "wound.change"
+      ],
+      "scope": "同一处慢性伤口的纵向比较",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.recent_life_impact",
+      "source_id": 19,
+      "title": "新华医院提供 · 创面资料",
+      "source_version": "院方提供稿，文件未标明版本",
+      "locator": "§5.4 生活质量，PDF 第 21 页",
+      "text": "适用于慢性伤口复诊中了解生活影响与患者目标。可用过去一周作为回顾时段，分别询问伤口对身体感受、情绪、日常活动或经济负担的影响，再请患者说明目前最想优先改善哪项。将生活影响与患者表达的目标分开记录。",
+      "concept_ids": [
+        "patient.goal"
+      ],
+      "scope": "慢性伤口复诊中了解生活影响与患者目标",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.exudate_and_odor_over_time",
+      "source_id": 20,
+      "title": "新华医院提供 · 伤口评估的整理",
+      "source_version": "院方提供稿，文件未标明版本",
+      "locator": "伤口异常症状和评估 · 2.伤口渗液量、5恶臭",
+      "text": "适用于复诊中记录患者或照护者对渗液和气味的变化描述。与之前同一处伤口的情况相比，记录渗液量、颜色或黏稠度是否变化。气味可单独询问何时发现、清洁前后是否仍能闻到，并保留是谁观察到、何时观察到及原话。",
+      "concept_ids": [
+        "wound.exudate",
+        "wound.odor"
+      ],
+      "scope": "复诊中记录患者或照护者对渗液和气味的变化描述",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    },
+    {
+      "chunk_id": "xinhua_wound.home_dressing_conditions",
+      "source_id": 20,
+      "title": "新华医院提供 · 伤口评估的整理",
+      "source_version": "院方提供稿，文件未标明版本",
+      "locator": "照护支持和社会因素",
+      "text": "适用于核对居家换药的实际环境与执行条件。询问家人或照护者有没有参与换药、换药在哪里进行、是否有合适的清洁条件。遇到卧床、失禁或环境影响换药的情况，记录当事人具体遇到的困难，供医护安排复核。",
+      "concept_ids": [
+        "care.support",
+        "care.dressing_change"
+      ],
+      "scope": "核对居家换药的实际环境与执行条件",
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewed_at": ""
+    }
+  ]
+}

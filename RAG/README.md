@@ -101,9 +101,12 @@ independence; the source review remains necessary.
 
 ## Real API smoke on a server
 
-Copy `RAG/references` to the server separately; PDFs and local outputs are not
-bundled into source-code commits. Install the same requirements. Paths are CLI
-inputs and are never fixed to a developer/server filesystem.
+The reference PDFs are now tracked with Git LFS. After fetching this branch,
+run `git lfs pull` and verify the source hashes before parsing; a plain LFS
+pointer is not a PDF. The initial inspect/mock audit snapshots and SOP JSON
+are also tracked. Cache, API keys, environments and future output directories
+remain ignored. See [the Chinese server runbook](SERVER_RUNBOOK.zh-CN.md).
+Paths are CLI inputs, never fixed to a developer/server filesystem.
 
 Configure an OpenAI-compatible **Chat Completions** endpoint. `LLM_BASE_URL`
 includes the API prefix such as `/v1`, but excludes `/chat/completions`. No

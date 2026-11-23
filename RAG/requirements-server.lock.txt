@@ -1,0 +1,8 @@
+# Tested local dependencies. Python 3.12 recommended; Linux wheels via pip.
+PyMuPDF==1.28.2
+jsonschema==4.26.0
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.9.1
+typing_extensions==4.16.0
