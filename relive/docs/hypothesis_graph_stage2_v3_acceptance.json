@@ -1,0 +1,67 @@
+{
+  "format": "relive-stage2-v3-local-acceptance-v1",
+  "status": "ENGINEERING_PASS_REAL_SMOKE_NOT_RUN",
+  "base_commit": "842151bf494d64b729300a981453aabb378b646a",
+  "branch": "feature/relive-v2-protocol-dev-cases",
+  "protocol_sha256": "e05155db77ffa49630130e8fc5d05b6ce854df953faad4af3c978d229df4c1a0",
+  "generation_implementation_sha256": "04b129306824583b391df133838e13fcaaa2d2f0a03eee2d6b591baec444461b",
+  "compiler_policy_sha256": "e0903c920c515e52cfcdeb7ff2f9c41b80c9ccc64cabc43342031abb6e449e1c",
+  "tests": {"targeted": 49, "full_suite": 595, "failures": 0, "errors": 0, "git_diff_check": "PASS"},
+  "v2_2_diagnostic": {
+    "raw_candidates": 84,
+    "search_parameter_free_shape_pass": 78,
+    "minimal_projection_shape_pass": 84,
+    "semantic_state_counts": {"REJECTED": 2, "REVIEW_REQUIRED": 82},
+    "semantically_proven": 0,
+    "published_claims": 0,
+    "new_model_calls": 0
+  },
+  "local_v3": {
+    "mode": "MOCK_ONLY",
+    "sample_count": 22,
+    "requirements_unchanged": 100,
+    "synthetic_invocations": 22,
+    "retained_synthetic_templates": 18,
+    "synthetic_review_required": 18,
+    "unresolved_rc_samples": 4,
+    "real_generation_quality": "UNKNOWN",
+    "original_stage1_bank_available_locally": false,
+    "frozen_v1_v2_v21_requirement_copies_match": true
+  },
+  "replay": {"cache_hits": 22, "new_model_calls": 0, "sample_jsonl_byte_identical": true},
+  "compiler": {
+    "dry_run": "PASS",
+    "mock_formal_publication": "BLOCKED_AS_REQUIRED",
+    "formal_contracts": 0,
+    "type_mappings_tested": ["OBJECT", "ATTRIBUTE", "STATIC_RELATION", "TEMPORAL_EVENT", "HIGH_LEVEL"],
+    "synthetic_spatial_candidates": 0,
+    "real_spatial_eligibility": "NOT_MEASURED",
+    "new_model_calls": 0
+  },
+  "safety": {
+    "gt_used": false,
+    "image_reads": 0,
+    "real_model_calls": 0,
+    "certificate_writes": 0,
+    "new_verified_count": 0,
+    "old_cache_writes": 0,
+    "historical_code_edited": false,
+    "pilot_tag_commit": "66559522c91319eb93519fb8345d046176f41fdb",
+    "historical_artifacts_sha256_unchanged": {
+      "outputs/stage2_v2_smoke22.jsonl": "93d36bb9063660d48a4689f5631e0e07b0d27375aae521afd492a18f01d0d9f0",
+      "outputs/stage2_v2_metrics.json": "387660adadc9eb2f7128528c492cc172223cb73f2769ca10a05ad1a25f62d092",
+      "outputs/stage2_v1_vs_v2_smoke22.html": "fdcf66d36dff9c51a1e32e725c120c25dfd669284c6f5baf16766415b00648bd",
+      "outputs/claim_bank_diagnosis_20261123_092845.json": "5db5f1f59d564d005a8ec9bd3dc5e1664125fcc7531e4750f00a8f78f7b870ab",
+      "outputs/claim_revalidation_stage2_v2_1_20261123/manifest.json": "50ab3b618e0d77af1597a692c46bc416f13a390fdbef1f2167a7dca912fff3b4"
+    }
+  },
+  "local_artifacts": "outputs/hypothesis_graph_v3_20261123/",
+  "final_artifact_directories": ["diagnostic", "references", "checked_mock", "checked_replay", "checked_comparison", "checked_compiler", "checked_semantic_review", "checked_blocked_publication"],
+  "limitations": [
+    "No torch, transformers or nvidia-smi in this Darwin environment; real smoke was not run.",
+    "Semantic accuracy, discriminating coverage and dependency meaning need real generation and human review.",
+    "Compiler supports limited controlled English; unknown propositions stay UNCOMPILABLE.",
+    "V1 used images; V2/V3 use text. Comparison is diagnostic, not a fair performance ranking.",
+    "Real generation and formal contracts require independent Stage1 bank binding on the server."
+  ]
+}

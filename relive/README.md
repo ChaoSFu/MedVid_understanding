@@ -22,6 +22,11 @@ derived normalization/admission records and never overwrites a V2 result.
 It emits unverified hypotheses only and does not change the legacy runner's
 task compatibility table below.
 
+[Stage 2 V3 minimal hypothesis graphs](docs/hypothesis_graph_stage2_v3.md) add an
+independent text-only planner, V2.2 offline diagnostic, immutable replay and a
+deterministic, human-review-gated contract compiler. Its separate CLI is
+`python -m relive.hypothesis_graph`. It does not acquire evidence or issue certificates.
+
 Use Python 3.10 or later. From this directory:
 
 ```bash
