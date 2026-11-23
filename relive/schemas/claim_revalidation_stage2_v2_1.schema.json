@@ -1,0 +1,450 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "relive-claimgen-stage2-v2.1",
+  "type": "object",
+  "properties": {
+    "planning_status": {
+      "enum": [
+        "GENERATED",
+        "INCOMPLETE_PLAN",
+        "NO_VALID_CLAIMS",
+        "UNRESOLVED_TARGET_REFERENCE"
+      ]
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "pattern": "^E[1-9][0-9]*$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "source": {
+            "enum": [
+              "QUESTION",
+              "REQUIREMENT",
+              "UNRESOLVED",
+              "DOMAIN_KNOWLEDGE"
+            ]
+          },
+          "source_quote": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirement_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "entity_id",
+          "label",
+          "source",
+          "source_quote",
+          "requirement_id"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 12
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "pattern": "^H[1-6]$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "type": {
+            "enum": [
+              "OBJECT",
+              "ATTRIBUTE",
+              "RELATION",
+              "ACTION",
+              "HIGH_LEVEL"
+            ]
+          },
+          "status": {
+            "const": "UNVERIFIED"
+          },
+          "requirement_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "minItems": 1,
+            "maxItems": 6
+          },
+          "answer_relevance": {
+            "enum": [
+              "REQUIRED",
+              "OPTIONAL",
+              "PREREQUISITE"
+            ]
+          },
+          "verification_purpose": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "proposition": {
+            "type": "object",
+            "properties": {
+              "predicate": {
+                "enum": [
+                  "IS_VISIBLE",
+                  "HAS_ATTRIBUTE",
+                  "STATIC_RELATION",
+                  "CONTACT",
+                  "MOTION",
+                  "CHANGE",
+                  "EVENT",
+                  "INTERPRETATION"
+                ]
+              },
+              "subject": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "object": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "qualifier": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "polarity": {
+                "enum": [
+                  "POSITIVE",
+                  "NEGATIVE"
+                ]
+              },
+              "scope": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "INPUT_CLIP",
+                      "QUERY_TIME_SET",
+                      "BOUNDED_EVENT_SEARCH",
+                      "SEARCH_INPUT_CLIP"
+                    ]
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "query_time": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "question_quote": {
+                            "type": "string",
+                            "minLength": 1,
+                            "pattern": "\\S"
+                          },
+                          "start_seconds": {
+                            "type": "number"
+                          },
+                          "end_seconds": {
+                            "type": "number"
+                          },
+                          "stride_seconds": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "exclusiveMinimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "question_quote",
+                          "start_seconds",
+                          "end_seconds",
+                          "stride_seconds"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "description",
+                  "query_time"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "predicate",
+              "subject",
+              "object",
+              "qualifier",
+              "polarity",
+              "scope"
+            ],
+            "additionalProperties": false
+          },
+          "evidence_requirement": {
+            "type": "object",
+            "properties": {
+              "modality": {
+                "enum": [
+                  "SINGLE_FRAME",
+                  "MULTI_REGION_SINGLE_FRAME",
+                  "MULTI_FRAME",
+                  "COMPOSITIONAL"
+                ]
+              },
+              "spatial_targets": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "minItems": 0,
+                "maxItems": 12
+              },
+              "temporal_requirement": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "minLength": 1,
+                        "pattern": "\\S"
+                      },
+                      "min_observations": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "description",
+                      "min_observations"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "modality",
+              "spatial_targets",
+              "temporal_requirement"
+            ],
+            "additionalProperties": false
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "claim_id": {
+                  "type": "string",
+                  "pattern": "^H[1-6]$"
+                },
+                "relation": {
+                  "enum": [
+                    "REQUIRES",
+                    "SUPPORTS",
+                    "ALTERNATIVE_TO"
+                  ]
+                },
+                "rationale": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "required": [
+                "claim_id",
+                "relation",
+                "rationale"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 0,
+            "maxItems": 10
+          },
+          "interpretation_rule": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "question_quote": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                },
+                "required": [
+                  "description",
+                  "question_quote"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bindings": {
+            "type": "object",
+            "properties": {
+              "frame": {
+                "type": "null"
+              },
+              "timestamp": {
+                "type": "null"
+              },
+              "bbox": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "frame",
+              "timestamp",
+              "bbox"
+            ],
+            "additionalProperties": false
+          },
+          "evidence_status": {
+            "const": "NOT_SEARCHED"
+          }
+        },
+        "required": [
+          "claim_id",
+          "text",
+          "type",
+          "status",
+          "requirement_ids",
+          "answer_relevance",
+          "verification_purpose",
+          "proposition",
+          "evidence_requirement",
+          "dependencies",
+          "interpretation_rule",
+          "bindings",
+          "evidence_status"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 6
+    },
+    "information_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "requirement_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "minItems": 0,
+            "maxItems": 6
+          }
+        },
+        "required": [
+          "code",
+          "description",
+          "requirement_ids"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 20
+    }
+  },
+  "required": [
+    "planning_status",
+    "entities",
+    "claims",
+    "information_gaps"
+  ],
+  "additionalProperties": false,
+  "description": "V2.1 shape schema. Provenance, time, modality/type, dependency and semantic-review gates are mandatory separate layers."
+}

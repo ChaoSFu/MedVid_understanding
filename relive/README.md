@@ -16,6 +16,9 @@ An independent, opt-in [Stage 2 V2 hypothesis planner](docs/claim_planner_stage2
 uses only the question, task type and frozen requirements, with no image input.
 Its CLI is `python -m relive.claim_planner`; the legacy Claim Bank CLI and
 Stage 1 behavior are preserved. Synthetic comparisons are not real V2 results.
+Saved V2 completions can also be audited by the separate, zero-call
+[V2.1 offline revalidator](docs/claim_revalidation_stage2_v2_1.md). It writes
+derived normalization/admission records and never overwrites a V2 result.
 It emits unverified hypotheses only and does not change the legacy runner's
 task compatibility table below.
 
