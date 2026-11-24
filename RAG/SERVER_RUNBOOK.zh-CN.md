@@ -145,6 +145,8 @@ export ENABLE_VISION_EXTRACTION=false
 ```bash
 export LLM_TEXT_MODEL=qwen4-max
 export LLM_ENABLE_THINKING=false
+export LLM_MAX_OUTPUT_TOKENS=24000
+export LLM_TIMEOUT=300
 ```
 
 如使用 `RAG/.env`，将同样两项保存到该本地文件后重新 source。
@@ -164,7 +166,7 @@ python -m RAG.knowledge_builder.build --mode build \
   --include-file common_surgical_instruments_module.pdf \
   --include-file DualKnife_J_Professor_Naohisa_Yahagi.pdf \
   --include-file OpenSurgery_pdfs/003_handling-of-surgical-instruments.pdf \
-  --max-pages 5 --max-api-calls 32 \
+  --max-pages 5 --max-unit-chars 4000 --max-unit-blocks 6 --max-api-calls 96 \
   --output "$RAG_RUN/api_smoke/relive_surgical_visual_knowledge_v0.1.json" \
   --verbose
 
@@ -177,33 +179,54 @@ cat "$RAG_RUN/api_smoke/quality_report.json"
 ```
 
 先检查是否为 BUILT_PENDING_MEDICAL_REVIEW、synthetic_test=false、真实调用数大于
-0、chunk_count 大于 0，且无未解决技术失败。32 是含重试及一致性校验的调用上限，
+0、chunk_count 大于 0，且无未解决技术失败。96 是含重试及一致性校验的调用上限，
 不保证一定完成。若 SOURCE_REVIEW_REQUIRED、API 配置错误、预算停止或卡片为 0，
 先看报告，不进入全量构建。
 
 人工核对文本、外观/运动特征、原文摘录、页码、derived guidance 和不足证据条件。
 所有卡片必须保持 pending；结构校验通过不代表医学上正确。
 
-### 已知的 6,000-token 截断 smoke
+### 历史截断与当前 v0.2 单元策略
 
 若诊断显示 completion_tokens=6000 且 JSON 在字段中途结束，使用已更新的
-adapter v0.2。先固定同样三份资料、prompt/schema 和非 thinking 设置，仅显式
-提高单次输出预算，再运行新的 smoke：
+adapter v0.2 记录该失败且不做相同预算的重复重试。历史 24,000-token smoke
+仍有一个跨第 2--5 页的器械单元截断，因此当前 extractor/selector v0.2
+改用更小的完整段落单元和精简卡片，不再增加单次输出上限。
+
+先做无 API 的 inspect；输出到新目录：
 
 ```bash
 export LLM_ENABLE_THINKING=false
 export LLM_MAX_OUTPUT_TOKENS=24000
 export LLM_TIMEOUT=300
-RAG_RUN="$PWD/RAG/output/server_output_budget_$(date +%Y%m%d_%H%M%S)"
+RAG_RUN="$PWD/RAG/output/server_semantic_units_v02_$(date +%Y%m%d_%H%M%S)"
 export RAG_RUN
-# 重新执行上面的三份 PDF smoke，输出到这个新的 RAG_RUN/api_smoke。
+python -m RAG.knowledge_builder.build --mode inspect \
+  --input-dir "$PDF_ROOT" --cache-dir "$CACHE_ROOT" \
+  --source-review "$SOURCE_REVIEW" \
+  --include-file common_surgical_instruments_module.pdf \
+  --include-file DualKnife_J_Professor_Naohisa_Yahagi.pdf \
+  --include-file OpenSurgery_pdfs/003_handling-of-surgical-instruments.pdf \
+  --max-pages 5 --max-unit-chars 4000 --max-unit-blocks 6 \
+  --output "$RAG_RUN/inspection/relive_surgical_visual_knowledge_v0.1.json"
+# 再执行上面的三份 PDF smoke，输出到 RAG_RUN/api_smoke，调用预算为 96。
 ```
 
-24,000 是单次输出上限，为旧值的四倍；API 调用上限仍为 32。不得视为已保证
-完成或免费重试。新的截断返回 MODEL_OUTPUT_TRUNCATED、保留原文，并立即停止
+当前三份资料预计 31 个单元：DualKnife 11、OpenSurgery 7、通用器械 13。
+每单元最多 4 条卡片；不含重试通常需要 31--62 次 API 调用，96 是硬上限。
+空卡片无需一致性校验调用。调用数可能增加，费用不能按旧 smoke 保证。
+24,000 仍是单次输出上限，不是必须生成的长度。新的截断返回
+MODEL_OUTPUT_TRUNCATED、保留原文，并立即停止
 该请求的相同预算重试；其他文档继续处理。若仍截断，保留失败并检查语义单元
 及卡片篇幅，再决定后续设计，不反复自动增加预算。历史 6,000-token 结果和
-cache 均保留；新的请求身份不会使用旧 adapter 的成功记录。
+cache 均保留；新版 prompt/schema/单元身份不会复用旧医学卡片冒充新结果。
+
+检查 quality_report 的 unit_counts、rejection_reason_counts 以及新的
+extraction_unit_manifest.jsonl、unit_extraction_audit.jsonl。oversized_blocks_pending
+应为 0；任何缺失段落保留 PENDING 并检查原因。视觉相关性不确定/非视觉的卡片
+单独拒绝，来源一致性校验不放宽。章节名只能用当前单元提供的 section 或 null。
+benchmark_independence.status 只描述本次选中资料的来源门控；其余 43 份是
+deferred，不代表已处理或已获医学/许可批准。
 
 ## 6. 审查 smoke 后，后台执行全量文本抽取
 

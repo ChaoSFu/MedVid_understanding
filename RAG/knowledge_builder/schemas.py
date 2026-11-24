@@ -1,5 +1,6 @@
 """Closed extraction schema and persisted-library schema (Draft 2020-12)."""
 TYPES=['instrument','anatomy','action','interaction','procedure','evidence_criteria']
+MAX_CARDS_PER_UNIT=4
 TEXT={'type':'string','minLength':1}
 STRINGS={'type':'array','items':TEXT}
 
@@ -27,6 +28,7 @@ CARD['properties']['source_facts']['minItems']=1
 CARD['properties']['source_refs']['minItems']=1
 CARD['properties']['text_supporting_fact_ids']['minItems']=1
 RESPONSE=obj({'cards':array(CARD),'omitted_content_reasons':STRINGS})
+RESPONSE['properties']['cards']['maxItems']=MAX_CARDS_PER_UNIT
 CHUNK=obj({**CARD['properties'],'chunk_id':TEXT,'locator':array(REF),'review_status':{'const':'pending'},
            'reviewer':{'const':''},'reviewed_at':{'const':''},'source_grounding_status':{'const':'EXACT_QUOTES_CHECKED_SEMANTIC_REVIEW_PENDING'},
            'extraction_provenance':array(obj({'request_key':TEXT,'method':{'enum':['text_llm','vision_llm','mock']},'model':TEXT,'synthetic':{'type':'boolean'}}))})

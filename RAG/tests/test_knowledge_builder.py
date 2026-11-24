@@ -151,7 +151,7 @@ class SourceAndCardTests(Fixtures):
             c=deepcopy(rr[0]['card']);c['source_facts'][0][field]=value
             self.assertTrue(validate_card(c,s,u,method='text_llm',synthetic=True))
         c=deepcopy(rr[0]['card']);c['source_refs'][0]['section']='Imagined section'
-        self.assertIn('INVENTED_SECTION',validate_card(c,s,u,method='text_llm',synthetic=True))
+        self.assertIn('SECTION_NOT_IN_SUPPLIED_LOCATOR',validate_card(c,s,u,method='text_llm',synthetic=True))
 
     def test_ungrounded_guidance_and_features_rejected(self):
         s,u,rr=self.records();c=deepcopy(rr[0]['card'])

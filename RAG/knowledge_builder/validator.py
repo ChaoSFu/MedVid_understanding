@@ -46,7 +46,7 @@ def validate_card(card,source,unit,*,method,synthetic=False):
     for ref in card['source_refs']:
         if ref['source_id']!=source['source_id'] or not 1<=ref['page_start']<=ref['page_end']<=source['pdf_pages']:errors.append('SOURCE_REF_RANGE_INVALID');continue
         ref_pages.update(range(ref['page_start'],ref['page_end']+1))
-        if ref['section'] is not None and ref['section']!=unit['section']:errors.append('INVENTED_SECTION')
+        if ref['section'] is not None and ref['section']!=unit['section']:errors.append('SECTION_NOT_IN_SUPPLIED_LOCATOR')
     if ref_pages!=fact_pages:errors.append('SOURCE_REFS_NOT_EXACT_FACT_PAGE_COVERAGE')
     return sorted(set(errors))
 

@@ -553,7 +553,8 @@
           "knowledge_basis"
         ],
         "additionalProperties": false
-      }
+      },
+      "maxItems": 4
     },
     "omitted_content_reasons": {
       "type": "array",

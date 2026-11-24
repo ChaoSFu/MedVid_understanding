@@ -18,10 +18,17 @@ pages; they are filtered locally before any extraction request.
 
 No API was configured locally. The formal filename exists with
 `build_status=INSPECT_ONLY`, a complete source index and **zero knowledge cards**.
-All six production category counts are zero. Real API smoke and full semantic
-extraction have not been executed. Do not mistake inspect success for a finished
+All six initial production category counts are zero. No real API extraction
+was executed locally. Do not mistake inspect success for a finished
 medical corpus. The separately named mock smoke produced eight extractive
 fixtures, all flagged synthetic, and is forbidden from the formal library.
+
+Subsequent server smoke artifacts supplied by the user contained 17 pending
+cards and one truncated unit. Their file hashes, 46 PDF hashes and 51 retained
+fact quotations were checked offline; this did not medically approve the cards
+or complete the server build. Extractor/selector v0.2 below addresses bounded
+units, unnecessary guidance and nonvisual content in a new build identity.
+See the [source/engineering audit](reviews/smoke24k_review.v1.md).
 
 ## Install and run
 
@@ -67,6 +74,18 @@ Document deduplication uses identical file bytes, or matching full parsed text
 plus rendered pages. Equal text with different diagrams is reported, not skipped;
 partial-text matches never establish whole-document duplication.
 
+Selector v0.2 forms units at source page/heading/whole-paragraph boundaries.
+`--max-unit-chars 4000 --max-unit-blocks 6` sets deterministic ceilings, not
+fixed-token slicing: no sentence or paragraph is cut. Oversized individual
+paragraphs remain `OVERSIZED_SEMANTIC_BLOCK_PENDING` with lengths in the audit.
+Short headings can supply section context even when they are not factual
+paragraphs. The three five-page smoke inputs form 31 units (11/7/13 by the
+DualKnife/OpenSurgery/common-instrument sources). Inspect this before API work.
+New `extraction_unit_manifest.jsonl` records unit IDs, page/section/block
+bindings and input hashes; `unit_extraction_audit.jsonl` retains model-reported
+omissions, candidate/admission counts and failures. Neither a completed unit
+nor a successful build claims exhaustive source coverage.
+
 ## Source independence review
 
 Inspection generates `source_manifest.json`, `source_inventory.md`,
@@ -89,6 +108,14 @@ No source decision is auto-filled. A review can contain a subset of sources;
 omitted sources remain pending. This is a provenance/independence review, not
 medical approval of the later generated cards. Unreviewed sources cannot be
 sent to the real extractor.
+
+Source-independence report status is scoped to **selected extraction sources**.
+Reviewed EXCLUDE is resolved, not pending. Other discovered PDFs are explicitly
+deferred, with file-bound review declarations kept separate from validated
+admission. Their unparsed titles/body content are not implicitly approved.
+A quarantined deferred source remains visible without falsely blocking reviewed
+selected sources. A selected unreviewed source still blocks a successful build;
+an entirely excluded/empty scope returns `NO_ADMISSIBLE_SOURCE_UNITS` (exit 2).
 
 The mixed OpenSurgicalVision document is quarantined by default because it
 contains project-specific CVAT/mask material. Any attempted admission requires
@@ -146,7 +173,7 @@ python -m RAG.knowledge_builder.build --mode build \
   --include-file common_surgical_instruments_module.pdf \
   --include-file DualKnife_J_Professor_Naohisa_Yahagi.pdf \
   --include-file OpenSurgery_pdfs/003_handling-of-surgical-instruments.pdf \
-  --max-pages 5 --max-api-calls 32 \
+  --max-pages 5 --max-unit-chars 4000 --max-unit-blocks 6 --max-api-calls 96 \
   --output "$SMOKE_OUT/relive_surgical_visual_knowledge_v0.1.json" --verbose
 
 # No API calls: reopen the real files, verify hashes/pages and literal quotes.
@@ -199,11 +226,14 @@ are retained; HTTP error bodies/headers and credentials are not logged.
 
 `LLM_MAX_OUTPUT_TOKENS` configures the positive integer output ceiling (default
 6,000); it is included in request/cache/build identity and cost reservation.
-The Qwen4 smoke's six failed responses all reached 6,000 completion tokens and
-ended inside JSON. For a new bounded smoke, explicitly set 24,000 and keep the
-same prompts, source selection and validation rules. This raises the per-request
-token ceiling fourfold, not a guarantee of completion or an instruction to fill
-the allowance. Do not overwrite or resume a completed failed build.
+The historical Qwen4 smoke's six failed responses all reached 6,000 completion
+tokens and ended inside JSON. A second smoke at 24,000 retained 17 cards but
+still truncated a multi-page unit. Keep 24,000 for the v0.2 bounded-unit smoke;
+do not automatically increase it again. This is a per-request ceiling, not a
+guarantee of completion or an instruction to fill the allowance. The new 31-unit
+smoke uses 31--62 ordinary API calls (empty extractions omit consistency calls),
+with a ceiling of 96 including retries; costs and calls may differ from v0.1.
+Do not overwrite or resume a completed historical build.
 
 Adapter v0.2 records the allowlisted provider `finish_reason`, request identity,
 output ceiling and JSON syntax location/schema path. `finish_reason=length`
@@ -244,6 +274,23 @@ consistency. Unsupported/uncertain findings are withheld in
 `excluded_knowledge.jsonl`. **Neither exact quotation nor a second LLM check proves
 medical correctness or semantic entailment.** All surviving cards remain pending;
 there is no approved/default trusted retrieval collection or retrieval API.
+
+Extractor v0.2 admits at most four compact cards per unit. It explicitly permits
+empty guidance/comparator arrays, asks for minimal exact facts and prohibits
+filling gaps with generic clinical rules. A separate source-consistency pass
+now also requires `visual_relevance=VISUAL_EVIDENCE_RELEVANT`; `NONVISUAL` and
+`UNCERTAIN` are withheld with reasons, even when the wording is source-consistent.
+This prevents institution eligibility/power policy from being mistaken for
+visual evidence criteria, while preserving relevant observable safety cues.
+No rejected core facts are automatically salvaged by deleting bad guidance.
+`rejection_reason_counts` distinguishes screening and deterministic checks.
+
+Section mismatch is now `SECTION_NOT_IN_SUPPLIED_LOCATOR`. A title can exist
+in the PDF without being the supplied unit's section; four such historical
+rejections were incorrectly named `INVENTED_SECTION`. Their old records stay
+unchanged. New prompts require the exact supplied section or null, and the
+locator check remains strict. Response schema/prompt/unit identities change;
+old LLM cache results cannot stand in for the new extraction and relevance pass.
 Future consumers must implement their own medical-review admission.
 
 Normalization preserves model variants, facts and source references. Exact

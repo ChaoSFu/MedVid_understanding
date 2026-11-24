@@ -36,3 +36,33 @@ def apply_review(source,review):
             'source_review':review,'source_review_sha256':stable_hash(review),
             'source_audit':{**source['source_audit'],'extraction_allowed':decision=='INCLUDE',
                             'status':'REVIEWED_INCLUDE' if decision=='INCLUDE' else 'REVIEWED_EXCLUDE' if decision=='EXCLUDE' else 'INDEPENDENCE_REVIEW_REQUIRED'}}
+
+
+def summarize_source_scope(sources,reviews):
+    """Admission is about selected sources, not all discovered/excluded PDFs.
+
+    Deferred review declarations are file-bound inventory only. Their titles
+    and body content have not been checked in this invocation, and they never
+    authorize extraction. Selected sources still pass apply_review in full.
+    """
+    selected=[s for s in sources if s['selected_for_processing']]
+    pending=[s for s in selected if s['source_audit']['status'] not in ('REVIEWED_INCLUDE','REVIEWED_EXCLUDE')]
+    flagged=[];deferred=[]
+    for s in sources:
+        if s['source_audit']['risk_terms']:
+            flagged.append({'file_path':s['file_path'],'selected_for_processing':s['selected_for_processing'],
+                            'processing_status':s['processing_status'],'findings':s['source_audit']})
+        if not s['selected_for_processing']:
+            r=reviews.get(s['source_id'],{})
+            bound=set(r)==SOURCE_REVIEW_KEYS and all(r[k]==s[k] for k in ('source_id','file_path','sha256'))
+            deferred.append({'source_id':s['source_id'],'file_path':s['file_path'],
+                             'declared_review_decision':r.get('decision') if bound else None,
+                             'review_validation':'FILE_BOUND_TITLE_AND_BODY_DEFERRED' if bound else 'UNVALIDATED_OR_ABSENT',
+                             'extraction_allowed':False})
+    return {'status':'SOURCE_REVIEW_REQUIRED' if pending else 'REVIEWED_SOURCES_ONLY',
+            'status_scope':'SELECTED_EXTRACTION_SOURCES_NOT_MEDICAL_OR_RIGHTS_APPROVAL',
+            'selected_source_count':len(selected),
+            'selected_reviewed_include':[s['source_id'] for s in selected if s['source_audit']['status']=='REVIEWED_INCLUDE'],
+            'selected_reviewed_exclude':[s['source_id'] for s in selected if s['source_audit']['status']=='REVIEWED_EXCLUDE'],
+            'selected_review_pending':[s['source_id'] for s in pending],
+            'deferred_sources':deferred,'flagged_sources':flagged,'runtime_dataset_or_answers_read':False}
