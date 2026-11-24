@@ -29,6 +29,11 @@ fact quotations were checked offline; this did not medically approve the cards
 or complete the server build. Extractor/selector v0.2 below addresses bounded
 units, unnecessary guidance and nonvisual content in a new build identity.
 See the [source/engineering audit](reviews/smoke24k_review.v1.md).
+The subsequent v0.2 server smoke completed all 31 units without technical
+failures and retained 47 pending cards. An offline [content review](reviews/smoke_v02_content_review.v1.md)
+verified 92 fact-quote entries and preserves a 17-entry priority queue; it is
+not medical approval. A full-source API-free inspection now plans 1,451 model
+units after explicit exclusion/deduplication. No full semantic build ran locally.
 
 ## Install and run
 
@@ -204,6 +209,21 @@ retries and capability fallbacks. Source-consistency checks add a second logical
 request for each nonempty extraction unit. A full run may need a different budget
 after inspecting candidate-unit counts; do not interpret 2,000 as a guaranteed
 complete/exhaustive extraction. No API call occurs in inspect/mock/validate.
+
+For the current 46-PDF snapshot, the [full-source readiness audit](reviews/full_text_readiness.v021.json)
+plans 1,451 model units (1,451--2,902 calls before cache/retries). The historical
+2,000-call example can stop early; a deliberate 3,500-call ceiling provides
+bounded headroom but still does not guarantee completion. Use a new output
+directory and preserve the existing cache. All generated cards remain pending.
+
+Selector v0.2.1 tracks standalone References/Bibliography headings into citation
+continuations, and resumes at a new section or ambiguous medical prose rather
+than dropping the following chapter. A publisher block starting with
+“Bibliography / DOI / ISSN” is not a section boundary. These decisions are
+recorded as `BIBLIOGRAPHY_SECTION_START` / `BIBLIOGRAPHY_CONTINUATION`. Whole-unit
+IDs remain content-addressed under their existing format: the 31 smoke units,
+prompts/schemas and provider requests are unchanged and safely cache-reusable.
+Build identity still records the new selector/code, so old outputs are immutable.
 
 ## Optional vision and cost control
 

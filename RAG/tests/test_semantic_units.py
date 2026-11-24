@@ -51,6 +51,54 @@ class SemanticUnitTests(unittest.TestCase):
         self.assertNotIn('CVAT',json.dumps(units))
         self.assertTrue(any(r['reason']=='BENCHMARK_SPECIFIC_BLOCK' for r in audit))
 
+    def test_bibliography_continues_across_pages_before_size_or_topic_filter(self):
+        refs='Surgical instrument paper. DOI: fixture. '*150
+        pages=[self.page(1,[SENTENCE,'REFERENCES'],headings=['REFERENCES']),self.page(2,[refs])]
+        units,audit=select(self.source(),{'pages':pages},max_input_chars=200)
+        self.assertEqual(len(units),1);self.assertEqual(units[0]['blocks'][0]['text'],SENTENCE)
+        self.assertTrue(any(r['reason']=='BIBLIOGRAPHY_CONTINUATION' and r['page']==2 for r in audit))
+        self.assertFalse(any(r['reason']=='OVERSIZED_SEMANTIC_BLOCK_PENDING' for r in audit))
+
+    def test_next_explicit_section_resumes_medical_content_after_bibliography(self):
+        pages=[self.page(1,['Bibliography'],headings=['Bibliography']),
+               self.page(2,['Surgical instrument reference. DOI: fixture.']),
+               self.page(3,['Surgical Instruments',SENTENCE],headings=['Surgical Instruments'])]
+        units,_=select(self.source(),{'pages':pages})
+        self.assertEqual(len(units),1);self.assertEqual(units[0]['pages'],[3])
+        self.assertEqual(units[0]['section'],'Surgical Instruments')
+
+    def test_reference_word_in_medical_paragraph_does_not_start_bibliography(self):
+        text='The surgical instrument has references engraved on its shaft for visual alignment.'
+        units,audit=select(self.source(),{'pages':[self.page(1,[text])]})
+        self.assertEqual(units[0]['blocks'][0]['text'],text)
+        self.assertFalse(any(r['reason']=='BIBLIOGRAPHY_SECTION_START' for r in audit))
+
+    def test_bibliography_publisher_metadata_does_not_suppress_next_page(self):
+        metadata='Bibliography\nSurgical Journal\nDOI 10.fixture/article\nISSN 1234-5678'
+        pages=[self.page(1,[metadata]),self.page(2,[SENTENCE])]
+        units,_=select(self.source(),{'pages':pages})
+        self.assertEqual(len(units),1);self.assertEqual(units[0]['pages'],[2])
+
+    def test_undetected_small_font_medical_section_resumes_after_references(self):
+        pages=[self.page(1,['REFERENCES','Surgical instrument journal. DOI: fixture.'],headings=['REFERENCES']),
+               self.page(2,[SENTENCE])]
+        units,_=select(self.source(),{'pages':pages})
+        self.assertEqual(len(units),1);self.assertEqual(units[0]['blocks'][0]['text'],SENTENCE)
+
+    def test_split_reference_titles_do_not_reopen_a_citation_dense_page(self):
+        pages=[self.page(1,['REFERENCES'],headings=['REFERENCES']),self.page(2,[
+            'Surgical instrument title that looks relevant but is only a cited article.',
+            'Example Journal 2020; 10: 20-30 DOI fixture PMID 12345'])]
+        units,audit=select(self.source(),{'pages':pages})
+        self.assertEqual(units,[])
+        self.assertTrue(any(r.get('page_citation_signal_count',0)>=3 for r in audit))
+
+    def test_explicit_medical_heading_resumes_even_with_later_citations(self):
+        pages=[self.page(1,['REFERENCES'],headings=['REFERENCES']),self.page(2,[
+            'Surgical Instruments',SENTENCE,'Example Journal 2020; 10: 20-30 DOI fixture PMID 12345'],headings=['Surgical Instruments'])]
+        units,_=select(self.source(),{'pages':pages})
+        self.assertTrue(any(b['text']==SENTENCE for u in units for b in u['blocks']))
+
     def test_oversized_paragraph_is_pending_never_sliced(self):
         text=SENTENCE*10
         units,audit=select(self.source(),{'pages':[self.page(1,[text])]},max_input_chars=150)

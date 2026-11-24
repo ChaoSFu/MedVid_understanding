@@ -231,12 +231,64 @@ deferred，不代表已处理或已获医学/许可批准。
 ## 6. 审查 smoke 后，后台执行全量文本抽取
 
 在已完成来源审核且 smoke 可接受后执行。默认不启用视觉 API。
+当前 v0.2 smoke 的 47 条卡片仍待医学审核；允许继续生成全量 pending 语料，
+不等于允许可信检索或临床使用。优先复核队列在
+`RAG/reviews/smoke_v02_priority_review_queue.v1.jsonl`，其中 decision/reviewer/rationale
+保持待填写；旧的 4 条词级疑似冲突继续隔离，不自动恢复。
+
+Selector v0.2.1 修复跨页参考文献过滤。全量无 API 预检得到 46 份、2,136 页，
+45 INCLUDE、1 EXCLUDE；1,451 个可执行模型单元、0 个超长待处理块。一次提取加
+非空结果的一致性校验需要至多 2,902 次请求，尚未扣除缓存命中和空结果；重试
+可能增加次数。因此下面使用明确的 3,500 次硬预算，不保证一定完成，不自动加额。
+未配置价格时费用仍为 null；这不是零费用实验。
+
+终端重新打开后，先 activate 环境、cd 到仓库根目录并 source 已有 `RAG/.env`。
+保留 smoke 输出，创建全新的 full run；沿用同一 cache：
+
+```bash
+set -a
+source RAG/.env
+set +a
+export LLM_TEXT_MODEL=qwen4-max
+export LLM_ENABLE_THINKING=false
+export LLM_MAX_OUTPUT_TOKENS=24000
+export LLM_TIMEOUT=300
+export ENABLE_VISION_EXTRACTION=false
+
+export PDF_ROOT="$PWD/RAG/references"
+export CACHE_ROOT="$PWD/RAG/cache"
+export SOURCE_REVIEW="$PWD/RAG/reviews/source_review.assistant_screened.v1.jsonl"
+export RAG_RUN="$PWD/RAG/output/server_full_text_v021_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$RAG_RUN"
+printf 'export RAG_RUN=%q\n' "$RAG_RUN" > "$RAG_RUN/server_variables.sh"
+
+python -m RAG.knowledge_builder.build --mode inspect \
+  --input-dir "$PDF_ROOT" --cache-dir "$CACHE_ROOT" \
+  --source-review "$SOURCE_REVIEW" --max-unit-chars 4000 --max-unit-blocks 6 \
+  --output "$RAG_RUN/inspection/relive_surgical_visual_knowledge_v0.1.json"
+
+python - "$RAG_RUN/inspection/quality_report.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+assert r['benchmark_independence']['status'] == 'REVIEWED_SOURCES_ONLY'
+assert not r['failed_files'] and not r['page_failures'] and not r['discovery_errors']
+assert r['unit_counts']['oversized_blocks_pending'] == 0
+n = r['unit_counts']['planned_model_units']
+assert n > 0 and 2 * n <= 3500, 'Review call budget against the new source scope'
+print('PASS: planned model units =', n, '; non-retry call ceiling =', 2 * n)
+PY
+```
+
+只有上述预检成功后才启动后台抽取。当前 smoke 的 31 个输入及请求 Schema/
+prompt/模型设置未变；对应成功 cache 可继续复用，不必为参考文献过滤重做 smoke。
+完整 PDF 解析可能改变局部页眉/页脚清理或单元输入，只有身份完全相同的请求才命中。
 
 ```bash
 nohup bash -c '
   python -u -m RAG.knowledge_builder.build --mode build \
     --input-dir "$PDF_ROOT" --cache-dir "$CACHE_ROOT" \
-    --source-review "$SOURCE_REVIEW" --max-api-calls 2000 \
+    --source-review "$SOURCE_REVIEW" --max-unit-chars 4000 --max-unit-blocks 6 \
+    --max-api-calls 3500 \
     --output "$RAG_RUN/full/relive_surgical_visual_knowledge_v0.1.json" \
     --verbose
   code=$?
@@ -259,7 +311,7 @@ else
 fi
 ```
 
-2,000 是调用预算，可能不足以处理全部候选章节；检查最终 coverage、跳过来源、
+3,500 是调用预算，仍可能不足以处理全部候选章节；检查最终 coverage、跳过来源、
 失败列表和 budget stop，不能只看进程结束。若预算或失败结果已经封存，需要新输出
 目录、同一 cache 继续；不要覆盖已封存报告。若进程中途被打断且尚未封存，使用相同
 命令、相同输出与参数并加 `--resume`。已完成结果的 --resume 仅校验复用，不重新抽取。
