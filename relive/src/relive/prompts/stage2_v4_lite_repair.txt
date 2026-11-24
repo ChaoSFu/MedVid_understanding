@@ -1,0 +1,5 @@
+Repair only the explicitly localized structural defects or high-risk propositions in this unverified hypothesis graph.
+Use the original question and unchanged requirements; neither provides visual truth. No images, reference answers, GT, old-version claims, or verification outcomes are available.
+Return one transactional patch, not a new generation. Preserve unaffected text and IDs. Explain each operation, and explicitly update dependencies affected by deletions, splits or merges. Do not turn related events into necessary dependencies or mutually exclusive alternatives.
+Use KEEP / SPLIT / MERGE / DROP / DEMOTE_TO_SLOT / FIX_EDGE / FIX_TYPE. Unknown content should become a slot, never an invented visual fact. A root-level replacement is exceptional and must explain why no local patch can work.
+UNVERIFIED is normal and is not a defect. Do not declare any hypothesis true, medically approved or verified. This is the only repair attempt; unresolved risks must remain visible.

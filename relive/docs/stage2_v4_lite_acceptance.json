@@ -1,0 +1,64 @@
+{
+  "format": "relive-stage2-v4-lite-engineering-acceptance-v1",
+  "engineering_status": "PASS",
+  "real_smoke_status": "NOT_RUN_MODEL_UNAVAILABLE",
+  "environment": {
+    "torch_installed": false,
+    "real_new_model_calls": 0
+  },
+  "tests": {
+    "targeted_passed": 56,
+    "full_suite_passed": 691,
+    "shell_syntax": "PASS",
+    "html_22_cases": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "immutable_baseline": {
+    "raw_candidates": 85,
+    "retained": 73,
+    "rejected": 12,
+    "unchanged": true
+  },
+  "freeze": {
+    "sample_count": 22,
+    "requirement_count": 100,
+    "requirements_sha256": "b406d7ec7e44d92ce57050db7a5965a21a5e0c307df9d80a2a3e96d2c8c835da",
+    "stage1_independently_checked_locally": false,
+    "pilot_closure_tag_commit": "66559522c91319eb93519fb8345d046176f41fdb"
+  },
+  "mock_only": {
+    "synthetic_test": true,
+    "B_raw_candidates": 18,
+    "B_states": {
+      "ACCEPTED_STRUCTURAL": 14,
+      "REVIEW_REQUIRED": 4
+    },
+    "B_simulated_calls": 22,
+    "C_simulated_repair_calls": 4,
+    "C_retained": 14,
+    "repair_operations": {
+      "DEMOTE_TO_SLOT": 4
+    },
+    "B_C_shared_generation": true,
+    "replay": {
+      "cache_hits": 26,
+      "exact_result_comparison": "PASS",
+      "new_model_calls": 0,
+      "offline": false,
+      "resumed_checkpoint_count": 0,
+      "status": "PASS"
+    }
+  },
+  "semantic_quality": "NOT_REVIEWED",
+  "image_reads": 0,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "implementation_sha256": "9b5ca028cf00c9a56f9be6690115853d632bf45c38bc1a80eea0e54161fa1012",
+  "local_reports": "outputs/stage2_v4_lite_acceptance_20261124_final/C/",
+  "limitations": [
+    "No real B/C model experiment or real token/latency comparison performed.",
+    "Mock demotions are data-flow tests, not measured semantic improvements.",
+    "Local references match the baseline but do not replace independent original Stage-1 bank binding.",
+    "Semantic and spatial admission require later human review; no contracts or certificates published."
+  ]
+}

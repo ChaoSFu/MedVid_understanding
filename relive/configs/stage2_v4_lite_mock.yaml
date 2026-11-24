@@ -1,0 +1,9 @@
+framework_version: ReliVE-v1
+backend:
+  kind: mock
+  model: stage2-v4-lite-test-only
+  max_retries: 0
+policy:
+  name: semantic_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
