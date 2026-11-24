@@ -5,6 +5,7 @@ policy settings. This standalone corpus adapter also needs usage, structured
 output negotiation and independent cost budgets, so it has no runtime imports.
 """
 from dataclasses import dataclass
+from collections import Counter
 import base64
 import json
 import os
@@ -13,12 +14,13 @@ import threading
 import time
 from urllib import request,error
 from urllib.parse import urlsplit
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator,ValidationError
 from .common import stable_hash,read_json,write_json,strict_loads
 
 
 class ProviderError(ValueError):pass
 class BudgetStop(ProviderError):pass
+ADAPTER_VERSION='corpus-api-v0.2'
 class NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
@@ -49,6 +51,8 @@ class Config:
         thinking=e.get('LLM_ENABLE_THINKING','').strip().lower()
         if thinking not in ('','true','false'):raise ProviderError('LLM_ENABLE_THINKING_INVALID')
         values['enable_thinking']=None if not thinking else thinking=='true'
+        try:values['max_output_tokens']=int(e.get('LLM_MAX_OUTPUT_TOKENS') or '6000')
+        except ValueError:raise ProviderError('LLM_MAX_OUTPUT_TOKENS_INVALID') from None
         for k,env in [('input_usd_per_million','LLM_INPUT_USD_PER_MILLION'),('output_usd_per_million','LLM_OUTPUT_USD_PER_MILLION')]:
             values[k]=float(e[env]) if e.get(env) else None
         values.update({k:v for k,v in overrides.items() if v is not None});return cls(**values)
@@ -68,11 +72,12 @@ class Provider:
         if config.max_concurrency<1 or config.max_retries<0 or config.requests_per_minute<=0 or config.timeout<=0:raise ProviderError('LLM_LIMITS_INVALID')
         if config.response_format not in ('auto','json_schema','json_object','prompt'):raise ProviderError('LLM_RESPONSE_FORMAT_INVALID')
         if config.enable_thinking is not None and type(config.enable_thinking) is not bool:raise ProviderError('LLM_ENABLE_THINKING_INVALID')
+        if type(config.max_output_tokens) is not int or config.max_output_tokens<1:raise ProviderError('LLM_MAX_OUTPUT_TOKENS_INVALID')
         if max_cost_usd is not None and (config.input_usd_per_million is None or config.output_usd_per_million is None):raise ProviderError('COST_BUDGET_REQUIRES_EXPLICIT_PRICE_RATES')
         if any(v is not None and v<0 for v in (max_cost_usd,config.input_usd_per_million,config.output_usd_per_million)):raise ProviderError('NEGATIVE_COST_INVALID')
         self.lock=threading.Lock();self.semaphore=threading.Semaphore(config.max_concurrency);self.next_start=0
         self.calls=0;self.hits=0;self.input_tokens=0;self.output_tokens=0;self.unknown_usage_calls=0;self.reserved_cost=0.;self.cost=0.;self.latency=0.
-        self.capabilities={};self.events=[]
+        self.capabilities={};self.events=[];self.failure_counts=Counter()
 
     def snapshot(self):
         return {'new_api_calls':self.calls,'cache_hits':self.hits,'input_tokens':self.input_tokens,'output_tokens':self.output_tokens,
@@ -80,7 +85,8 @@ class Provider:
                 'estimated_cost_usd':self.cost if self.unknown_usage_calls==0 and self.config.input_usd_per_million is not None and self.config.output_usd_per_million is not None else None,
                 'known_usage_estimated_cost_usd':self.cost if self.config.input_usd_per_million is not None and self.config.output_usd_per_million is not None else None,
                 'pricing_source':'USER_CONFIGURED_RATES_NOT_PROVIDER_BILLING','reserved_cost_upper_bound_usd':self.reserved_cost,
-                'max_api_calls':self.max_calls,'max_cost_usd':self.max_cost,'capabilities':self.capabilities}
+                'max_api_calls':self.max_calls,'max_cost_usd':self.max_cost,'capabilities':self.capabilities,
+                'attempt_failure_reason_counts':dict(sorted(self.failure_counts.items()))}
 
     def _admit(self,prompt,image):
         if image and self.max_cost is not None:raise BudgetStop('VISION_COST_UPPER_BOUND_UNAVAILABLE')
@@ -114,7 +120,7 @@ class Provider:
         model=self.config.vision_model if image else self.config.text_model
         if not model:raise ProviderError('VISION_MODEL_UNCONFIGURED')
         key=stable_hash({'provider_config':self.config.public(),'model':model,'identity':identity,'prompt':prompt,
-                         'schema':schema,'image_sha256':stable_hash(base64.b64encode(image).decode()) if image else None,'adapter':'corpus-api-v0.1'})
+                         'schema':schema,'image_sha256':stable_hash(base64.b64encode(image).decode()) if image else None,'adapter':ADAPTER_VERSION})
         cached=self.cache/'llm'/key/'success.json'
         if cached.exists():
             result=read_json(cached)
@@ -133,21 +139,45 @@ class Provider:
             elif response_mode=='json_object':payload['response_format']={'type':'json_object'}
             with self.semaphore:
                 self._admit(prompt+json.dumps(schema),image);start=time.monotonic();envelope,err=self._send(payload);elapsed=time.monotonic()-start
-            raw=None;value=None;usage=envelope.get('usage',{}) if isinstance(envelope,dict) else {}
+            raw=None;value=None;finish_reason=None;validation_error=None;truncation_evidence=None
+            usage=envelope.get('usage',{}) if isinstance(envelope,dict) else {}
             usage={k:v for k,v in usage.items() if k in ('prompt_tokens','completion_tokens','total_tokens') and type(v) is int and v>=0} if isinstance(usage,dict) else {}
             try:
                 if err:raise ValueError(err)
-                raw=envelope['choices'][0]['message']['content']
-                if not isinstance(raw,str):raise ValueError('NON_TEXT_COMPLETION')
+                choice=envelope['choices'][0];raw=choice['message']['content']
+                finish_reason=choice.get('finish_reason')
+                if finish_reason not in (None,'stop','length','content_filter','tool_calls','function_call'):finish_reason='OTHER'
                 secret=os.environ.get(self.config.credential_env)
-                if secret and secret in raw:
+                if isinstance(raw,str) and secret and secret in raw:
                     raw=raw.replace(secret,'[REDACTED_CREDENTIAL]');err='CREDENTIAL_ECHO_REDACTED'
                     raise ValueError(err)
-                value=strict_loads(raw);Draft202012Validator(schema).validate(value)
+                if finish_reason=='length':
+                    err='MODEL_OUTPUT_TRUNCATED';truncation_evidence='PROVIDER_FINISH_REASON_LENGTH'
+                    raise ValueError(err)
+                if finish_reason not in (None,'stop'):
+                    err='MODEL_RESPONSE_NOT_COMPLETED';raise ValueError(err)
+                if not isinstance(raw,str):
+                    err='NON_TEXT_COMPLETION';raise ValueError(err)
+                try:value=strict_loads(raw)
+                except json.JSONDecodeError as exc:
+                    validation_error={'kind':'JSON_SYNTAX','line':exc.lineno,'column':exc.colno,'position':exc.pos}
+                    err='MODEL_JSON_INVALID'
+                    if usage.get('completion_tokens',0)>=self.config.max_output_tokens:
+                        err='MODEL_OUTPUT_TRUNCATED';truncation_evidence='INVALID_JSON_AT_TOKEN_LIMIT'
+                    raise
+                except ValueError:
+                    validation_error={'kind':'STRICT_JSON_CONSTRAINT'};err='MODEL_JSON_INVALID';raise
+                try:Draft202012Validator(schema).validate(value)
+                except ValidationError as exc:
+                    # Paths and validator names aid diagnosis without copying
+                    # instance values or a full provider error into logs.
+                    validation_error={'kind':'JSON_SCHEMA','path':list(exc.absolute_path),'validator':exc.validator}
+                    err='MODEL_SCHEMA_INVALID';raise
             except Exception:
                 last=err or 'MODEL_JSON_OR_SCHEMA_INVALID'
             else:last=None
             with self.lock:
+                if last:self.failure_counts[last]+=1
                 self.latency+=elapsed
                 if type(usage.get('prompt_tokens')) is int and type(usage.get('completion_tokens')) is int:
                     self.input_tokens+=usage['prompt_tokens'];self.output_tokens+=usage['completion_tokens']
@@ -155,10 +185,13 @@ class Provider:
                         self.cost+=(usage['prompt_tokens']*self.config.input_usd_per_million+usage['completion_tokens']*self.config.output_usd_per_million)/1e6
                 else:self.unknown_usage_calls+=1
             record={'request_key':key,'attempt':attempt,'response_mode':response_mode,'raw_response':raw,
-                    'failure_reason':last,'usage':usage,'model':model,'latency_seconds':elapsed}
+                    'failure_reason':last,'usage':usage,'model':model,'latency_seconds':elapsed,
+                    'adapter_version':ADAPTER_VERSION,'request_identity':identity,'max_output_tokens':self.config.max_output_tokens,
+                    'finish_reason':finish_reason,'validation_error':validation_error,'truncation_evidence':truncation_evidence}
             write_json(self.cache/'llm'/key/(stable_hash(record)+'.json'),record)
             if last is None:
-                result={'request_key':key,'value':value,'raw_response':raw,'model':model,'usage':usage,'response_mode':response_mode,'synthetic':False}
+                result={'request_key':key,'value':value,'raw_response':raw,'model':model,'usage':usage,'response_mode':response_mode,
+                        'finish_reason':finish_reason,'synthetic':False}
                 result['payload_hash']=stable_hash(result);write_json(cached,result)
                 with self.lock:self.capabilities[model+':'+response_mode]='ACCEPTED_AND_SCHEMA_VALIDATED'
                 return result
@@ -168,6 +201,7 @@ class Provider:
             if last=='STRUCTURED_OUTPUT_UNSUPPORTED' and len(levels)>1:
                 with self.lock:self.capabilities[model+':'+response_mode]='REJECTED_BY_SERVER'
                 levels.pop(0);response_mode=levels[0]
-            elif last not in ('HTTP_408','HTTP_429','HTTP_500','HTTP_502','HTTP_503','HTTP_504','TRANSPORT_FAILURE','MODEL_JSON_OR_SCHEMA_INVALID','RESPONSE_ENVELOPE_INVALID'):break
+            elif last not in ('HTTP_408','HTTP_429','HTTP_500','HTTP_502','HTTP_503','HTTP_504','TRANSPORT_FAILURE',
+                              'MODEL_JSON_OR_SCHEMA_INVALID','MODEL_JSON_INVALID','MODEL_SCHEMA_INVALID','RESPONSE_ENVELOPE_INVALID'):break
             if attempt<self.config.max_retries:time.sleep(min(2**attempt,8))
         raise ProviderError(last or 'EXTRACTION_FAILED')

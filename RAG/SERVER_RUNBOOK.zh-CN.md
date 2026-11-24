@@ -184,6 +184,27 @@ cat "$RAG_RUN/api_smoke/quality_report.json"
 人工核对文本、外观/运动特征、原文摘录、页码、derived guidance 和不足证据条件。
 所有卡片必须保持 pending；结构校验通过不代表医学上正确。
 
+### 已知的 6,000-token 截断 smoke
+
+若诊断显示 completion_tokens=6000 且 JSON 在字段中途结束，使用已更新的
+adapter v0.2。先固定同样三份资料、prompt/schema 和非 thinking 设置，仅显式
+提高单次输出预算，再运行新的 smoke：
+
+```bash
+export LLM_ENABLE_THINKING=false
+export LLM_MAX_OUTPUT_TOKENS=24000
+export LLM_TIMEOUT=300
+RAG_RUN="$PWD/RAG/output/server_output_budget_$(date +%Y%m%d_%H%M%S)"
+export RAG_RUN
+# 重新执行上面的三份 PDF smoke，输出到这个新的 RAG_RUN/api_smoke。
+```
+
+24,000 是单次输出上限，为旧值的四倍；API 调用上限仍为 32。不得视为已保证
+完成或免费重试。新的截断返回 MODEL_OUTPUT_TRUNCATED、保留原文，并立即停止
+该请求的相同预算重试；其他文档继续处理。若仍截断，保留失败并检查语义单元
+及卡片篇幅，再决定后续设计，不反复自动增加预算。历史 6,000-token 结果和
+cache 均保留；新的请求身份不会使用旧 adapter 的成功记录。
+
 ## 6. 审查 smoke 后，后台执行全量文本抽取
 
 在已完成来源审核且 smoke 可接受后执行。默认不启用视觉 API。

@@ -245,6 +245,79 @@ class TransportTests(unittest.TestCase):
             self.complete(p)
         self.assertEqual(p.calls,2);self.assertTrue(any('not-json' in x.read_text() for x in self.root.rglob('*.json')))
 
+    def test_output_limit_environment_payload_and_cache_binding(self):
+        with patch.dict(os.environ,{},clear=True):self.assertEqual(Config.environment().max_output_tokens,6000)
+        with patch.dict(os.environ,{'LLM_MAX_OUTPUT_TOKENS':'24000'}):self.assertEqual(Config.environment().max_output_tokens,24000)
+        with patch.dict(os.environ,{'LLM_MAX_OUTPUT_TOKENS':'invalid'}):
+            with self.assertRaisesRegex(ProviderError,'LLM_MAX_OUTPUT_TOKENS_INVALID'):Config.environment()
+        keys=[]
+        for limit in (6000,24000):
+            self.cfg.max_output_tokens=limit;p=self.provider()
+            with patch.object(p,'_send',return_value=(self.envelope('{"value":"ok"}'),None)) as send:
+                result=self.complete(p)
+            keys.append(result['request_key']);self.assertEqual(send.call_args.args[0]['max_tokens'],limit)
+        self.assertEqual(len(set(keys)),2)
+        for invalid in (0,-1,False,1.5,'24000'):
+            self.cfg.max_output_tokens=invalid
+            with self.assertRaisesRegex(ProviderError,'LLM_MAX_OUTPUT_TOKENS_INVALID'):self.provider()
+
+    def test_length_finish_is_terminal_even_if_json_looks_complete(self):
+        for raw in ('{"value":"ok"}','{"value":"partial'):
+            with self.subTest(raw=raw),tempfile.TemporaryDirectory() as d:
+                p=Provider(self.cfg,d);env=self.envelope(raw);env['choices'][0]['finish_reason']='length'
+                with patch.object(p,'_send',return_value=(env,None)) as send,patch('time.sleep') as sleep:
+                    with self.assertRaisesRegex(ProviderError,'MODEL_OUTPUT_TRUNCATED'):self.complete(p)
+                self.assertEqual(send.call_count,1);sleep.assert_not_called()
+                self.assertFalse(list(Path(d).rglob('success.json')))
+                record=read_json(next(Path(d).rglob('*.json')))
+                self.assertEqual(record['finish_reason'],'length')
+                self.assertEqual(record['truncation_evidence'],'PROVIDER_FINISH_REASON_LENGTH')
+
+    def test_invalid_json_at_limit_without_finish_reason_stops_once(self):
+        p=self.provider();env=self.envelope('{"value":"partial')
+        env['usage']['completion_tokens']=self.cfg.max_output_tokens
+        with patch.object(p,'_send',return_value=(env,None)) as send:
+            with self.assertRaisesRegex(ProviderError,'MODEL_OUTPUT_TRUNCATED'):self.complete(p)
+        self.assertEqual(send.call_count,1)
+        record=read_json(next(self.root.rglob('*.json')))
+        self.assertEqual(record['truncation_evidence'],'INVALID_JSON_AT_TOKEN_LIMIT')
+        self.assertEqual(record['validation_error']['kind'],'JSON_SYNTAX')
+        self.assertEqual(record['request_identity']['pages'],[1])
+        self.assertEqual(p.snapshot()['attempt_failure_reason_counts'],{'MODEL_OUTPUT_TRUNCATED':1})
+
+    def test_complete_json_at_limit_stop_is_valid_and_replay_is_zero_calls(self):
+        p=self.provider();env=self.envelope('{"value":"ok"}')
+        env['choices'][0]['finish_reason']='stop';env['usage']['completion_tokens']=6000
+        with patch.object(p,'_send',return_value=(env,None)):result=self.complete(p)
+        self.assertEqual(result['finish_reason'],'stop')
+        replay=self.provider()
+        with patch.object(replay,'_send',side_effect=AssertionError('NETWORK')):self.assertEqual(self.complete(replay),result)
+        self.assertEqual(replay.calls,0);self.assertEqual(replay.hits,1)
+
+    def test_schema_error_has_path_and_bounded_retry(self):
+        p=self.provider()
+        with patch.object(p,'_send',side_effect=[(self.envelope('{"value":123}'),None),
+                                              (self.envelope('{"value":"ok"}'),None)]),patch('time.sleep'):
+            self.complete(p)
+        attempts=[read_json(x) for x in self.root.rglob('*.json') if x.name!='success.json']
+        invalid=next(r for r in attempts if r['failure_reason'])
+        self.assertEqual(invalid['failure_reason'],'MODEL_SCHEMA_INVALID')
+        self.assertEqual(invalid['validation_error'],{'kind':'JSON_SCHEMA','path':['value'],'validator':'type'})
+        self.assertEqual(p.calls,2)
+
+    def test_filtered_response_is_terminal_and_never_cached_as_success(self):
+        p=self.provider();env=self.envelope('{"value":"ok"}');env['choices'][0]['finish_reason']='content_filter'
+        with patch.object(p,'_send',return_value=(env,None)) as send:
+            with self.assertRaisesRegex(ProviderError,'MODEL_RESPONSE_NOT_COMPLETED'):self.complete(p)
+        self.assertEqual(send.call_count,1);self.assertFalse(list(self.root.rglob('success.json')))
+
+    def test_output_limit_is_in_cost_reservation(self):
+        self.cfg.max_output_tokens=24000;self.cfg.input_usd_per_million=0;self.cfg.output_usd_per_million=1
+        p=self.provider(max_cost_usd=0.01)
+        with patch.object(p,'_send',side_effect=AssertionError('NETWORK')):
+            with self.assertRaises(BudgetStop):self.complete(p)
+        self.assertEqual(p.calls,0)
+
     def test_cache_replay_zero_network_and_identity_changes(self):
         p=self.provider()
         with patch.object(p,'_send',return_value=(self.envelope('{"value":"ok"}'),None)):a=self.complete(p)

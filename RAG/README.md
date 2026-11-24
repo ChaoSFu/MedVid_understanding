@@ -197,6 +197,27 @@ errors**, always followed by local JSON Schema validation. Unsupported vision
 fails explicitly, with no text-only impersonation. Failed raw model responses
 are retained; HTTP error bodies/headers and credentials are not logged.
 
+`LLM_MAX_OUTPUT_TOKENS` configures the positive integer output ceiling (default
+6,000); it is included in request/cache/build identity and cost reservation.
+The Qwen4 smoke's six failed responses all reached 6,000 completion tokens and
+ended inside JSON. For a new bounded smoke, explicitly set 24,000 and keep the
+same prompts, source selection and validation rules. This raises the per-request
+token ceiling fourfold, not a guarantee of completion or an instruction to fill
+the allowance. Do not overwrite or resume a completed failed build.
+
+Adapter v0.2 records the allowlisted provider `finish_reason`, request identity,
+output ceiling and JSON syntax location/schema path. `finish_reason=length`
+is rejected as `MODEL_OUTPUT_TRUNCATED` even if the prefix parses. Invalid JSON
+at the token ceiling without a finish reason is conservatively classified the
+same way, with `truncation_evidence=INVALID_JSON_AT_TOKEN_LIMIT`. Such a response
+is retained and stops that request after one attempt; no identical-limit retry,
+partial-card salvage or automatic budget escalation occurs. Ordinary JSON and
+schema errors retain bounded retries and distinct reasons. Old response records
+did not capture termination evidence; their absence is not retrospectively
+filled in. New parser admission uses a new cache namespace; old cache stays
+untouched. `attempt_failure_reason_counts` includes failed attempts even when a
+later attempt recovers. Existing exact-quote and source-consistency checks apply.
+
 `--max-cost-usd` requires explicit input/output token rates. It reserves a
 conservative text-token allowance before each request. This is an estimated
 guard for a compliant provider, not an independent billing guarantee. When any
