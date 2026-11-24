@@ -35,6 +35,7 @@ class Config:
     requests_per_minute:float=20
     response_format:str='auto'
     max_output_tokens:int=6000
+    enable_thinking:bool|None=None
     input_usd_per_million:float|None=None
     output_usd_per_million:float|None=None
 
@@ -45,6 +46,9 @@ class Config:
                 'vision_model':e.get('LLM_VISION_MODEL',''),'timeout':float(e.get('LLM_TIMEOUT','120')),
                 'max_retries':int(e.get('LLM_MAX_RETRIES','3')),'max_concurrency':int(e.get('LLM_MAX_CONCURRENCY','3')),
                 'requests_per_minute':float(e.get('LLM_REQUESTS_PER_MINUTE','20')),'response_format':e.get('LLM_RESPONSE_FORMAT','auto')}
+        thinking=e.get('LLM_ENABLE_THINKING','').strip().lower()
+        if thinking not in ('','true','false'):raise ProviderError('LLM_ENABLE_THINKING_INVALID')
+        values['enable_thinking']=None if not thinking else thinking=='true'
         for k,env in [('input_usd_per_million','LLM_INPUT_USD_PER_MILLION'),('output_usd_per_million','LLM_OUTPUT_USD_PER_MILLION')]:
             values[k]=float(e[env]) if e.get(env) else None
         values.update({k:v for k,v in overrides.items() if v is not None});return cls(**values)
@@ -63,6 +67,7 @@ class Provider:
         if not config.text_model:raise ProviderError('LLM_TEXT_MODEL_MISSING')
         if config.max_concurrency<1 or config.max_retries<0 or config.requests_per_minute<=0 or config.timeout<=0:raise ProviderError('LLM_LIMITS_INVALID')
         if config.response_format not in ('auto','json_schema','json_object','prompt'):raise ProviderError('LLM_RESPONSE_FORMAT_INVALID')
+        if config.enable_thinking is not None and type(config.enable_thinking) is not bool:raise ProviderError('LLM_ENABLE_THINKING_INVALID')
         if max_cost_usd is not None and (config.input_usd_per_million is None or config.output_usd_per_million is None):raise ProviderError('COST_BUDGET_REQUIRES_EXPLICIT_PRICE_RATES')
         if any(v is not None and v<0 for v in (max_cost_usd,config.input_usd_per_million,config.output_usd_per_million)):raise ProviderError('NEGATIVE_COST_INVALID')
         self.lock=threading.Lock();self.semaphore=threading.Semaphore(config.max_concurrency);self.next_start=0
@@ -123,6 +128,7 @@ class Provider:
             content=[{'type':'text','text':prompt+'\nReturn JSON matching this schema:\n'+json.dumps(schema)}]
             if image:content.append({'type':'image_url','image_url':{'url':'data:image/png;base64,'+base64.b64encode(image).decode()}})
             payload={'model':model,'messages':[{'role':'user','content':content}],'temperature':0,'max_tokens':self.config.max_output_tokens}
+            if self.config.enable_thinking is not None:payload['enable_thinking']=self.config.enable_thinking
             if response_mode=='json_schema':payload['response_format']={'type':'json_schema','json_schema':{'name':'surgical_knowledge','strict':True,'schema':schema}}
             elif response_mode=='json_object':payload['response_format']={'type':'json_object'}
             with self.semaphore:

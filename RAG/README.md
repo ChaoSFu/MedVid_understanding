@@ -115,6 +115,16 @@ provider, base URL or model is silently selected. The key is read only from
 The example env file contains no secrets and is **not automatically loaded**.
 Use your server's secret injection, or a locally ignored env file you source.
 
+`LLM_ENABLE_THINKING` is an optional provider extension. Leave it empty/unset
+to omit the request parameter, or set exactly `true`/`false` (case-insensitive)
+to send a JSON boolean. Invalid values stop configuration. For Qwen4-Max,
+the API model ID is `qwen4-max`; set `LLM_ENABLE_THINKING=false` to reproduce
+the non-thinking connectivity probe during structured extraction. See the
+[provider's structured-output documentation](https://www.alibabacloud.com/help/en/model-studio/qwen-structured-output).
+This setting is part of the cache/build identity. After changing it, use a
+new output directory; historical failures remain unchanged. A successful
+connectivity probe does not validate PDF extraction or medical correctness.
+
 ```bash
 # Edit an ignored local copy; never paste a key into a shared log or git file.
 cp RAG/.env.example RAG/.env

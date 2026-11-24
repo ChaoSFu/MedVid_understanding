@@ -138,6 +138,20 @@ export ENABLE_VISION_EXTRACTION=false
 ```
 
 使用你已开通的 OpenAI-compatible Chat Completions 服务及真实模型名。
+
+对于已测试的 Qwen4-Max 服务，API 模型名大小写必须准确：`qwen4-max`。
+若连通性测试使用非 thinking 模式，抽取时也显式配置：
+
+```bash
+export LLM_TEXT_MODEL=qwen4-max
+export LLM_ENABLE_THINKING=false
+```
+
+如使用 `RAG/.env`，将同样两项保存到该本地文件后重新 source。
+其他 Provider 不支持该扩展时，保持 `LLM_ENABLE_THINKING` 为空或未设置；
+配置仅接受空、true、false。该参数绑定缓存及构建身份，修改后使用新的输出
+目录，不覆盖或 resume 已冻结的 HTTP 404 失败结果。HTTP 200 只证明连通，
+仍需下面三份 PDF 的真实抽取及来源校验。
 不要把 Key 发到聊天或写进 Git。重开终端后需要重新安全注入 Key。
 未配置价格时成本报告为 null，不会假装费用为 0；调用数和可获得的 token 用量仍记录。
 

@@ -200,6 +200,33 @@ class TransportTests(unittest.TestCase):
         for path in self.root.rglob('*.json'):self.assertNotIn(os.environ['LLM_API_KEY'],path.read_text())
         self.assertEqual(r['value'],{'value':'ok'});self.assertEqual(p.calls,1)
 
+    def test_thinking_environment_is_explicit_and_validated(self):
+        for value,expected in [('',None),('false',False),('true',True),(' FALSE ',False)]:
+            with self.subTest(value=value),patch.dict(os.environ,{'LLM_ENABLE_THINKING':value}):
+                self.assertIs(Config.environment().enable_thinking,expected)
+        with patch.dict(os.environ,{},clear=True):self.assertIsNone(Config.environment().enable_thinking)
+        with patch.dict(os.environ,{'LLM_ENABLE_THINKING':'off'}):
+            with self.assertRaisesRegex(ProviderError,'LLM_ENABLE_THINKING_INVALID'):Config.environment()
+        self.cfg.enable_thinking='false'
+        with self.assertRaisesRegex(ProviderError,'LLM_ENABLE_THINKING_INVALID'):self.provider()
+
+    def test_thinking_payload_cache_binding_and_replay(self):
+        keys=[]
+        for setting in (None,False,True):
+            with self.subTest(setting=setting):
+                self.cfg.enable_thinking=setting;p=self.provider()
+                with patch.object(p,'_send',return_value=(self.envelope('{"value":"ok"}'),None)) as send:
+                    result=self.complete(p)
+                payload=send.call_args.args[0]
+                if setting is None:self.assertNotIn('enable_thinking',payload)
+                else:self.assertIs(payload['enable_thinking'],setting)
+                keys.append(result['request_key'])
+                replay=self.provider()
+                with patch.object(replay,'_send',side_effect=AssertionError('NETWORK')):
+                    self.assertEqual(self.complete(replay),result)
+                self.assertEqual(replay.calls,0);self.assertEqual(replay.hits,1)
+        self.assertEqual(len(set(keys)),3)
+
     def test_server_credential_echo_is_redacted_and_rejected(self):
         p=self.provider();secret=os.environ['LLM_API_KEY']
         with patch.object(p,'_send',return_value=(self.envelope(json.dumps({'value':secret})),None)):
