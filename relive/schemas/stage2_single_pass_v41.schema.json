@@ -1,0 +1,302 @@
+{
+  "model": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "relive-stage2-single-pass-v4.1:model",
+    "type": "object",
+    "properties": {
+      "plan_status": {
+        "enum": [
+          "PLANNED",
+          "INCOMPLETE_PLAN",
+          "UNABLE_TO_PLAN",
+          "UNRESOLVED_TARGET_REFERENCE"
+        ]
+      },
+      "claims": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^H[1-9][0-9]*$"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "type": {
+              "enum": [
+                "OBJECT",
+                "ATTRIBUTE",
+                "STATIC_RELATION",
+                "TEMPORAL_EVENT",
+                "HIGH_LEVEL"
+              ]
+            },
+            "role": {
+              "enum": [
+                "TARGET",
+                "PREREQUISITE",
+                "DISAMBIGUATOR",
+                "INTERPRETATION"
+              ]
+            },
+            "requirement_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            "requires": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "alternative_to": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            }
+          },
+          "required": [
+            "claim_id",
+            "text",
+            "type",
+            "role",
+            "requirement_ids"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 12
+      },
+      "unresolved_slots": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "slot_id": {
+              "type": "string",
+              "pattern": "^S[1-9][0-9]*$"
+            },
+            "purpose": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "status": {
+              "const": "UNBOUND"
+            }
+          },
+          "required": [
+            "slot_id",
+            "purpose",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 24
+      },
+      "requirement_issues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "requirement_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "issue": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "requirement_id",
+            "issue"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 100
+      }
+    },
+    "required": [
+      "plan_status",
+      "claims",
+      "unresolved_slots",
+      "requirement_issues"
+    ],
+    "additionalProperties": false
+  },
+  "canonical": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "relive-stage2-single-pass-v4.1:canonical",
+    "type": "object",
+    "properties": {
+      "plan_status": {
+        "enum": [
+          "PLANNED",
+          "INCOMPLETE_PLAN",
+          "UNABLE_TO_PLAN",
+          "UNRESOLVED_TARGET_REFERENCE"
+        ]
+      },
+      "claims": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "pattern": "^H[1-9][0-9]*$"
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "type": {
+              "enum": [
+                "OBJECT",
+                "ATTRIBUTE",
+                "STATIC_RELATION",
+                "TEMPORAL_EVENT",
+                "HIGH_LEVEL"
+              ]
+            },
+            "role": {
+              "enum": [
+                "TARGET",
+                "PREREQUISITE",
+                "DISAMBIGUATOR",
+                "INTERPRETATION"
+              ]
+            },
+            "requirement_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 100
+            },
+            "requires": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "alternative_to": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            }
+          },
+          "required": [
+            "claim_id",
+            "text",
+            "type",
+            "role",
+            "requirement_ids",
+            "requires",
+            "alternative_to"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 12
+      },
+      "unresolved_slots": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "slot_id": {
+              "type": "string",
+              "pattern": "^S[1-9][0-9]*$"
+            },
+            "purpose": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "status": {
+              "const": "UNBOUND"
+            }
+          },
+          "required": [
+            "slot_id",
+            "purpose",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 24
+      },
+      "requirement_issues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "requirement_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "issue": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "requirement_id",
+            "issue"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 0,
+        "maxItems": 100
+      }
+    },
+    "required": [
+      "plan_status",
+      "claims",
+      "unresolved_slots",
+      "requirement_issues"
+    ],
+    "additionalProperties": false
+  }
+}

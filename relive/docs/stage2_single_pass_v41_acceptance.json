@@ -1,0 +1,80 @@
+{
+  "format": "relive-stage2-v41-engineering-acceptance-v1",
+  "engineering_status": "PASS",
+  "real_B1_experiment": "NOT_RUN_MODEL_ENV_UNAVAILABLE",
+  "torch_installed": false,
+  "tests": {
+    "targeted_passed": 48,
+    "full_suite_passed": 739,
+    "shell_syntax": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "freeze": {
+    "sample_count": 22,
+    "requirement_count": 100,
+    "requirements_sha256": "b406d7ec7e44d92ce57050db7a5965a21a5e0c307df9d80a2a3e96d2c8c835da",
+    "historical_A_raw": 85,
+    "historical_A_retained_unchanged": 73,
+    "historical_B0_raw": 90,
+    "historical_B0_retained_unchanged": 56,
+    "source_artifacts_unchanged": true,
+    "pilot_tag_commit": "66559522c91319eb93519fb8345d046176f41fdb"
+  },
+  "uniform_offline_audit": {
+    "A": {
+      "raw_candidates": 85,
+      "retained_claims": 77,
+      "gate_state_counts": {
+        "ACCEPTED_STRUCTURAL": 17,
+        "BLOCKED_BY_DEPENDENCY": 0,
+        "REJECTED": 8,
+        "REVIEW_REQUIRED": 60
+      }
+    },
+    "B0": {
+      "raw_candidates": 90,
+      "retained_claims": 77,
+      "gate_state_counts": {
+        "ACCEPTED_STRUCTURAL": 7,
+        "BLOCKED_BY_DEPENDENCY": 5,
+        "REJECTED": 8,
+        "REVIEW_REQUIRED": 70
+      },
+      "normalization_counts": {
+        "DEFAULT_NO_DECLARED_EDGE:alternative_to": 18,
+        "DEFAULT_NO_DECLARED_EDGE:requires": 21
+      }
+    },
+    "interpretation": "Recovering 21 missing-edge-array records in B0 is format normalization, not new model quality."
+  },
+  "mock_only": {
+    "synthetic_test": true,
+    "normal_generation_calls": 22,
+    "repair_calls": 0,
+    "critic_calls": 0,
+    "B1_raw_candidates": 14,
+    "B1_slots": 8,
+    "replay": {
+      "cache_hits": 22,
+      "critic_calls": 0,
+      "exact_result_comparison": "PASS",
+      "new_model_calls": 0,
+      "repair_calls": 0,
+      "status": "PASS"
+    },
+    "semantic_quality": "NOT_REVIEWED"
+  },
+  "real_new_model_calls": 0,
+  "image_reads": 0,
+  "gt_used": false,
+  "certificate_writes": 0,
+  "new_verified_count": 0,
+  "implementation_sha256": "4add8661dcf5f0b83692830630605300369377e03c1708d9746da9969ec0c622",
+  "local_reports": "outputs/stage2_v41_acceptance_20261124_final/run/",
+  "limitations": [
+    "No real B1 smoke or semantic/cost superiority conclusion.",
+    "Human-Approved Claim Rate, graph sufficiency and invalid semantic dependency rates remain unknown.",
+    "Local reference copies match A/B0 but do not replace independent original Stage-1 binding.",
+    "Structural acceptance does not authorize Stage-3 publication or visual verification."
+  ]
+}

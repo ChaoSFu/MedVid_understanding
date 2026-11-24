@@ -1,0 +1,46 @@
+# V4.1: identical frozen V4-Lite backend; no repair entry point.
+# V4-Lite uses the identical frozen V3.1 backend and generation settings.
+# New V3.1 namespace. Text-only; exactly one generation attempt per frozen sample.
+framework_version: ReliVE-v1
+backend:
+  kind: local_hf
+  model: Qwen3.5-9B
+  revision: local-checkpoint-e8028cd2e14f
+  model_path: /mnt/hdd3/huihui/models/Qwen3.5-9B
+  checkpoint_metadata_sha256: e8028cd2e14f4d3fe26e6c90020d07f6f3e5aacc8bcf9ebfadfb12ae89241cec
+  model_class: Qwen3_5ForConditionalGeneration
+  processor_class: Qwen3VLProcessor
+  chat_template_source: tokenizer_config.json:chat_template
+  chat_template_sha256: a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715
+  chat_message_layout: images_then_text
+  processor_call_mode: tokenized_chat_template
+  chat_template_kwargs:
+    enable_thinking: false
+  trust_remote_code: false
+  local_files_only: true
+  dtype: bfloat16
+  device: cuda:0
+  device_map: null
+  input_device: cuda:0
+  max_memory: null
+  processor_min_pixels: null
+  processor_max_pixels: 262144
+  generation:
+    do_sample: false
+    max_new_tokens: 3072
+    use_cache: true
+  image_order: chronological
+  frame_encoding: source
+  timeout_seconds: 180
+  max_retries: 0
+# Loader compatibility only. Planner/compiler never invoke certificate policy.
+policy:
+  name: semantic_spatial
+  version: relive-v1-policy-1
+  strict_alternatives: true
+adaptation:
+  enabled: false
+  actions: []
+budget:
+  max_calls: 22
+  max_rounds: 1
