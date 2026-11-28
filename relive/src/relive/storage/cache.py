@@ -131,10 +131,12 @@ class CachedInference:
     def has_terminal_result(self, request: dict[str, Any]) -> bool:
         """Return whether a request can be replayed without backend execution.
 
-        This is a read-only, fail-closed replay preflight.  It validates the
+        This is an inference-free, fail-closed replay preflight. It validates the
         immutable raw attempt chain rather than trusting the presence of a
         cache directory or index file.  Callers that promise replay-only
-        behavior can therefore reject a miss before invoking ``call``.
+        behavior can therefore reject a miss before invoking ``call``. It uses
+        the writer lock, which can create a lock file. Use ``replay_readonly``
+        when the caller also promises zero cache filesystem writes.
         """
         identity = self.request_identity(request)
         key = stable_hash(identity)
@@ -258,6 +260,36 @@ class CachedInference:
                          "retryable": record["retryable"], "cache_hit": index < previous_count,
                          "latency_seconds": record["latency_seconds"]}
                         for index, (attempt_ref, record) in enumerate(attempts)]}
+
+    def replay_readonly(self, request: dict[str, Any], budget: Budget) -> dict[str, Any]:
+        """Read a validated terminal chain; never execute, lock or write cache.
+
+        A missing/incomplete chain fails before budget admission. Concurrent
+        immutable completed chains are safe to read; this does not repair them.
+        """
+        identity = self.request_identity(request)
+        key = stable_hash(identity)
+        attempts = self._load_attempts(key, identity)
+        maximum_attempts = self.backend.config.get("max_retries", 0) + 1
+        if type(maximum_attempts) is not int or not 1 <= maximum_attempts <= 4:
+            raise ValueError("At most three technical retries are supported")
+        if not attempts or len(attempts) > maximum_attempts:
+            raise ArtifactError("REPLAY_CACHE_MISS")
+        terminal = attempts[-1][1]
+        if (terminal["execution_status"] != ExecutionStatus.OK.value
+                and terminal["retryable"] and len(attempts) < maximum_attempts):
+            raise ArtifactError("REPLAY_CACHE_MISS")
+        budget._admit(key, list(range(len(attempts))), cached=True)
+        ref, last = attempts[-1]
+        return {"execution_status": last["execution_status"], "raw_response_ref": ref,
+                "raw_text": last["raw_text"], "cache_hit": True, "latency_seconds": 0.0,
+                "failure_reason": last["failure_reason"], "cache_key": key,
+                "generation_metadata": last.get("generation_metadata"),
+                "constraint_metadata": last.get("constraint_metadata"),
+                "attempts": [{"raw_response_ref": ref, "attempt_index": record["attempt_index"],
+                              "execution_status": record["execution_status"], "failure_reason": record["failure_reason"],
+                              "retryable": record["retryable"], "cache_hit": True,
+                              "latency_seconds": record["latency_seconds"]} for ref, record in attempts]}
 
     def call_with_token_constraint(self, request: dict[str, Any], budget: Budget,
                                    constraint_factory: Any) -> dict[str, Any]:

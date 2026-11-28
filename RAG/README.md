@@ -358,3 +358,12 @@ The local inspection proves parsing coverage, not final knowledge coverage.
 Real text/vision API capability, extraction quality and billing must still be
 tested on the configured server. No R0/R1 artifacts, historical caches, pilot
 tags or ReliVE runtime APIs are changed.
+
+## Question-only Stage 1 RAG experiment
+
+The optional `RAG.stage1_rag` package freezes a completed knowledge library,
+builds a local FTS5/BM25 index, and runs matched question-only baseline/RAG plans
+on 22 development samples. It does not integrate the library into the existing
+ReliVE runtime. Knowledge remains pending medical review. See
+[the Stage 1 RAG runbook](STAGE1_RAG_RUNBOOK.zh-CN.md) for offline tests,
+server commands, bounded repair, read-only replay, and human comparison.
